@@ -385,6 +385,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Convert the value at the given stack index into a Swift `Data`.
+    ///
+    /// If the value is is not a Lua string this returns `nil`.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: the value as a `Data`, or `nil` if the value was not a Lua `string`.
     func todata(_ index: CInt) -> Data? {
         let L = self
         if type(index) == .string {
@@ -397,7 +403,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Convert the value at the given stack index into a Swift String
+    /// Convert the value at the given stack index into a Swift `String`.
     ///
     /// If the value is is not a Lua string and `convert` is false, or if the
     /// string data cannot be converted to the specified encoding, this returns
@@ -546,6 +552,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Convert a value on the Lua stack to a Swift `Any`.
+    ///
+    /// Lua types with a one-to-one correspondence to Swift types are converted and returned `as Any`.
     ///
     /// If `guessType` is true, `table` and `string` values are automatically converted to
     /// `Array`/`Dictionary`/`String`/`Data` based on their contents:
@@ -816,6 +824,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     func pop(_ nitems: CInt = 1) {
+        // For performance Lua does check this itself, but it leads to such weird errors further down the line it's
+        // worth guarding against here
+        precondition(gettop() - nitems >= 0, "Attempt to pop more items from the stack than it contains")
         lua_pop(self, nitems)
     }
 
@@ -850,7 +861,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Make a protected call to a Lua function.
     ///
-    /// The function and any arguments must already be pushed to the stack,
+    /// The function and any arguments must already be pushed to the stack in the same way as for `lua_pcall()`,
     /// and are popped from the stack by this call. Unless the function errors,
     /// `nret` result values are then pushed to the stack.
     ///
@@ -910,7 +921,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Make a protected call to a Lua function that must already be pushed
     /// onto the stack. Each of `arguments` is pushed using `pushany()`. The
     /// function is popped from the stack. All results are popped from the stack
-    /// and the first one is converted to `T` using `tovalue<T>`. `nil` is
+    /// and the first one is converted to `T` using `tovalue<T>()`. `nil` is
     /// returned if the result could not be converted to `T`.
     ///
     /// - Parameter arguments: Arguments to pass to the Lua function.
@@ -1022,7 +1033,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///     ])
     ///     // Means you can do foo.bar()
     ///
-    /// - Parameter for: Type to register.
+    /// - Parameter type: Type to register.
     /// - Parameter functions: Map of functions.
     /// - Precondition: There must not already be a metatable defined for `type`.
     func registerMetatable<T>(for type: T.Type, functions: [String: lua_CFunction]) {
@@ -1038,7 +1049,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func registerDefaultMetatable(functions: [String: lua_CFunction]) {
         doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
-        pop()
+        pop() // metatable
     }
 
     /// Push any value representable using `Any` onto the stack as a `userdata`.
@@ -1083,6 +1094,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_setmetatable(self, -2) // pops metatable
     }
 
+    /// Convert a Lua userdata which was created with `pushuserdata<T>()` back to a value of type `T`.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: A value of type `T`, or `nil` if the value at the given stack position is not a `userdata` created
+    ///   with `pushuserdata()` or it cannot be cast to `T`.
     func touserdata<T>(_ index: CInt) -> T? {
         // We don't need to check the metatable name with eg luaL_testudata because we store everything as Any
         // so the final as? check takes care of that. But we should check that the userdata has a metatable we

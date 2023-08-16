@@ -21,6 +21,7 @@
 import CLua
 import Foundation
 
+/// Protocol adopted by all fundamental Swift types that can unambiguously be converted to basic Lua types.
 public protocol Pushable {
     func push(state L: LuaState!)
 }
@@ -76,7 +77,7 @@ extension Data: Pushable {
 
 extension String: Pushable {
     public func push(state L: LuaState!) {
-        L.push(self, encoding: L.getDefaultStringEncoding())
+        L.push(string: self, encoding: L.getDefaultStringEncoding())
     }
 }
 

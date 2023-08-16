@@ -126,7 +126,7 @@ final class LuaTests: XCTestCase {
         L.push("Hello")
         L.push("A ü†ƒ8 string")
         L.push(1234)
-        L.push("îsø", encoding: .isoLatin1)
+        L.push(string: "îsø", encoding: .isoLatin1)
 
         XCTAssertEqual(L.tostring(1, encoding: .utf8, convert: false), "Hello")
         XCTAssertEqual(L.tostring(2, encoding: .utf8, convert: false), "A ü†ƒ8 string")
@@ -194,11 +194,11 @@ final class LuaTests: XCTestCase {
         L = LuaState(libraries: [])
         L.registerMetatable(for: Foo.self, functions: [:])
         let val = Foo(intval: 123, strval: "abc")
-        L.pushuserdata(val)
+        L.push(userdata: val)
         XCTAssertEqual(L.type(1), .userdata)
 
-        // Check pushany handles it as a userdata too
-        L.pushany(val)
+        // Check push(any:) handles it as a userdata too
+        L.push(any: val)
         XCTAssertEqual(L.type(2), .userdata)
         L.pop()
 
@@ -230,8 +230,8 @@ final class LuaTests: XCTestCase {
 
         L = LuaState(libraries: [])
         L.registerMetatable(for: Foo.self, functions: [:])
-        L.pushuserdata(val!)
-        L.pushany(val!)
+        L.push(userdata: val!)
+        L.push(any: val!)
         var userdataFromPushUserdata: Foo? = L.touserdata(1)
         var userdataFromPushAny: Foo? = L.touserdata(2)
         XCTAssertIdentical(userdataFromPushUserdata, userdataFromPushAny)
@@ -263,7 +263,7 @@ final class LuaTests: XCTestCase {
             }
         ])
         let val = SomeClass()
-        L.pushuserdata(val)
+        L.push(userdata: val)
         try L.pcall(arguments: "A string arg")
         XCTAssertEqual(val.member, "A string arg")
     }
@@ -282,7 +282,7 @@ final class LuaTests: XCTestCase {
             f!.str = L.tostring(2)
             return 0
         }])
-        L.pushuserdata(f)
+        L.push(userdata: f)
 
         if true {
             // A different Foo ("inner Foo")
@@ -297,7 +297,7 @@ final class LuaTests: XCTestCase {
                 return 0
             }])
             let g = Foo()
-            L.pushuserdata(g)
+            L.push(userdata: g)
 
             try L.pcall(arguments: "innerfoo") // pops g
             try L.pcall(arguments: "outerfoo") // pops f
@@ -310,11 +310,11 @@ final class LuaTests: XCTestCase {
     func test_pushany() {
         L = LuaState(libraries: [])
 
-        L.pushany(1234)
+        L.push(any: 1234)
         XCTAssertEqual(L.toany(1) as? Int, 1234)
         L.pop()
 
-        L.pushany("string")
+        L.push(any: "string")
         XCTAssertNil(L.toany(1, guessType: false) as? String)
         XCTAssertNotNil(L.toany(1, guessType: true) as? String)
         XCTAssertNotNil(L.toany(1, guessType: false) as? LuaStringRef)
@@ -322,7 +322,7 @@ final class LuaTests: XCTestCase {
 
         // This is directly pushable (because Int is)
         let intArray = [11, 22, 33]
-        L.pushany(intArray)
+        L.push(any: intArray)
         XCTAssertEqual(L.type(1), .table)
         L.pop()
 
@@ -331,7 +331,7 @@ final class LuaTests: XCTestCase {
         }
         L.registerMetatable(for: Foo.self, functions: [:])
         let fooArray = [Foo(val: "a"), Foo(val: "b")]
-        L.pushany(fooArray)
+        L.push(any: fooArray)
         XCTAssertEqual(L.type(1), .table)
         let guessAnyArray = L.toany(1, guessType: true) as? Array<Any>
         XCTAssertNotNil(guessAnyArray)
@@ -348,31 +348,31 @@ final class LuaTests: XCTestCase {
         L = LuaState(libraries: [])
 
         let stringArray = ["abc", "def"]
-        L.pushany(stringArray)
+        L.push(any: stringArray)
         let stringArrayResult: [String]? = L.tovalue(1)
         XCTAssertEqual(stringArrayResult, stringArray)
         L.pop()
 
         let stringArrayArray = [["abc", "def"], ["123"]]
-        L.pushany(stringArrayArray)
+        L.push(any: stringArrayArray)
         let stringArrayArrayResult: [[String]]? = L.tovalue(1)
         XCTAssertEqual(stringArrayArrayResult, stringArrayArray)
         L.pop()
 
         let intBoolDict = [ 1: true, 2: false, 3: true ]
-        L.pushany(intBoolDict)
+        L.push(any: intBoolDict)
         let intBoolDictResult: [Int: Bool]? = L.tovalue(1)
         XCTAssertEqual(intBoolDictResult, intBoolDict)
         L.pop()
 
         let stringDict = ["abc": "ABC", "def": "DEF"]
-        L.pushany(stringDict)
+        L.push(any: stringDict)
         let stringDictResult: [String: String]? = L.tovalue(1)
         XCTAssertEqual(stringDictResult, stringDict)
         L.pop()
 
         let arrayDictDict = [["abc": [1: "1", 2: "2"], "def": [5: "5", 6: "6"]]]
-        L.pushany(arrayDictDict)
+        L.push(any: arrayDictDict)
         let arrayDictDictResult: [[String : [Int : String]]]? = L.tovalue(1)
         XCTAssertEqual(arrayDictDictResult, arrayDictDict)
         L.pop()
@@ -385,7 +385,7 @@ final class LuaTests: XCTestCase {
         }
         L.registerMetatable(for: NonHashable.self, functions: [:])
         lua_newtable(L)
-        L.pushuserdata(NonHashable())
+        L.push(userdata: NonHashable())
         L.push(true)
         lua_settable(L, -3)
         let tbl = L.toany(1, guessType: true) as? [LuaNonHashable: Bool]

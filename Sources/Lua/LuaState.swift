@@ -191,9 +191,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         public static let utf8 = Libraries(rawValue: 128)
         public static let debug = Libraries(rawValue: 256)
 
-        public static let all: Libraries = [ .package, .coroutine, .table, .io, .os, .string, .math, .utf8, .debug]
-        public static let safe: Libraries = [ .coroutine, .table, .string, .math, .utf8]
+        public static let all: Libraries = [.package, .coroutine, .table, .io, .os, .string, .math, .utf8, .debug]
+        public static let safe: Libraries = [.coroutine, .table, .string, .math, .utf8]
     }
+
+    // MARK: - State management
 
     /// Create a new `LuaState`.
     ///
@@ -237,7 +239,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         doRegisterMetatable(typeName: mtName, functions: [:])
         state.userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
-        pushuserdata(any: state, metatableName: mtName)
+        pushuserdata(state, metatableName: mtName)
         lua_rawsetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
         return state
     }
@@ -319,8 +321,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             fatalError("Cannot use setRequireRoot if package library not opened!")
         }
         lua_getfield(L, -1, "searchers")
-        L.push(path, encoding: .utf8)
-        L.push(displayPrefix, encoding: .utf8)
+        L.push(string: path, encoding: .utf8)
+        L.push(string: displayPrefix, encoding: .utf8)
         lua_pushcclosure(L, moduleSearcher, 2) // pops path.path
         lua_rawseti(L, -2, 2) // 2nd searcher is the .lua lookup one
         pushnil()
@@ -355,6 +357,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return Int(lua_gc0(self, MoreGarbage.count.rawValue)) * 1024 + Int(lua_gc0(self, MoreGarbage.countb.rawValue))
     }
 
+    // MARK: - Basic stack stuff
+
     /// Get the type of the value at the given index.
     ///
     /// - Parameter index: The stack index.
@@ -382,6 +386,58 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             return t == .nilType
         } else {
             return true // ie is none
+        }
+    }
+
+    func pop(_ nitems: CInt = 1) {
+        // For performance Lua does check this itself, but it leads to such weird errors further down the line it's
+        // worth guarding against here
+        precondition(gettop() - nitems >= 0, "Attempt to pop more items from the stack than it contains")
+        lua_pop(self, nitems)
+    }
+
+    func gettop() -> CInt {
+        return lua_gettop(self)
+    }
+
+    func settop(_ top: CInt) {
+        lua_settop(self, top)
+    }
+
+    // MARK: - to...() functions
+
+    func toboolean(_ index: CInt) -> Bool {
+        let b = lua_toboolean(self, index)
+        return b != 0
+    }
+
+    func tointeger(_ index: CInt) -> lua_Integer? {
+        let L = self
+        var isnum: CInt = 0
+        let ret = lua_tointegerx(L, index, &isnum)
+        if isnum == 0 {
+            return nil
+        } else {
+            return ret
+        }
+    }
+
+    func toint(_ index: CInt) -> Int? {
+        if let int = tointeger(index) {
+            return Int(exactly: int)
+        } else {
+            return nil
+        }
+    }
+
+    func tonumber(_ index: CInt) -> Double? {
+        let L = self
+        var isnum: CInt = 0
+        let ret = lua_tonumberx(L, index, &isnum)
+        if isnum == 0 {
+            return nil
+        } else {
+            return ret
         }
     }
 
@@ -436,41 +492,6 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return tostring(index, encoding: .stringEncoding(encoding), convert: convert)
     }
 
-    func tointeger(_ index: CInt) -> lua_Integer? {
-        let L = self
-        var isnum: CInt = 0
-        let ret = lua_tointegerx(L, index, &isnum)
-        if isnum == 0 {
-            return nil
-        } else {
-            return ret
-        }
-    }
-
-    func toint(_ index: CInt) -> Int? {
-        if let int = tointeger(index) {
-            return Int(exactly: int)
-        } else {
-            return nil
-        }
-    }
-
-    func tonumber(_ index: CInt) -> Double? {
-        let L = self
-        var isnum: CInt = 0
-        let ret = lua_tonumberx(L, index, &isnum)
-        if isnum == 0 {
-            return nil
-        } else {
-            return ret
-        }
-    }
-
-    func toboolean(_ index: CInt) -> Bool {
-        let b = lua_toboolean(self, index)
-        return b != 0
-    }
-
     func tostringarray(_ index: CInt, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> [String]? {
         guard type(index) == .table else {
             return nil
@@ -488,67 +509,6 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     func tostringarray(_ index: CInt, encoding: String.Encoding, convert: Bool = false) -> [String]? {
         return tostringarray(index, encoding: .stringEncoding(encoding), convert: convert)
-    }
-
-    func getfield<T>(_ index: CInt, key: String, _ accessor: (CInt) -> T?) -> T? {
-        let absidx = absindex(index)
-        let t = self.type(absidx)
-        if t != .table && t != .userdata {
-            return nil // Prevent lua_gettable erroring
-        }
-        push(key, encoding: .ascii)
-        let _ = lua_gettable(self, absidx)
-        let result = accessor(-1)
-        pop()
-        return result
-    }
-
-    func setfuncs(_ fns: [(String, lua_CFunction)], nup: CInt = 0) {
-        // It's easier to just do what luaL_setfuncs does rather than massage
-        // fns in to a format that would work with it
-        for (name, fn) in fns {
-            for _ in 0 ..< nup {
-                // copy upvalues to the top
-                lua_pushvalue(self, -nup)
-            }
-            lua_pushcclosure(self, fn, nup)
-            lua_setfield(self, -(nup + 2), name)
-        }
-        pop(nup)
-    }
-
-    // Convenience dict fns (assumes key is an ascii string)
-
-    func toint(_ index: CInt, key: String) -> Int? {
-        return getfield(index, key: key, self.toint)
-    }
-
-    func tonumber(_ index: CInt, key: String) -> Double? {
-        return getfield(index, key: key, self.tonumber)
-    }
-
-    func toboolean(_ index: CInt, key: String) -> Bool {
-        return getfield(index, key: key, self.toboolean) ?? false
-    }
-
-    func todata(_ index: CInt, key: String) -> Data? {
-        return getfield(index, key: key, self.todata)
-    }
-
-    func tostring(_ index: CInt, key: String, encoding: String.Encoding, convert: Bool = false) -> String? {
-        return tostring(index, key: key, encoding: .stringEncoding(encoding), convert: convert)
-    }
-
-    func tostring(_ index: CInt, key: String, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
-        return getfield(index, key: key, { tostring($0, encoding: encoding, convert: convert) })
-    }
-
-    func tostringarray(_ index: CInt, key: String, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> [String]? {
-        return getfield(index, key: key, { tostringarray($0, encoding: encoding, convert: convert) })
-    }
-
-    func tostringarray(_ index: CInt, key: String, encoding: String.Encoding, convert: Bool = false) -> [String]? {
-        return tostringarray(index, key: key, encoding: .stringEncoding(encoding), convert: convert)
     }
 
     /// Convert a value on the Lua stack to a Swift `Any`.
@@ -616,55 +576,102 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Convert any Swift value to a Lua value and push on to the stack.
+    /// Attempt to convert the value at the given stack index to type `T`.
     ///
-    /// If `value` refers to a type that can be natively represented in Lua, such as `String`, `Array`, `Dictionary`
-    /// etc, then the value is converted to the native type (ie an `Int` is converted to a `number`). Array and
-    /// Dictionary members are recursively converted using `pushany()`. Any type not natively representable is pushed
-    /// as a `userdata` using `pushuserdata()`.
-    ///
-    /// - Parameter value: The value to push, or nil (which is pushed as the Lua `nil` value).
-    func pushany(_ value: Any?) {
-        guard let value else {
-            pushnil()
-            return
+    /// The types of value that are convertible are:
+    /// * `number` converts to `Int` if representable, otherwise `Double`
+    /// * `boolean` converts to `Bool`
+    /// * `thread` converts to `LuaState`
+    /// * `string` converts to `String` or `Data` depending on which `T` is
+    /// * `table` converts to either an `Array` or a `Dictionary` depending on `T`. The table contents are recursively
+    ///   converted to match the type of `T`.
+    /// * `userdata` any conversion that `as?` can perform on an `Any` referring to that type.
+    func tovalue<T>(_ index: CInt) -> T? {
+        let value = toany(index, guessType: false)
+        if let directCast = value as? T {
+            return directCast
+        } else if let ref = value as? LuaStringRef {
+            if T.self == String.self {
+                return ref.toString() as? T
+            } else /*if T.self == Data.self*/ {
+                return ref.toData() as? T
+            }
+        } else if let ref = value as? LuaTableRef {
+            return ref.resolve()
         }
-        switch value {
-        case let pushable as Pushable:
-            push(pushable)
-        case let str as String: // HACK for _NSCFString not being Pushable??
-            push(str, encoding: .utf8)
-        case let num as NSNumber: // Ditto for _NSCFNumber
-            if let int = num as? Int {
-                push(int)
-            } else {
-                // Conversion to Double cannot fail
-                // Curiously the Swift compiler knows enough to know this won't fail and tells us off for using the `!`
-                // in a scenario when it won't fail, but helpfully doesn't provide us with a mechanism to actually get
-                // a non-optional Double. The double-parenthesis tells it we know what we're doing.
-                push((num as! Double))
-            }
-        case let data as Data: // Presumably this is needed too for NSData...
-            push(data)
-        case let array as Array<Any>:
-            lua_createtable(self, CInt(array.count), 0)
-            for (i, val) in array.enumerated() {
-                pushany(val)
-                lua_rawseti(self, -2, lua_Integer(i + 1))
-            }
-        case let dict as Dictionary<AnyHashable, Any>:
-            lua_createtable(self, 0, CInt(dict.count))
-            for (k, v) in dict {
-                pushany(k)
-                pushany(v)
-                lua_settable(self, -3)
-            }
-        default:
-            pushuserdata(value)
-        }
+        return nil
     }
 
-    // iterators
+    /// Convert a Lua userdata which was created with `push(userdata:)` back to a value of type `T`.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: A value of type `T`, or `nil` if the value at the given stack position is not a `userdata` created
+    ///   with `push(userdata:)` or it cannot be cast to `T`.
+    func touserdata<T>(_ index: CInt) -> T? {
+        // We don't need to check the metatable name with eg luaL_testudata because we store everything as Any
+        // so the final as? check takes care of that. But we should check that the userdata has a metatable we
+        // know about, to verify that it is safely convertible to an Any, and not an unrelated userdata some caller has
+        // created directly with lua_newuserdatauv().
+        guard lua_getmetatable(self, index) == 1 else {
+            // userdata without a metatable can't be one of ours
+            return nil
+        }
+        let mtPtr = lua_topointer(self, -1)
+        pop() // metatable
+        guard let mtPtr,
+              let state = maybeGetState(),
+              state.userdataMetatables.contains(mtPtr) else {
+            // Not a userdata metatable we registered
+            return nil
+        }
+
+        return unchecked_touserdata(index)
+    }
+
+    private func unchecked_touserdata<T>(_ index: CInt) -> T? {
+        guard let rawptr = lua_touserdata(self, index) else {
+            return nil
+        }
+        let typedPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
+        return typedPtr.pointee as? T
+    }
+
+    // MARK: - Convenience dict fns
+    // assumes key is an ascii string
+
+    func toint(_ index: CInt, key: String) -> Int? {
+        return getfield(index, key: key, self.toint)
+    }
+
+    func tonumber(_ index: CInt, key: String) -> Double? {
+        return getfield(index, key: key, self.tonumber)
+    }
+
+    func toboolean(_ index: CInt, key: String) -> Bool {
+        return getfield(index, key: key, self.toboolean) ?? false
+    }
+
+    func todata(_ index: CInt, key: String) -> Data? {
+        return getfield(index, key: key, self.todata)
+    }
+
+    func tostring(_ index: CInt, key: String, encoding: String.Encoding, convert: Bool = false) -> String? {
+        return tostring(index, key: key, encoding: .stringEncoding(encoding), convert: convert)
+    }
+
+    func tostring(_ index: CInt, key: String, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
+        return getfield(index, key: key, { tostring($0, encoding: encoding, convert: convert) })
+    }
+
+    func tostringarray(_ index: CInt, key: String, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> [String]? {
+        return getfield(index, key: key, { tostringarray($0, encoding: encoding, convert: convert) })
+    }
+
+    func tostringarray(_ index: CInt, key: String, encoding: String.Encoding, convert: Bool = false) -> [String]? {
+        return tostringarray(index, key: key, encoding: .stringEncoding(encoding), convert: convert)
+    }
+
+    // MARK: - Iterators
 
     class IPairsIterator : Sequence, IteratorProtocol {
         let L: LuaState
@@ -739,7 +746,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   be in order for the iteration to proceed.
     /// - Parameter start: If set, start iteration at this index rather than the
     ///   beginning of the array.
-    /// - Parameter resetTop: By default, the stack top is reset on exit and 
+    /// - Parameter resetTop: By default, the stack top is reset on exit and
     ///   each time through the iterator to what it was at the point of calling
     ///   `ipairs`. Occasionally (such as when using `luaL_Buffer`) this is not
     ///   desirable and can be disabled by setting `resetTop` to false.
@@ -794,18 +801,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return PairsIterator(self, index)
     }
 
-    func push(_ string: String, encoding: String.Encoding) {
-        push(string, encoding: .stringEncoding(encoding))
-    }
-
-    func push(_ string: String, encoding: ExtendedStringEncoding) {
-        guard let data = string.data(using: encoding) else {
-            assertionFailure("Cannot represent string in the given encoding?!")
-            pushnil()
-            return
-        }
-        push(data)
-    }
+    // MARK: - push() functions
 
     func pushnil() {
         lua_pushnil(self)
@@ -819,49 +815,120 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    func push(string: String, encoding: String.Encoding) {
+        push(string: string, encoding: .stringEncoding(encoding))
+    }
+
+    func push(string: String, encoding: ExtendedStringEncoding) {
+        guard let data = string.data(using: encoding) else {
+            assertionFailure("Cannot represent string in the given encoding?!")
+            pushnil()
+            return
+        }
+        push(data)
+    }
+
+
     func push(_ fn: lua_CFunction) {
         lua_pushcfunction(self, fn)
     }
 
-    func pop(_ nitems: CInt = 1) {
-        // For performance Lua does check this itself, but it leads to such weird errors further down the line it's
-        // worth guarding against here
-        precondition(gettop() - nitems >= 0, "Attempt to pop more items from the stack than it contains")
-        lua_pop(self, nitems)
+    /// Push any value representable using `Any` onto the stack as a `userdata`.
+    ///
+    /// From a lifetime perspective, this function behaves as if `val` were
+    /// assigned to another variable of type `Any`, and when the Lua userdata is
+    /// garbage collected, this variable goes out of scope.
+    ///
+    /// To make the object usable from Lua, declare a metatable for the type of `val` using `registerMetatable()`. Note
+    /// that this function always uses the dynamic type of `val`, and not whatever `T` is, when calculating what
+    /// metatable to assign the object. Thus `push(userdata: foo)` and `push(userdata: foo as Any)` will behave
+    /// identically. Pushing a value of a type which has no metatable previously registered will generate a warning,
+    /// and the object will have no metamethods declared on it (except for `__gc` which is always defined in order that
+    /// Swift object lifetimes are preserved).
+    ///
+    /// - Parameter val: The value to push onto the Lua stack.
+    /// - Note: This function always pushes a `userdata` - if `val` represents
+    ///   any other type (for example, an integer) it will not be converted to
+    ///   that type in Lua. Use `push(any:)` instead to automatically convert
+    ///   types to their Lua native representation where possible.
+    func push<T>(userdata: T) {
+        let anyval = userdata as Any
+        let tname = getMetatableName(for: Swift.type(of: anyval))
+        pushuserdata(anyval, metatableName: tname)
     }
 
-    func gettop() -> CInt {
-        return lua_gettop(self)
+    private func pushuserdata(_ val: Any, metatableName: String) {
+        let udata = lua_newuserdatauv(self, MemoryLayout<Any>.size, 0)!
+        let udataPtr = udata.bindMemory(to: Any.self, capacity: 1)
+        udataPtr.initialize(to: val)
+
+        if luaL_getmetatable(self, metatableName) == LUA_TNIL {
+            pop()
+            if luaL_getmetatable(self, Self.DefaultMetatableName) == LUA_TTABLE {
+                // The stack is now right for the lua_setmetatable call below
+            } else {
+                pop()
+                print("Implicitly registering empty metatable for type \(metatableName)")
+                doRegisterMetatable(typeName: metatableName, functions: [:])
+            }
+        }
+        lua_setmetatable(self, -2) // pops metatable
     }
 
-    func settop(_ top: CInt) {
-        lua_settop(self, top)
+    /// Convert any Swift value to a Lua value and push on to the stack.
+    ///
+    /// If `value` refers to a type that can be natively represented in Lua, such as `String`, `Array`, `Dictionary`
+    /// etc, then the value is converted to the native type (ie an `Int` is converted to a `number`). Array and
+    /// Dictionary members are recursively converted using `push(any:)`. Any type not natively representable is pushed
+    /// as a `userdata` using `push(userdata:)`.
+    ///
+    /// - Parameter value: The value to push, or nil (which is pushed as the Lua `nil` value).
+    func push(any value: Any?) {
+        guard let value else {
+            pushnil()
+            return
+        }
+        switch value {
+        case let pushable as Pushable:
+            push(pushable)
+        case let str as String: // HACK for _NSCFString not being Pushable??
+            push(str)
+        case let num as NSNumber: // Ditto for _NSCFNumber
+            if let int = num as? Int {
+                push(int)
+            } else {
+                // Conversion to Double cannot fail
+                // Curiously the Swift compiler knows enough to know this won't fail and tells us off for using the `!`
+                // in a scenario when it won't fail, but helpfully doesn't provide us with a mechanism to actually get
+                // a non-optional Double. The double-parenthesis tells it we know what we're doing.
+                push((num as! Double))
+            }
+        case let data as Data: // Presumably this is needed too for NSData...
+            push(data)
+        case let array as Array<Any>:
+            lua_createtable(self, CInt(array.count), 0)
+            for (i, val) in array.enumerated() {
+                push(any: val)
+                lua_rawseti(self, -2, lua_Integer(i + 1))
+            }
+        case let dict as Dictionary<AnyHashable, Any>:
+            lua_createtable(self, 0, CInt(dict.count))
+            for (k, v) in dict {
+                push(any: k)
+                push(any: v)
+                lua_settable(self, -3)
+            }
+        default:
+            push(userdata: value)
+        }
     }
 
-    func setfield<S, T>(_ name: S, _ value: T) where S: StringProtocol & Pushable, T: Pushable {
-        self.push(name)
-        self.push(value)
-        lua_settable(self, -3)
-    }
-
-    @discardableResult
-    func getglobal(_ name: UnsafePointer<CChar>) -> LuaType {
-        return LuaType(rawValue: lua_getglobal(self, name))!
-    }
-
-    /// Pushes the globals table (`_G`) onto the stack.
-    func pushGlobals() {
-        lua_rawgeti(self, LUA_REGISTRYINDEX, lua_Integer(LUA_RIDX_GLOBALS))
-    }
-
-    func requiref(name: UnsafePointer<CChar>!, function: lua_CFunction, global: Bool = true) {
-        luaL_requiref(self, name, function, global ? 1 : 0)
-        pop()
-    }
+    // MARK: - Calling into Lua
 
     /// Make a protected call to a Lua function.
     ///
-    /// The function and any arguments must already be pushed to the stack in the same way as for `lua_pcall()`,
+    /// The function and any arguments must already be pushed to the stack in the same way as for
+    /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
     /// and are popped from the stack by this call. Unless the function errors,
     /// `nret` result values are then pushed to the stack.
     ///
@@ -899,7 +966,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Convenience zero-result wrapper around `pcall(nargs:nret:traceback)`
     ///
     /// Make a protected call to a Lua function that must already be pushed
-    /// onto the stack. Each of `arguments` is pushed using `pushany()`. The
+    /// onto the stack. Each of `arguments` is pushed using `push(any:)`. The
     /// function is popped from the stack and any results are discarded.
     ///
     /// - Parameter arguments: Arguments to pass to the Lua function.
@@ -911,7 +978,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   function or callable.
     func pcall(arguments: Any..., traceback: Bool = true) throws {
         for arg in arguments {
-            pushany(arg)
+            push(any: arg)
         }
         try pcall(nargs: CInt(arguments.count), nret: 0, traceback: traceback)
     }
@@ -919,7 +986,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Convenience one-result wrapper around `pcall(nargs:nret:traceback)`
     ///
     /// Make a protected call to a Lua function that must already be pushed
-    /// onto the stack. Each of `arguments` is pushed using `pushany()`. The
+    /// onto the stack. Each of `arguments` is pushed using `push(any:)`. The
     /// function is popped from the stack. All results are popped from the stack
     /// and the first one is converted to `T` using `tovalue<T>()`. `nil` is
     /// returned if the result could not be converted to `T`.
@@ -935,7 +1002,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   function or callable.
     func pcall<T>(arguments: Any..., traceback: Bool = true) throws -> T? {
         for arg in arguments {
-            pushany(arg)
+            push(any: arg)
         }
         try pcall(nargs: CInt(arguments.count), nret: 1, traceback: traceback)
         let result: T? = tovalue(-1)
@@ -943,31 +1010,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return result
     }
 
-    /// Attempt to convert the value at the given stack index to type `T`.
-    ///
-    /// The types of value that are convertible are:
-    /// * `number` converts to `Int` if representable, otherwise `Double`
-    /// * `boolean` converts to `Bool`
-    /// * `thread` converts to `LuaState`
-    /// * `string` converts to `String` or `Data` depending on which `T` is
-    /// * `table` converts to either an `Array` or a `Dictionary` depending on `T`. The table contents are recursively
-    ///   converted to match the type of `T`.
-    /// * `userdata` any conversion that `as?` can perform on an `Any` referring to that type.
-    func tovalue<T>(_ index: CInt) -> T? {
-        let value = toany(index, guessType: false)
-        if let directCast = value as? T {
-            return directCast
-        } else if let ref = value as? LuaStringRef {
-            if T.self == String.self {
-                return ref.toString() as? T
-            } else /*if T.self == Data.self*/ {
-                return ref.toData() as? T
-            }
-        } else if let ref = value as? LuaTableRef {
-            return ref.resolve()
-        }
-        return nil
-    }
+    // MARK: - Registering metatables
 
     private func getMetatableName(for type: Any.Type) -> String {
         let prefix = "SwiftType_" + String(describing: type)
@@ -1006,11 +1049,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     private static let DefaultMetatableName = "SwiftType_Any"
 
     /// Register a metatable for values of type `T` when they are pushed using
-    /// `pushuserdata()` or `pushany()`. Note, attempting to register a
+    /// `push(userdata:)` or `push(any:)`. Note, attempting to register a
     /// metatable for types that are bridged to Lua types (such as `Integer,`
-    /// or `String`), will not work with values pushed with `pushany()` - if
+    /// or `String`), will not work with values pushed with `push(any:)` - if
     /// you really need to do that, they must always be pushed with
-    /// `pushuserdata()` (at which point they cannot be used as normal Lua
+    /// `push(userdata:)` (at which point they cannot be used as normal Lua
     /// numbers/strings/etc).
     ///
     /// For example, to make a type `Foo` callable:
@@ -1052,84 +1095,70 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
     }
 
-    /// Push any value representable using `Any` onto the stack as a `userdata`.
-    ///
-    /// From a lifetime perspective, this function behaves as if `val` were
-    /// assigned to another variable of type `Any`, and when the Lua userdata is
-    /// garbage collected, this variable goes out of scope.
-    ///
-    /// To make the object usable from Lua, declare a metatable for the type of `val` using `registerMetatable()`. Note
-    /// that this function always uses the dynamic type of `val`, and not whatever `T` is, when calculating what
-    /// metatable to assign the object. Thus `pushuserdata(foo)` and `pushuserdata(foo as Any)` will behave
-    /// identically. Pushing a value of a type which has no metatable previously registered will generate a warning,
-    /// and the object will have no metamethods declared on it (except for `__gc` which is always defined in order that
-    /// Swift object lifetimes are preserved).
-    ///
-    /// - Parameter val: The value to push onto the Lua stack.
-    /// - Note: This function always pushes a `userdata` - if `val` represents
-    ///   any other type (for example, an integer) it will not be converted to
-    ///   that type in Lua. Use `pushany()` instead to automatically convert
-    ///   types to their Lua native representation where possible.
-    func pushuserdata<T>(_ val: T) {
-        let anyval = val as Any
-        let tname = getMetatableName(for: Swift.type(of: anyval))
-        pushuserdata(any: anyval, metatableName: tname)
+    // MARK: - Misc functions
+
+    func getfield<T>(_ index: CInt, key: String, _ accessor: (CInt) -> T?) -> T? {
+        let absidx = absindex(index)
+        let t = self.type(absidx)
+        if t != .table && t != .userdata {
+            return nil // Prevent lua_gettable erroring
+        }
+        push(string: key, encoding: .ascii)
+        let _ = lua_gettable(self, absidx)
+        let result = accessor(-1)
+        pop()
+        return result
     }
 
-    private func pushuserdata(any val: Any, metatableName: String) {
-        let udata = lua_newuserdatauv(self, MemoryLayout<Any>.size, 0)!
-        let udataPtr = udata.bindMemory(to: Any.self, capacity: 1)
-        udataPtr.initialize(to: val)
+    func setfield<S, T>(_ name: S, _ value: T) where S: StringProtocol & Pushable, T: Pushable {
+        self.push(name)
+        self.push(value)
+        lua_settable(self, -3)
+    }
 
-        if luaL_getmetatable(self, metatableName) == LUA_TNIL {
-            pop()
-            if luaL_getmetatable(self, Self.DefaultMetatableName) == LUA_TTABLE {
-                // The stack is now right for the lua_setmetatable call below
-            } else {
-                pop()
-                print("Implicitly registering empty metatable for type \(metatableName)")
-                doRegisterMetatable(typeName: metatableName, functions: [:])
+    @discardableResult
+    func getglobal(_ name: UnsafePointer<CChar>) -> LuaType {
+        return LuaType(rawValue: lua_getglobal(self, name))!
+    }
+
+    /// Pushes the globals table (`_G`) onto the stack.
+    func pushGlobals() {
+        lua_pushglobaltable(self)
+    }
+
+    /// Wrapper around [`luaL_requiref()`](https://www.lua.org/manual/5.4/manual.html#luaL_requiref).
+    ///
+    /// Pops the module from the stack.
+    func requiref(name: UnsafePointer<CChar>!, function: lua_CFunction, global: Bool = true) {
+        luaL_requiref(self, name, function, global ? 1 : 0)
+        pop()
+    }
+
+    /// Wrapper around [`luaL_setfuncs()`](https://www.lua.org/manual/5.4/manual.html#luaL_setfuncs).
+    func setfuncs(_ fns: [String: lua_CFunction], nup: CInt = 0) {
+        precondition(nup >= 0)
+        // It's easier to just do what luaL_setfuncs does rather than massage
+        // fns in to a format that would work with it
+        for (name, fn) in fns {
+            for _ in 0 ..< nup {
+                // copy upvalues to the top
+                lua_pushvalue(self, -nup)
             }
+            lua_pushcclosure(self, fn, nup)
+            lua_setfield(self, -(nup + 2), name)
         }
-        lua_setmetatable(self, -2) // pops metatable
-    }
-
-    /// Convert a Lua userdata which was created with `pushuserdata<T>()` back to a value of type `T`.
-    ///
-    /// - Parameter index: The stack index.
-    /// - Returns: A value of type `T`, or `nil` if the value at the given stack position is not a `userdata` created
-    ///   with `pushuserdata()` or it cannot be cast to `T`.
-    func touserdata<T>(_ index: CInt) -> T? {
-        // We don't need to check the metatable name with eg luaL_testudata because we store everything as Any
-        // so the final as? check takes care of that. But we should check that the userdata has a metatable we
-        // know about, to verify that it is safely convertible to an Any, and not an unrelated userdata some caller has
-        // created directly with lua_newuserdatauv().
-        guard lua_getmetatable(self, index) == 1 else {
-            // userdata without a metatable can't be one of ours
-            return nil
+        if nup > 0 {
+            pop(nup)
         }
-        let mtPtr = lua_topointer(self, -1)
-        pop() // metatable
-        guard let mtPtr,
-              let state = maybeGetState(),
-              state.userdataMetatables.contains(mtPtr) else {
-            // Not a userdata metatable we registered
-            return nil
-        }
-
-        return unchecked_touserdata(index)
-    }
-
-    private func unchecked_touserdata<T>(_ index: CInt) -> T? {
-        guard let rawptr = lua_touserdata(self, index) else {
-            return nil
-        }
-        let typedPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
-        return typedPtr.pointee as? T
     }
 
     /// Call `block` wrapped in a `do { ... } catch {}` and convert any Swift
     /// errors into a `lua_error()` call.
+    ///
+    /// - Note: Is is important not to leave anything on the stack outside of `block` when calling this function,
+    ///  because Lua errors do not unwind the stack. Therefore the normal way to use this function is to make it the
+    ///  only call in a `lua_CFunction`:
+    ///     func myNativeFn(_ L: LuaState!)
     ///
     /// - Returns: The result of `block` if there was no error. On error,
     ///   converts the error to a string then calls `lua_error()` (and therefore

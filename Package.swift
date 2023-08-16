@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Lua",
+    name: "LuaSwift",
     platforms: [
         .iOS(.v15),
         .macOS(.v12)

@@ -400,4 +400,13 @@ final class LuaTests: XCTestCase {
         let y: Any = NonHashable()
         XCTAssertNil(y as? AnyHashable)
     }
+
+    func testForeignUserdata() {
+        // Tests that a userdata not set via pushuserdata (and thus, doesn't necessarily contain an `Any`) does not
+        // crash or return anything if you attempt to access it via touserdata().
+        L = LuaState(libraries: [])
+        let _ = lua_newuserdatauv(L, MemoryLayout<Any>.size, 0)
+        let bad: Any? = L.touserdata(-1)
+        XCTAssertNil(bad)
+    }
 }

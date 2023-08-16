@@ -223,6 +223,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     private class _State {
         var defaultStringEncoding = ExtendedStringEncoding.stringEncoding(.utf8)
         var metatableDict = Dictionary<String, Array<Any.Type>>()
+        var userdataMetatables = Set<UnsafeRawPointer>()
     }
 
     private func getState() -> _State {
@@ -234,6 +235,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         // trying to call getState()
         let mtName = "LuaState._State"
         doRegisterMetatable(typeName: mtName, functions: [:])
+        state.userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
         pushuserdata(any: state, metatableName: mtName)
         lua_rawsetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
@@ -243,7 +245,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     private func maybeGetState() -> _State? {
         lua_rawgetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
         var result: _State? = nil
-        if let state: _State = touserdata(-1) {
+        // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
+        // safe because we know the value of StateRegistryKey does not need checking.
+        if let state: _State = unchecked_touserdata(-1) {
             result = state
         }
         pop()
@@ -604,6 +608,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Convert any Swift value to a Lua value and push on to the stack.
+    ///
+    /// If `value` refers to a type that can be natively represented in Lua, such as `String`, `Array`, `Dictionary`
+    /// etc, then the value is converted to the native type (ie an `Int` is converted to a `number`). Array and
+    /// Dictionary members are recursively converted using `pushany()`. Any type not natively representable is pushed
+    /// as a `userdata` using `pushuserdata()`.
+    ///
+    /// - Parameter value: The value to push, or nil (which is pushed as the Lua `nil` value).
     func pushany(_ value: Any?) {
         guard let value else {
             pushnil()
@@ -885,7 +897,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - throws: `LuaCallError` if a Lua error is raised during the execution
     ///   of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua
-    ///   function.
+    ///   function or callable.
     func pcall(arguments: Any..., traceback: Bool = true) throws {
         for arg in arguments {
             pushany(arg)
@@ -909,7 +921,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - throws: `LuaCallError` if a Lua error is raised during the execution
     ///   of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua
-    ///   function.
+    ///   function or callable.
     func pcall<T>(arguments: Any..., traceback: Bool = true) throws -> T? {
         for arg in arguments {
             pushany(arg)
@@ -961,10 +973,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     private func doRegisterMetatable(typeName: String, functions: [String: lua_CFunction]) {
+        precondition(functions["__gc"] == nil, "__gc function for Swift userdata types is registered automatically")
         if luaL_newmetatable(self, typeName) == 0 {
             fatalError("Metatable for type \(typeName) is already registered!")
         }
-        assert(functions["__gc"] == nil, "__gc function for Swift userdata types is registered automatically")
 
         for (name, fn) in functions {
             lua_pushcfunction(self, fn)
@@ -999,10 +1011,23 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///        }
     ///     ])
     ///
+    /// Do not specify a `_gc` in `functions`, this is created automatically. If `__index` is not specified, one is
+    /// created which refers to the metatable, thus additional items in `functions` are accessible Lua-side:
+    ///
+    ///     L.registerMetatable(for: Foo.self, functions: [
+    ///         "bar": : { L in
+    ///             print("This is a call to bar()!")
+    ///             return 0
+    ///         }
+    ///     ])
+    ///     // Means you can do foo.bar()
+    ///
     /// - Parameter for: Type to register.
     /// - Parameter functions: Map of functions.
+    /// - Precondition: There must not already be a metatable defined for `type`.
     func registerMetatable<T>(for type: T.Type, functions: [String: lua_CFunction]) {
         doRegisterMetatable(typeName: getMetatableName(for: type), functions: functions)
+        getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
     }
 
@@ -1012,6 +1037,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter functions: map of functions
     func registerDefaultMetatable(functions: [String: lua_CFunction]) {
         doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions)
+        getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop()
     }
 
@@ -1020,6 +1046,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// From a lifetime perspective, this function behaves as if `val` were
     /// assigned to another variable of type `Any`, and when the Lua userdata is
     /// garbage collected, this variable goes out of scope.
+    ///
+    /// To make the object usable from Lua, declare a metatable for the type of `val` using `registerMetatable()`. Note
+    /// that this function always uses the dynamic type of `val`, and not whatever `T` is, when calculating what
+    /// metatable to assign the object. Thus `pushuserdata(foo)` and `pushuserdata(foo as Any)` will behave
+    /// identically. Pushing a value of a type which has no metatable previously registered will generate a warning,
+    /// and the object will have no metamethods declared on it (except for `__gc` which is always defined in order that
+    /// Swift object lifetimes are preserved).
     ///
     /// - Parameter val: The value to push onto the Lua stack.
     /// - Note: This function always pushes a `userdata` - if `val` represents
@@ -1052,7 +1085,26 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     func touserdata<T>(_ index: CInt) -> T? {
         // We don't need to check the metatable name with eg luaL_testudata because we store everything as Any
-        // so the final as? check takes care of that
+        // so the final as? check takes care of that. But we should check that the userdata has a metatable we
+        // know about, to verify that it is safely convertible to an Any, and not an unrelated userdata some caller has
+        // created directly with lua_newuserdatauv().
+        guard lua_getmetatable(self, index) == 1 else {
+            // userdata without a metatable can't be one of ours
+            return nil
+        }
+        let mtPtr = lua_topointer(self, -1)
+        pop() // metatable
+        guard let mtPtr,
+              let state = maybeGetState(),
+              state.userdataMetatables.contains(mtPtr) else {
+            // Not a userdata metatable we registered
+            return nil
+        }
+
+        return unchecked_touserdata(index)
+    }
+
+    private func unchecked_touserdata<T>(_ index: CInt) -> T? {
         guard let rawptr = lua_touserdata(self, index) else {
             return nil
         }

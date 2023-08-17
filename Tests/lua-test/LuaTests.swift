@@ -415,11 +415,14 @@ final class LuaTests: XCTestCase {
         L = LuaState(libraries: [])
         L.push("hello")
         var ref: LuaValue! = L.ref(-1)
-        XCTAssertNotNil(ref)
         XCTAssertEqual(ref.type, .string)
         XCTAssertEqual(ref.toboolean(), true)
         XCTAssertEqual(ref.tostring(), "hello")
         L.settop(0)
+
+        L.pushnil()
+        ref = L.ref(-1)
+        XCTAssertEqual(ref.type, .nilType)
 
         // Check it can correctly keep hold of a ref to a Swift object
         var deinited = 0
@@ -444,8 +447,8 @@ final class LuaTests: XCTestCase {
     func test_ref_scoping() {
         L = LuaState(libraries: [])
         L.push("hello")
-        var ref = L.ref(-1)
-        XCTAssertEqual(ref?.type, .string) // shut up compiler complaining about unused ref
+        var ref: LuaValue? = L.ref(-1)
+        XCTAssertEqual(ref!.type, .string) // shut up compiler complaining about unused ref
         L.close()
         // The act of nilling this will cause a crash if the close didn't nil ref.L
         ref = nil
@@ -455,22 +458,41 @@ final class LuaTests: XCTestCase {
 
     func test_ref_get() throws {
         L = LuaState(libraries: [])
-        let strType = try L.globals["type"]?.pcall("foo")?.tostring()
+        let strType = try L.globals["type"].pcall("foo").tostring()
         XCTAssertEqual(strType, "string")
 
-        let nilType = try L.globals.get("type")?.pcall(nil)?.tostring()
+        let nilType = try L.globals.get("type").pcall(nil).tostring()
         XCTAssertEqual(nilType, "nil")
     }
 
     func test_ref_chaining() throws {
         L = LuaState(libraries: [.string])
-        let result = try L.globals.get("type")?.pcall(L.globals["print"])?.pcall(member: "sub", 1, 4)?.tostring()
+        let result = try L.globals.get("type").pcall(L.globals["print"]).pcall(member: "sub", 1, 4).tostring()
         XCTAssertEqual(result, "func")
+    }
 
-        // Clunky because XCTAssertThrowsError specifies a generic return on its autoclosure meaning the pcall is
-        // ambiguous
-        let erroringCall: () throws -> () = { try self.L.globals.pcall(member: "nonexistentfn") }
-        XCTAssertThrowsError(try erroringCall())
+    func test_ref_errors() throws {
+        L = LuaState(libraries: [.string])
+
+        XCTAssertThrowsError(try L.globals["nope"](), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .nilValue)
+        })
+
+        XCTAssertThrowsError(try L.globals["string"](), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .notCallable)
+        })
+
+        XCTAssertThrowsError(try L.globals["type"].get("nope"), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .notIndexable)
+        })
+
+        XCTAssertThrowsError(try L.globals.pcall(member: "nonexistentfn"), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .nilValue)
+        })
+
+        XCTAssertThrowsError(try L.globals["type"].pcall(member: "nonexistentfn"), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .notIndexable)
+        })
     }
 
     func test_nil() throws {

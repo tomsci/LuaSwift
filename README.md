@@ -36,7 +36,7 @@ It could also be written using the slightly higher-level (but slightly less effi
 import Lua
 
 let L = LuaState(libaries: .all)
-try! L.globals["print"]?.pcall("Hello world!")
+try! L.globals["print"]("Hello world!")
 L.close()
 ```
 

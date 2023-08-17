@@ -992,6 +992,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: The value at the top of the stack must refer to a Lua
     ///   function or callable.
     func pcall(_ arguments: Any?..., traceback: Bool = true) throws {
+        try pcall(arguments: arguments, traceback: traceback)
+    }
+
+    func pcall(arguments: [Any?], traceback: Bool = true) throws {
         for arg in arguments {
             push(any: arg)
         }
@@ -1016,6 +1020,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: The value at the top of the stack must refer to a Lua
     ///   function or callable.
     func pcall<T>(_ arguments: Any?..., traceback: Bool = true) throws -> T? {
+        return try pcall(arguments: arguments, traceback: traceback)
+    }
+
+    func pcall<T>(arguments: [Any?], traceback: Bool = true) throws -> T? {
         for arg in arguments {
             push(any: arg)
         }
@@ -1202,10 +1210,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Convert a Lua value on the stack into a Swift object of type `LuaValue`.
     ///
     /// - Parameter index: The stack index of the value.
-    /// - Returns: A `LuaValue` if `index` is a valid stack index, `nil` otherwise.
-    func ref(_ index: CInt) -> LuaValue? {
+    /// - Returns: A `LuaValue` representing the value at the given stack index.
+    func ref(_ index: CInt) -> LuaValue {
         let result = LuaValue(L: self, index: index)
-        if let result {
+        if result.type != .nilType {
             getState().luaValues[result.ref] = UnownedLuaValue(val: result)
         }
         return result
@@ -1221,7 +1229,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// For example:
     ///
-    ///     try L.globals["print"]?.pcall("Hello world!")
+    ///     try L.globals["print"].pcall("Hello world!")
     var globals: LuaValue {
         // Note, LUA_RIDX_GLOBALS doesn't need to be freed so doesn't need to be added to luaValues
         return LuaValue(L: self, ref: LUA_RIDX_GLOBALS, type: .table)

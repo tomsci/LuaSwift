@@ -31,21 +31,22 @@ import CLua
 /// indexes.
 ///
 /// `LuaValue` supports indexing the Lua value using `get()` or the subscript operator, assuming the Lua type
-/// supports indexing - if it doesn't, a LuaCallError will be thrown with an error string something like
-/// "Attempt to index an integer type". Because the subscript operator cannot throw, attempting to use it on a value
-/// that does not support indexing will cause a `fatalError` - use `get()` instead (which can throw) if the value might
-/// not support indexing. The following are equivalent:
+/// supports indexing - if it doesn't, a `LuaValueError` will be thrown. Because the subscript operator cannot throw,
+/// attempting to use it on a nil value or one that does not support indexing will cause a `fatalError` - use `get()`
+/// instead (which can throw) if the value might not support indexing. The following are equivalent:
 ///
 /// ```swift
 /// try! L.globals.get("print")
-/// L.globals["print"]
+/// L.globals["print"] // equivalent
 /// ```
 ///
-/// Assuming the Lua value is callable, it can be called using `pcall()`:
+/// Assuming the Lua value is callable, it can be called using `pcall()` or using the @dynamicCallable syntax. If it is
+/// not callable, `LuaValueError.notCallable` will be thrown.
 ///
 /// ```swift
-/// let printFn = L.globals["print"]!
+/// let printFn = L.globals["print"]
 /// try! printFn.pcall("Hello World!")
+/// try! printFn("Hello World!") // Equivalent to the line above
 /// ```
 ///
 /// Because `LuaValue` is `Pushable` and `LuaValue.pcall()` returns a `LuaValue`, they can be chained together:
@@ -57,19 +58,17 @@ import CLua
 ///
 /// `LuaValue` objects are only valid as long as the `LuaState` is. Calling any of its functions after the
 /// `LuaState` has been closed will cause a crash.
+@dynamicCallable
 public class LuaValue: Equatable, Hashable, Pushable {
     var L: LuaState!
     let ref: CInt
 
-    /// The type of the value this `LuaValue` represents. Will never be `.nilValue`.
+    /// The type of the value this `LuaValue` represents.
     public let type: LuaType
 
-    init?(L: LuaState, index: CInt) {
+    init(L: LuaState, index: CInt) {
         self.L = L
-        self.type = L.type(index) ?? .nilType
-        if self.type == .nilType {
-            return nil
-        }
+        self.type = L.type(index)!
         lua_pushvalue(L, index)
         self.ref = luaL_ref(L, LUA_REGISTRYINDEX)
     }
@@ -84,7 +83,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     deinit {
         // LUA_RIDX_GLOBALS is not actually a luaL_ref (despite otherwise acting like one) so doesn't need to be
         // unref'd (and mustn't be, because it is not tracked in _State.luaValues thus L won't be nilled if the
-        // state is closed).
+        // state is closed). `LuaValue`s representing `nil` are never tracked either.
         if ref != LUA_RIDX_GLOBALS && ref != LUA_REFNIL {
             if let L {
                 L.unref(ref)
@@ -196,18 +195,36 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     // MARK: - Callable
 
-    public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
+    private func pushAndCheckCallable() throws {
+        try checkNonNil()
         L.push(self)
+        try checkCallable()
+    }
+
+    private func checkCallable() throws {
+        if L.type(-1) != .function {
+            let callMetafieldType = luaL_getmetafield(L, -1, "__call")
+            L.pop()
+            if callMetafieldType != LUA_TFUNCTION {
+                L.pop()
+                throw LuaValueError.notCallable
+            }
+        }
+    }
+
+    public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
+        try pushAndCheckCallable()
         try L.pcall(nargs: nargs, nret: nret, traceback: traceback)
     }
 
-    public func pcall(_ arguments: Any?..., traceback: Bool = true) throws -> Void {
-        L.push(self)
-        try L.pcall(arguments, traceback: traceback)
+    @discardableResult
+    public func pcall(_ arguments: Any?..., traceback: Bool = true) throws -> LuaValue {
+        return try pcall(arguments: arguments, traceback: traceback)
     }
 
-    public func pcall(_ arguments: Any?..., traceback: Bool = true) throws -> LuaValue? {
-        L.push(self)
+    @discardableResult
+    public func pcall(arguments: [Any?], traceback: Bool = true) throws -> LuaValue {
+        try pushAndCheckCallable()
         for arg in arguments {
             L.push(any: arg)
         }
@@ -222,31 +239,20 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter member: The name of the member function to call.
     /// - Parameter arguments: Arguments to pass to the Lua function.
     /// - Parameter traceback: If true, any errors thrown will include a full stack trace.
-    /// - Throws: `LuaCallError` if `member` does not exist or is not callable, or if a Lua error is raised during the
+    /// - Returns: The first result of the function, as a `LuaValue`.
+    /// - Throws: ``LuaCallError`` if `member` does not exist or is not callable, or if a Lua error is raised during the
     ///   execution of the function.
-    public func pcall(member: String, _ arguments: Any?..., traceback: Bool = true) throws -> Void {
-        // It's convenient to proceed here with a nil LuaValue even though we don't usually expose these
-        let fn = try self.get(member) ?? LuaValue(L: L, ref: LUA_REFNIL, type: .nilType)
-        L.push(fn)
-        L.push(self)
-        for arg in arguments {
-            L.push(any: arg)
-        }
-        try L.pcall(nargs: CInt(arguments.count + 1), nret: 0, traceback: traceback)
+    @discardableResult
+    public func pcall(member: String, _ arguments: Any?..., traceback: Bool = true) throws -> LuaValue {
+        return try pcall(member: member, arguments: arguments, traceback: traceback)
     }
 
-    /// Call a member function with `self` as the first argument.
-    ///
-    /// - Parameter member: The name of the member function to call.
-    /// - Parameter arguments: Arguments to pass to the Lua function.
-    /// - Parameter traceback: If true, any errors thrown will include a full stack trace.
-    /// - Returns: The first result of the function, as a `LuaValue`.
-    /// - Throws: `LuaCallError` if `member` does not exist or is not callable, or if a Lua error is raised during the
-    ///   execution of the function.
-    public func pcall(member: String, _ arguments: Any?..., traceback: Bool = true) throws -> LuaValue? {
-        // It's convenient to proceed here with a nil LuaValue even though we don't usually expose these
-        let fn = try self.get(member) ?? LuaValue(L: L, ref: LUA_REFNIL, type: .nilType)
+    @discardableResult
+    public func pcall(member: String, arguments: [Any?], traceback: Bool = true) throws -> LuaValue {
+        let fn = try self.get(member)
+        try fn.checkNonNil()
         L.push(fn)
+        try checkCallable()
         L.push(self)
         for arg in arguments {
             L.push(any: arg)
@@ -257,7 +263,33 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return result
     }
 
+    public func dynamicallyCall(withArguments arguments: [Any?]) throws -> LuaValue {
+        return try pcall(arguments: arguments, traceback: true)
+    }
+
     // MARK: - Get
+
+    func checkNonNil() throws {
+        if !valid() {
+            throw LuaValueError.nilValue
+        }
+    }
+
+    func checkIndexable() throws {
+        if L.type(-1) != .table {
+            let indexMetafieldType = luaL_getmetafield(L, -1, "__index")
+            L.pop()
+            if indexMetafieldType != LUA_TFUNCTION && indexMetafieldType != LUA_TTABLE {
+                L.pop() // The value itself
+                throw LuaValueError.notIndexable
+            }
+        }
+    }
+
+    /// Returns true if the instance represents a valid non-`nil` Lua value.
+    public func valid() -> Bool {
+        return self.type != .nilType
+    }
 
     /// Returns the value for the given key, assuming the Lua value associated with `self` supports indexing.
     ///
@@ -266,34 +298,49 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// ```
     ///
     /// - Parameter key: The key to use for indexing.
-    /// - Returns: The value associated with `key` as a `LuaValue`, or `nil` if there is no value associated.
-    /// - Throws: `LuaCallError` if the Lua value does not support indexing, or an error is thrown during a metatable
-    ///   `__index` call.
-    public func get(_ key: Any) throws -> LuaValue? {
+    /// - Returns: The value associated with `key` as a `LuaValue`.
+    /// - Throws: `LuaValueError.nilValue` if the Lua value is nil.
+    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
+    /// - Throws: ``LuaCallError`` if an error is thrown during a metatable `__index` call.
+    ///
+    public func get(_ key: Any) throws -> LuaValue {
+        try checkNonNil()
+        L.push(self)
+        try checkIndexable()
         // Don't call lua_gettable directly, it can error
         L.push { L in
             lua_gettable(L, 1)
             return 1
         }
-        L.push(self)
+        lua_insert(L, -2) // Move the fn below self
         L.push(any: key)
         try L.pcall(nargs: 2, nret: 1)
         return L.ref(-1)
     }
 
-    /// Non-throwing convenience function, otherwise identical to `get()`.
+    /// Non-throwing convenience function, otherwise identical to ``get(_:)``.
     ///
     /// ```swift
     /// let printFn = L.globals["print"]
     /// ```
     ///
-    /// - Returns: The value associated with `key` as a `LuaValue`, or `nil` if there is no value associated.
+    /// - Returns: The value associated with `key` as a `LuaValue`.
     /// - Precondition: The Lua value associated with `self` must support indexing without throwing an error.
-    public subscript(key: Any) -> LuaValue? {
+    public subscript(key: Any) -> LuaValue {
         return try! get(key)
     }
 }
 
 struct UnownedLuaValue {
     unowned let val: LuaValue
+}
+
+/// Errors that can be thrown while using `LuaValue` (in addition to ``Lua/LuaCallError``).
+public enum LuaValueError: Error {
+    /// A call or index was attempted on a `nil` value.
+    case nilValue
+    /// An index operation was attempted on a value that is not indexable.
+    case notIndexable
+    /// A call operation was attempted on a value that is not callable.
+    case notCallable
 }

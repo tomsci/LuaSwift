@@ -588,7 +588,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// * `userdata` any conversion that `as?` can perform on an `Any` referring to that type.
     func tovalue<T>(_ index: CInt) -> T? {
         let value = toany(index, guessType: false)
-        if let directCast = value as? T {
+        if value == nil {
+            // Explicit check for value being nil, without it if T is Any then the result ends up being some(nil)
+            // because `value as? Any` succeeds in creating an Any containing a nil (which is then wrapped in an
+            // optional).
+            return nil
+        } else if let directCast = value as? T {
             return directCast
         } else if let ref = value as? LuaStringRef {
             if T.self == String.self {

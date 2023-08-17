@@ -409,4 +409,17 @@ final class LuaTests: XCTestCase {
         let bad: Any? = L.touserdata(-1)
         XCTAssertNil(bad)
     }
+
+    func test_tovalue_anynil() {
+        L = LuaState(libraries: [])
+
+        L.push(true)
+        let anyTrue: Any? = L.tovalue(1)
+        XCTAssertEqual(anyTrue as? Bool?, true)
+        L.pop()
+
+        L.pushnil()
+        let anyNil: Any? = L.tovalue(1)
+        XCTAssertNil(anyNil)
+    }
 }

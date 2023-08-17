@@ -981,7 +981,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua
     ///   function or callable.
-    func pcall(arguments: Any..., traceback: Bool = true) throws {
+    func pcall(_ arguments: Any?..., traceback: Bool = true) throws {
         for arg in arguments {
             push(any: arg)
         }
@@ -1005,7 +1005,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua
     ///   function or callable.
-    func pcall<T>(arguments: Any..., traceback: Bool = true) throws -> T? {
+    func pcall<T>(_ arguments: Any?..., traceback: Bool = true) throws -> T? {
         for arg in arguments {
             push(any: arg)
         }

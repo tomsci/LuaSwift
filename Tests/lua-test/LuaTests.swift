@@ -67,7 +67,7 @@ final class LuaTests: XCTestCase {
         var expectedErr: LuaCallError? = nil
         do {
             L.getglobal("error")
-            try L.pcall(arguments: "Deliberate error", traceback: false)
+            try L.pcall("Deliberate error", traceback: false)
         } catch let error as LuaCallError {
             expectedErr = error
         }
@@ -264,7 +264,7 @@ final class LuaTests: XCTestCase {
         ])
         let val = SomeClass()
         L.push(userdata: val)
-        try L.pcall(arguments: "A string arg")
+        try L.pcall("A string arg")
         XCTAssertEqual(val.member, "A string arg")
     }
 
@@ -299,8 +299,8 @@ final class LuaTests: XCTestCase {
             let g = Foo()
             L.push(userdata: g)
 
-            try L.pcall(arguments: "innerfoo") // pops g
-            try L.pcall(arguments: "outerfoo") // pops f
+            try L.pcall("innerfoo") // pops g
+            try L.pcall("outerfoo") // pops f
 
             XCTAssertEqual(g.str, "innerfoo")
             XCTAssertEqual(f.str, "outerfoo")

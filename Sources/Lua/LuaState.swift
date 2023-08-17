@@ -31,9 +31,11 @@ import CLua
 /// Usage
 /// =====
 ///
-///     let state = LuaState(libraries: .all)
-///     state.push(1234)
-///     assert(state.toint(-1)! == 1234)
+/// ```swift
+/// let state = LuaState(libraries: .all)
+/// state.push(1234)
+/// assert(state.toint(-1)! == 1234)
+/// ```
 public typealias LuaState = UnsafeMutablePointer<lua_State>
 
 public typealias lua_Integer = CLua.lua_Integer
@@ -161,6 +163,7 @@ public struct LuaNonHashable: Hashable {
     }
 }
 
+/// An `Error` type representing an error thrown by a Lua function.
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, LocalizedError {
     public init(_ error: String) {
         self.error = error
@@ -226,6 +229,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         var defaultStringEncoding = ExtendedStringEncoding.stringEncoding(.utf8)
         var metatableDict = Dictionary<String, Array<Any.Type>>()
         var userdataMetatables = Set<UnsafeRawPointer>()
+        var luaValues = Dictionary<CInt, UnownedLuaValue>()
+
+        deinit {
+            for (_, val) in luaValues {
+                val.val.L = nil
+            }
+        }
     }
 
     private func getState() -> _State {
@@ -977,7 +987,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter arguments: Arguments to pass to the Lua function.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
-    /// - throws: `LuaCallError` if a Lua error is raised during the execution
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution
     ///   of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua
     ///   function or callable.
@@ -999,9 +1009,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter arguments: Arguments to pass to the Lua function.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
-    /// - Result: The first result of the function, converted if possible to a
+    /// - Returns: The first result of the function, converted if possible to a
     ///   `T`.
-    /// - throws: `LuaCallError` if a Lua error is raised during the execution
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution
     ///   of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua
     ///   function or callable.
@@ -1187,5 +1197,41 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         } else {
             return nret
         }
+    }
+
+    /// Convert a Lua value on the stack into a Swift object of type `LuaValue`.
+    ///
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: A `LuaValue` if `index` is a valid stack index, `nil` otherwise.
+    func ref(_ index: CInt) -> LuaValue? {
+        let result = LuaValue(L: self, index: index)
+        if let result {
+            getState().luaValues[result.ref] = UnownedLuaValue(val: result)
+        }
+        return result
+    }
+
+    /// Returns a `LuaValue` representing the global environment.
+    ///
+    /// Equivalent to (but more efficient than):
+    ///
+    ///     L.pushGlobals()
+    ///     let globals = L.ref(-1)
+    ///     L.pop()
+    ///
+    /// For example:
+    ///
+    ///     try L.globals["print"]?.pcall("Hello world!")
+    var globals: LuaValue {
+        // Note, LUA_RIDX_GLOBALS doesn't need to be freed so doesn't need to be added to luaValues
+        return LuaValue(L: self, ref: LUA_RIDX_GLOBALS, type: .table)
+    }
+}
+
+// package internal (but not private) API
+extension UnsafeMutablePointer where Pointee == lua_State {
+    func unref(_ ref: CInt) {
+        getState().luaValues[ref] = nil
+        luaL_unref(self, LUA_REGISTRYINDEX, ref)
     }
 }

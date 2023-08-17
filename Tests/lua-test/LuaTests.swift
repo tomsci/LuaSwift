@@ -26,6 +26,16 @@ fileprivate func dummyFn(_ L: LuaState!) -> CInt {
     return 0
 }
 
+class DeinitChecker {
+    let deinitPtr: UnsafeMutablePointer<Int>
+    init(deinitPtr: UnsafeMutablePointer<Int>) {
+        self.deinitPtr = deinitPtr
+    }
+    deinit {
+        deinitPtr.pointee = deinitPtr.pointee + 1
+    }
+}
+
 final class LuaTests: XCTestCase {
 
     var L: LuaState!
@@ -216,24 +226,15 @@ final class LuaTests: XCTestCase {
     // Tests that objects deinit correctly when pushed with toany and GC'd by Lua
     func test_pushuserdata_instance() {
         var deinited = 0
-        class Foo {
-            let deinitPtr: UnsafeMutablePointer<Int>
-            init(deinitPtr: UnsafeMutablePointer<Int>) {
-                self.deinitPtr = deinitPtr
-            }
-            deinit {
-                deinitPtr.pointee = deinitPtr.pointee + 1
-            }
-        }
-        var val: Foo? = Foo(deinitPtr: &deinited)
+        var val: DeinitChecker? = DeinitChecker(deinitPtr: &deinited)
         XCTAssertEqual(deinited, 0)
 
         L = LuaState(libraries: [])
-        L.registerMetatable(for: Foo.self, functions: [:])
+        L.registerMetatable(for: DeinitChecker.self, functions: [:])
         L.push(userdata: val!)
         L.push(any: val!)
-        var userdataFromPushUserdata: Foo? = L.touserdata(1)
-        var userdataFromPushAny: Foo? = L.touserdata(2)
+        var userdataFromPushUserdata: DeinitChecker? = L.touserdata(1)
+        var userdataFromPushAny: DeinitChecker? = L.touserdata(2)
         XCTAssertIdentical(userdataFromPushUserdata, userdataFromPushAny)
         XCTAssertIdentical(userdataFromPushUserdata, val)
         L.pop() // We only need one ref Lua-side
@@ -408,6 +409,87 @@ final class LuaTests: XCTestCase {
         let _ = lua_newuserdatauv(L, MemoryLayout<Any>.size, 0)
         let bad: Any? = L.touserdata(-1)
         XCTAssertNil(bad)
+    }
+
+    func test_ref() {
+        L = LuaState(libraries: [])
+        L.push("hello")
+        var ref: LuaValue! = L.ref(-1)
+        XCTAssertNotNil(ref)
+        XCTAssertEqual(ref.type, .string)
+        XCTAssertEqual(ref.toboolean(), true)
+        XCTAssertEqual(ref.tostring(), "hello")
+        L.settop(0)
+
+        // Check it can correctly keep hold of a ref to a Swift object
+        var deinited = 0
+        var obj: DeinitChecker? = DeinitChecker(deinitPtr: &deinited)
+        L.registerMetatable(for: DeinitChecker.self, functions: [:])
+        L.push(userdata: obj!)
+        ref = L.ref(-1)
+
+        XCTAssertIdentical(ref.toany() as? AnyObject, obj)
+
+        XCTAssertNotNil(ref)
+        obj = nil
+        XCTAssertEqual(deinited, 0) // reference from userdata on stack
+        L.settop(0)
+        L.collectgarbage()
+        XCTAssertEqual(deinited, 0) // reference from ref
+        ref = nil
+        L.collectgarbage()
+        XCTAssertEqual(deinited, 1) // no more references
+    }
+
+    func test_ref_scoping() {
+        L = LuaState(libraries: [])
+        L.push("hello")
+        var ref = L.ref(-1)
+        XCTAssertEqual(ref?.type, .string) // shut up compiler complaining about unused ref
+        L.close()
+        // The act of nilling this will cause a crash if the close didn't nil ref.L
+        ref = nil
+
+        L = nil // make sure teardown doesn't try to close it again
+    }
+
+    func test_ref_get() throws {
+        L = LuaState(libraries: [])
+        let strType = try L.globals["type"]?.pcall("foo")?.tostring()
+        XCTAssertEqual(strType, "string")
+
+        let nilType = try L.globals.get("type")?.pcall(nil)?.tostring()
+        XCTAssertEqual(nilType, "nil")
+    }
+
+    func test_ref_chaining() throws {
+        L = LuaState(libraries: [.string])
+        let result = try L.globals.get("type")?.pcall(L.globals["print"])?.pcall(member: "sub", 1, 4)?.tostring()
+        XCTAssertEqual(result, "func")
+
+        // Clunky because XCTAssertThrowsError specifies a generic return on its autoclosure meaning the pcall is
+        // ambiguous
+        let erroringCall: () throws -> () = { try self.L.globals.pcall(member: "nonexistentfn") }
+        XCTAssertThrowsError(try erroringCall())
+    }
+
+    func test_nil() throws {
+        L = LuaState(libraries: [])
+        XCTAssertEqual(L.type(1), nil)
+        L.pushnil()
+        XCTAssertEqual(L.type(1), .nilType)
+        L.pop()
+        XCTAssertEqual(L.type(1), nil)
+
+        L.getglobal("select")
+        let sel1: Bool? = try L.pcall(1, false, nil, "str")
+        XCTAssertEqual(sel1, false)
+        L.getglobal("select")
+        let sel2: Any? = try L.pcall(2, false, nil, "str")
+        XCTAssertNil(sel2)
+        L.getglobal("select")
+        let sel3: String? = try L.pcall(3, false, nil, "str")
+        XCTAssertEqual(sel3, "str")
     }
 
     func test_tovalue_anynil() {

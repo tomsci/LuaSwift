@@ -1,6 +1,6 @@
 # LuaSwift
 
-A Swift wrapper for [Lua 5.4](https://www.lua.org/manual/5.4/). All Swift APIs are added as extensions to `UnsafeMutablePointer<lua_State>`, meaning you can freely mix Lua C calls (and callbacks) with higher-level more Swift-like calls. Any Lua APIs without a dedicated `LuaState` wrapper can be accessed by importing `CLua`.
+A Swift wrapper for the [Lua 5.4](https://www.lua.org/manual/5.4/) C API. All Swift APIs are added as extensions to `UnsafeMutablePointer<lua_State>`, meaning you can freely mix Lua C calls (and callbacks) with higher-level more Swift-like calls. Any Lua APIs without a dedicated `LuaState` wrapper can be accessed by importing `CLua`.
 
 Because this package mostly uses the raw C Lua paradigms (with a thin layer of Swift type-friendly wrappers on top), familiarity with the [Lua C API](https://www.lua.org/manual/5.4/manual.html#4) is strongly recommended. In particular, misusing the Lua stack will crash your program.
 
@@ -30,22 +30,36 @@ lua_pcall(L, 1, 0) // Ignoring some error checking here...
 lua_close(L)
 ```
 
+It could also be written using the slightly higher-level (but slightly less efficient) `LuaValue`-based API:
+
+```swift
+import Lua
+
+let L = LuaState(libaries: .all)
+try! L.globals["print"]?.pcall("Hello world!")
+L.close()
+```
+
 `LuaState` is a `typealias` to `UnsafeMutablePointer<lua_State>`, which is the Swift bridged equivalent of `lua_State *` in C.
 
-All functions callable from Lua have the type signature [`lua_CFunction`](https://www.lua.org/manual/5.4/manual.html#lua_CFunction), otherwise written `int myFunction(lua_State *L) { ... }`. The Swift equivalent signature is `LuaState! -> CInt`. For example:
+All functions callable from Lua have the type signature [`lua_CFunction`](https://www.lua.org/manual/5.4/manual.html#lua_CFunction), otherwise written `int myFunction(lua_State *L) { ... }`. The Swift equivalent signature is `(LuaState!) -> CInt`. For example:
 
 ```swift
 import Lua
 
 func myLuaCFunction(_ L: LuaState!) -> CInt {
-    print("I am a function callable from Lua!")
+    print("I am a Swift function callable from Lua!")
     return 0
 }
 ``` 
 
 ## Type conversions
 
-Swift structs and classes can be bridged into Lua in a type-safe and reference-counted manner, using Lua's `userdata` and metatable mechanisms. First, register a metatable for the type. The example below sets up a `lua_CFunction` compatible "bar" closure which calls the native `bar()` function:
+Swift structs and classes can be bridged into Lua in a type-safe and reference-counted manner, using Lua's `userdata` and metatable mechanisms. When the bridged Lua object is garbage collected by the Lua runtime, the Swift object is deinited.
+
+Each Swift type is assigned a Lua metatable, which defines which members the bridged object has and how to call them.
+
+The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a `lua_CFunction` compatible "bar" closure which calls `Foo.bar()`:
 
 ```swift
 import Lua
@@ -82,7 +96,7 @@ From Lua, the userdata object can be called as if it were a Lua object:
 
 ```lua
 foo:bar()
--- Prints "Hello world!"
+-- Prints "Foo.bar() called, baz=my foo instance"
 ```
 
 ## Thread safety

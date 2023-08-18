@@ -159,12 +159,12 @@ public struct LuaNonHashable: Hashable {
 
 /// An `Error` type representing an error thrown by a Lua function.
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, LocalizedError {
-    public init(_ error: String) {
+    public init(_ error: LuaValue) {
         self.error = error
     }
-    public let error: String
-    public var description: String { error }
-    public var errorDescription: String? { error }
+    public let error: LuaValue
+    public var description: String { return error.tostring(convert: true) ?? "<no error description available>" }
+    public var errorDescription: String? { return self.description }
 }
 
 fileprivate var StateRegistryKey: Int = 0
@@ -965,10 +965,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             lua_remove(self, index)
         }
         if err != LUA_OK {
-            let errStr = tostring(-1, convert: true)!
+            let errRef = ref(-1)
             pop()
-            // print(errStr)
-            throw LuaCallError(errStr)
+            // print(errRef.tostring(convert: true)!)
+            throw LuaCallError(errRef)
         }
     }
 
@@ -1172,10 +1172,21 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Call `block` wrapped in a `do { ... } catch {}` and convert any Swift
     /// errors into a `lua_error()` call.
     ///
+    /// This function special-cases ``LuaCallError`` and `LuaLoadError.parseError` and passes through the original
+    /// underlying Lua error value unmodified. Otherwise `"Swift error: \(error.localizedDescription)"` is used.
+    ///
     /// - Note: Is is important not to leave anything on the stack outside of `block` when calling this function,
     ///  because Lua errors do not unwind the stack. Therefore the normal way to use this function is to make it the
     ///  only call in a `lua_CFunction`:
-    ///     func myNativeFn(_ L: LuaState!)
+    ///
+    /// ```swift
+    ///     func myNativeFn(_ L: LuaState!) -> CInt {
+    ///         return L.convertThrowToError {
+    ///             // Things that can throw
+    ///             // ...
+    ///         }
+    ///     }
+    /// ```
     ///
     /// - Returns: The result of `block` if there was no error. On error,
     ///   converts the error to a string then calls `lua_error()` (and therefore

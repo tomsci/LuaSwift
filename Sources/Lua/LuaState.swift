@@ -324,6 +324,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         guard getglobal("package") == .table else {
             fatalError("Cannot use setRequireRoot if package library not opened!")
         }
+
+        // Set package.path even though our moduleSearcher doesn't use it
+        L.push(string: path + "/?.lua", encoding: .utf8)
+        lua_setfield(L, -2, "path")
+
         lua_getfield(L, -1, "searchers")
         L.push(string: path, encoding: .utf8)
         L.push(string: displayPrefix, encoding: .utf8)

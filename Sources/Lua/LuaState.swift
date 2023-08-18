@@ -74,31 +74,25 @@ public extension String {
 }
 
 fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
-    let pathRoot = L.tostring(lua_upvalueindex(1), encoding: .utf8)!
-    let displayPrefix = L.tostring(lua_upvalueindex(2), encoding: .utf8)!
-    guard let module = L.tostring(1, encoding: .utf8) else {
-        L.pushnil()
-        return 1
-    }
-
-    let parts = module.split(separator: ".", omittingEmptySubsequences: false)
-    let relPath = parts.joined(separator: "/") + ".lua"
-    let path = pathRoot + "/" + relPath
-
-    if let data = FileManager.default.contents(atPath: path) {
-        var err: CInt = 0
-        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
-            let chars = ptr.bindMemory(to: CChar.self)
-            err = luaL_loadbufferx(L, chars.baseAddress, chars.count, "@" + displayPrefix + relPath, "t")
+    return L.convertThrowToError {
+        let pathRoot = L.tostring(lua_upvalueindex(1), encoding: .utf8)!
+        let displayPrefix = L.tostring(lua_upvalueindex(2), encoding: .utf8)!
+        guard let module = L.tostring(1, encoding: .utf8) else {
+            L.pushnil()
+            return 1
         }
-        if err == 0 {
+
+        let parts = module.split(separator: ".", omittingEmptySubsequences: false)
+        let relPath = parts.joined(separator: "/") + ".lua"
+        let path = pathRoot + "/" + relPath
+
+        if let data = FileManager.default.contents(atPath: path) {
+            try L.load(data: data, name: "@" + displayPrefix + relPath, mode: .text)
             return 1
         } else {
-            return lua_error(L) // errors with the string error pushed by luaL_loadbufferx
+            L.push("\n\tno resource '\(module)'")
+            return 1
         }
-    } else {
-        L.push("\n\tno resource '\(module)'")
-        return 1
     }
 }
 
@@ -1194,6 +1188,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         } catch let error as LuaCallError {
             errored = true
             push(error.error)
+        } catch LuaLoadError.parseError(let str) {
+            errored = true
+            push(str)
         } catch {
             errored = true
             push("Swift error: \(error.localizedDescription)")
@@ -1234,6 +1231,70 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         // Note, LUA_RIDX_GLOBALS doesn't need to be freed so doesn't need to be added to luaValues
         return LuaValue(L: self, ref: LUA_RIDX_GLOBALS, type: .table)
     }
+
+    // MARK: - Loading code
+
+    enum LoadMode: String {
+        case text = "t"
+        case binary = "b"
+        case either = "bt"
+    }
+
+    /// Load a Lua chunk from a file, without executing it.
+    ///
+    /// On return, the function representing the file is left on the top of the stack.
+    ///
+    /// - Parameter file: Path to a Lua text or binary file.
+    /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
+    /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened.
+    /// - Throws: `LuaLoadError.parseError` if the file cannot be parsed.
+    func load(file path: String, mode: LoadMode = .text) throws {
+        let err = luaL_loadfilex(self, FileManager.default.fileSystemRepresentation(withPath: path), mode.rawValue)
+        if err == LUA_ERRFILE {
+            throw LuaLoadError.fileNotFound
+        } else if err == LUA_ERRSYNTAX {
+            let errStr = tostring(-1)!
+            pop()
+            throw LuaLoadError.parseError(errStr)
+        } else if err != LUA_OK {
+            fatalError("Unexpected error from luaL_loadfilex")
+        }
+    }
+
+    /// Load a Lua chunk from memory, without executing it.
+    ///
+    /// On return, the function representing the file is left on the top of the stack.
+    ///
+    /// - Parameter data: The data to load.
+    /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
+    /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
+    func load(data: Data, name: String, mode: LoadMode = .text) throws {
+        var err: CInt = 0
+        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
+            let chars = ptr.bindMemory(to: CChar.self)
+            err = luaL_loadbufferx(self, chars.baseAddress, chars.count, name, mode.rawValue)
+        }
+        if err == LUA_ERRSYNTAX {
+            let errStr = tostring(-1)!
+            pop()
+            throw LuaLoadError.parseError(errStr)
+        } else if err != LUA_OK {
+            fatalError("Unexpected error from luaL_loadbufferx")
+        }
+    }
+
+    /// Load a Lua chunk from file with `load(file:mode:)` and execute it.
+    ///
+    /// Any values returned from the file are left on the top of the stack.
+    ///
+    /// - Parameter file: Path to a Lua text or binary file.
+    /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
+    /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened.
+    /// - Throws: `LuaLoadError.parseError` if the file cannot be parsed.
+    func dofile(_ path: String, mode: LoadMode = .text) throws {
+        try load(file: path, mode: mode)
+        try pcall(nargs: 0, nret: LUA_MULTRET)
+    }
 }
 
 // package internal (but not private) API
@@ -1242,4 +1303,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         getState().luaValues[ref] = nil
         luaL_unref(self, LUA_REGISTRYINDEX, ref)
     }
+}
+
+public enum LuaLoadError: Error, Equatable {
+    case fileNotFound
+    case parseError(String)
 }

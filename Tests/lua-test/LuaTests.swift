@@ -82,7 +82,7 @@ final class LuaTests: XCTestCase {
             expectedErr = error
         }
         XCTAssertNotNil(expectedErr)
-        XCTAssertEqual(expectedErr!.error, "Deliberate error")
+        XCTAssertEqual(expectedErr!.description, "Deliberate error")
     }
 
     func test_toint() {

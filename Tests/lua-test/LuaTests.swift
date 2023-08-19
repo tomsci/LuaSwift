@@ -417,23 +417,20 @@ final class LuaTests: XCTestCase {
 
     func test_ref() {
         L = LuaState(libraries: [])
-        L.push("hello")
-        var ref: LuaValue! = L.ref(-1)
+        var ref: LuaValue! = L.ref(any: "hello")
         XCTAssertEqual(ref.type, .string)
         XCTAssertEqual(ref.toboolean(), true)
         XCTAssertEqual(ref.tostring(), "hello")
-        L.settop(0)
+        XCTAssertEqual(L.gettop(), 0)
 
-        L.pushnil()
-        ref = L.ref(-1)
+        ref = L.ref(any: nil)
         XCTAssertEqual(ref.type, .nilType)
 
         // Check it can correctly keep hold of a ref to a Swift object
         var deinited = 0
         var obj: DeinitChecker? = DeinitChecker(deinitPtr: &deinited)
         L.registerMetatable(for: DeinitChecker.self, functions: [:])
-        L.push(userdata: obj!)
-        ref = L.ref(-1)
+        ref = L.ref(any: obj!)
 
         XCTAssertIdentical(ref.toany() as? AnyObject, obj)
 
@@ -450,8 +447,7 @@ final class LuaTests: XCTestCase {
 
     func test_ref_scoping() {
         L = LuaState(libraries: [])
-        L.push("hello")
-        var ref: LuaValue? = L.ref(-1)
+        var ref: LuaValue? = L.ref(any: "hello")
         XCTAssertEqual(ref!.type, .string) // shut up compiler complaining about unused ref
         L.close()
         // The act of nilling this will cause a crash if the close didn't nil ref.L

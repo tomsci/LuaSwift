@@ -974,7 +974,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             lua_remove(self, index)
         }
         if err != LUA_OK {
-            let errRef = ref(-1)
+            let errRef = ref(index: -1)
             pop()
             // print(errRef.tostring(convert: true)!)
             throw LuaCallError(errRef)
@@ -1224,15 +1224,34 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Convert a Lua value on the stack into a Swift object of type `LuaValue`.
+    /// Convert a Lua value on the stack into a Swift object of type `LuaValue`. Does not pop the value from the stack.
     ///
     /// - Parameter index: The stack index of the value.
     /// - Returns: A `LuaValue` representing the value at the given stack index.
-    func ref(_ index: CInt) -> LuaValue {
+    func ref(index: CInt) -> LuaValue {
         let result = LuaValue(L: self, index: index)
         if result.type != .nilType {
             getState().luaValues[result.ref] = UnownedLuaValue(val: result)
         }
+        return result
+    }
+
+    /// Convert any Swift value to a `LuaValue`.
+    ///
+    /// Equivalent to:
+    ///
+    /// ```swift
+    /// L.push(any: val)
+    /// let result = L.ref(index: -1)
+    /// L.pop()
+    /// ```
+    ///
+    /// - Parameter any: The value to convert
+    /// - Returns: A `LuaValue` representing the specified value.
+    func ref(any: Any?) -> LuaValue {
+        push(any: any)
+        let result = ref(index: -1)
+        pop()
         return result
     }
 

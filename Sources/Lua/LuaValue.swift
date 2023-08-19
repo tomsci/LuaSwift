@@ -229,7 +229,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
             L.push(any: arg)
         }
         try L.pcall(nargs: CInt(arguments.count), nret: 1, traceback: traceback)
-        let result = L.ref(-1)
+        let result = L.ref(index: -1)
         L.pop()
         return result
     }
@@ -258,7 +258,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
             L.push(any: arg)
         }
         try L.pcall(nargs: CInt(arguments.count + 1), nret: 1, traceback: traceback)
-        let result = L.ref(-1)
+        let result = L.ref(index: -1)
         L.pop()
         return result
     }
@@ -315,7 +315,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         lua_insert(L, -2) // Move the fn below self
         L.push(any: key)
         try L.pcall(nargs: 2, nret: 1)
-        return L.ref(-1)
+        return L.ref(index: -1)
     }
 
     /// Non-throwing convenience function, otherwise identical to ``get(_:)``.

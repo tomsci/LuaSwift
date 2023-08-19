@@ -841,6 +841,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 pop()
                 print("Implicitly registering empty metatable for type \(metatableName)")
                 doRegisterMetatable(typeName: metatableName, functions: [:])
+                getState().userdataMetatables.insert(lua_topointer(self, -1))
             }
         }
         lua_setmetatable(self, -2) // pops metatable

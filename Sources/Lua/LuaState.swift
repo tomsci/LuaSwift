@@ -124,39 +124,6 @@ public enum LuaType : CInt {
     case thread = 8 // LUA_TTHREAD
 }
 
-public struct LuaClosureRef {
-    let L: LuaState!
-    let index: CInt
-
-    public init(L: LuaState!, index: CInt) {
-        self.L = L
-        self.index = L.absindex(index)
-    }
-}
-
-// When a nonhashable value is used in a table key
-public struct LuaNonHashable: Hashable {
-    public let val: Any
-    private var ptr: UnsafePointer<Any> {
-        get {
-            var result: UnsafePointer<Any>?
-            withUnsafePointer(to: val) { ptr in
-                result = ptr
-            }
-            return result!
-        }
-    }
-    public init(_ val: Any) {
-        self.val = val
-    }
-    public static func == (lhs: LuaNonHashable, rhs: LuaNonHashable) -> Bool {
-        return lhs.ptr == rhs.ptr
-    }
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(ptr)
-    }
-}
-
 /// An `Error` type representing an error thrown by a Lua function.
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, LocalizedError {
     public init(_ error: LuaValue) {
@@ -539,8 +506,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// If `guessType` is `false`, the placeholder types `LuaStringRef` and `LuaTableRef` are used for `string` and
     /// `table` values respectively.
     ///
-    /// Regardless of `guessType`, the types `LuaClosureRef` and `LuaNonHashable` may be used to represent types that
-    /// do not directly correspond to a Swift type.
+    /// Regardless of `guessType`, `LuaValue` may be used to represent values that cannot be expressed as Swift types.
     ///
     /// - Parameter index: The stack index.
     /// - Parameter guessType: Whether to automatically convert `string` and `table` values based on heuristics.
@@ -581,7 +547,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             if let fn = lua_tocfunction(self, index) {
                 return fn
             } else {
-                return LuaClosureRef(L: self, index: index)
+                return ref(index: index)
             }
         case .userdata:
             return touserdata(index)

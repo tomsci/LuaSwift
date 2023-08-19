@@ -393,7 +393,7 @@ final class LuaTests: XCTestCase {
         L.push(userdata: NonHashable())
         L.push(true)
         lua_settable(L, -3)
-        let tbl = L.toany(1, guessType: true) as? [LuaNonHashable: Bool]
+        let tbl = L.toany(1, guessType: true) as? [LuaValue: Bool]
         XCTAssertNotNil(tbl)
     }
 

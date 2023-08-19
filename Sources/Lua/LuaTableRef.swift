@@ -77,7 +77,7 @@ public struct LuaTableRef {
             var result: [AnyHashable: Any] = [:]
             for (k, v) in L.pairs(index) {
                 let key = L.toany(k, guessType: true)!
-                let hashableKey: AnyHashable = (key as? AnyHashable) ?? (LuaNonHashable(key) as AnyHashable)
+                let hashableKey: AnyHashable = (key as? AnyHashable) ?? (L.ref(index: k) as AnyHashable)
                 result[hashableKey] = L.toany(v, guessType: true)!
             }
             return result

@@ -93,7 +93,7 @@ Swift structs and classes can be bridged into Lua in a type-safe and reference-c
 
 Each Swift type is assigned a Lua metatable, which defines which members the bridged object has and how to call them. A bridged type with no additional members defined will not be callable from Lua, but retains a reference to the Swift value until it is garbage collected.
 
-The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a `lua_CFunction` compatible "bar" closure which calls `Foo.bar()`. `tovalue<Foo>()` is used to convert the Lua value back to a Swift `Foo` type/
+The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a `lua_CFunction` compatible "bar" closure which calls `Foo.bar()`. `tovalue<Foo>()` is used to convert the Lua value back to a Swift `Foo` type.
 
 ```swift
 import Lua
@@ -137,7 +137,9 @@ foo:bar()
 
 Any Swift type can be converted to a Lua value by calling `push(any:)` (or any of the convenience functions which use it, such as `pcall(args...)` or `ref(any:)`). Arrays and Dictionaries are converted to Lua tables; Strings are converted to Lua strings using the default string encoding (see `setDefaultStringEncoding()`); numbers, booleans, Data, and nil Optionals are converted to the applicable Lua type. Any other type is bridged as described above.
 
-Any Lua value can be converted back to a Swift value of type `T?` by calling `tovalue<T>()`. `table`s and `string`s are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue<T>()` returns nil. If `T` is `Any` (ie the most relaxed type constrait), but there is no Swift type capable of representing the Lua value (for example, a closure) then a `LuaValue` instance is returned. Similarly if `T` is `Dictionary<AnyHashable, Any>` but the Lua table contains a key which when converted is not hashable in Swift, `LuaValue` will be used there as well. 
+Any Lua value can be converted back to a Swift value of type `T?` by calling `tovalue<T>()`. `table`s and `string`s are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue<T>()` returns nil. If `T` is `Any` (ie the most relaxed type constrait), but there is no Swift type capable of representing the Lua value (for example, a closure) then a `LuaValue` instance is returned. Similarly if `T` is `Dictionary<AnyHashable, Any>` but the Lua table contains a key which when converted is not hashable in Swift, `LuaValue` will be used there as well.
+
+Any Lua value can be tracked as a Swift object, without converting back into a Swift type, by calling `ref()` which returns a `LuaValue` object, as described in the [Object-oriented API](#object-oriented-api) section.
 
 ## Thread safety
 

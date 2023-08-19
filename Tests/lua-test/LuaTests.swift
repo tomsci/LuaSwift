@@ -465,6 +465,29 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(nilType, "nil")
     }
 
+    func test_ref_get_complexMetatable() throws {
+        L = LuaState(libraries: [])
+        struct IndexableValue {}
+        L.registerMetatable(for: IndexableValue.self, functions: [
+            "__index": { L in
+                return 1 // Ie just return whatever the key name was
+            }
+        ])
+        let ref = L.ref(any: IndexableValue())
+        XCTAssertEqual(try ref.get("woop").tostring(), "woop")
+
+        // Now make ref the __index of another userdata
+        // This didn't work with the original implementation of checkIndexable()
+
+        lua_newuserdatauv(L, 4, 0) // will become udref
+        lua_newtable(L) // udref's metatable
+        L.setfield("__index", ref)
+        lua_setmetatable(L, -2) // pops metatable
+        // udref is now a userdata with an __index metafield that points to ref
+        let udref = L.ref(index: -1)
+        XCTAssertEqual(try udref.get("woop").tostring(), "woop")
+    }
+
     func test_ref_chaining() throws {
         L = LuaState(libraries: [.string])
         let result = try L.globals.get("type").pcall(L.globals["print"]).pcall(member: "sub", 1, 4).tostring()
@@ -493,6 +516,12 @@ final class LuaTests: XCTestCase {
         XCTAssertThrowsError(try L.globals["type"].pcall(member: "nonexistentfn"), "", { err in
             XCTAssertEqual(err as? LuaValueError, .notIndexable)
         })
+    }
+
+    func test_ref_set() throws {
+        L = LuaState(libraries: [.string])
+        L.globals["foo"] = L.ref(any: 123)
+        XCTAssertEqual(L.globals["foo"].toint(), 123)
     }
 
     func test_nil() throws {

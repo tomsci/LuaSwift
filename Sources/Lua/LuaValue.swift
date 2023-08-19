@@ -53,7 +53,8 @@ import CLua
 ///
 /// ```swift
 /// // This calls type(print)
-/// let result = try! L.globals["type"].pcall(L.globals["print"])
+/// let result = try! L.globals["type"].pcall(L.globals["print"]).tostring()
+/// // result is "function"
 /// ```
 ///
 /// `LuaValue` objects are only valid as long as the `LuaState` is. Calling any of its functions after the
@@ -104,90 +105,91 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Note: `L` must be related to the `LuaState` used to construct the object.
     public func push(state L: LuaState!) {
+        precondition(self.L != nil, "LuaValue used after LuaState has been deinited!")
         lua_rawgeti(L, LUA_REGISTRYINDEX, lua_Integer(self.ref))
     }
 
     // MARK: - to...() functions
 
     public func toboolean() -> Bool {
-        L.push(self)
+        push(state: L)
         let result = L.toboolean(-1)
         L.pop()
         return result
     }
 
     public func tointeger() -> lua_Integer? {
-        L.push(self)
+        push(state: L)
         let result = L.tointeger(-1)
         L.pop()
         return result
     }
 
     public func toint() -> Int? {
-        L.push(self)
+        push(state: L)
         let result = L.toint(-1)
         L.pop()
         return result
     }
 
     public func tonumber() -> Double? {
-        L.push(self)
+        push(state: L)
         let result = L.tonumber(-1)
         L.pop()
         return result
     }
 
     public func todata() -> Data? {
-        L.push(self)
+        push(state: L)
         let result = L.todata(-1)
         L.pop()
         return result
     }
 
     public func tostring(encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
-        L.push(self)
+        push(state: L)
         let result = L.tostring(-1, encoding: encoding, convert: convert)
         L.pop()
         return result
     }
 
     public func tostring(encoding: String.Encoding, convert: Bool = false) -> String? {
-        L.push(self)
+        push(state: L)
         let result = L.tostring(-1,  encoding: encoding, convert: convert)
         L.pop()
         return result
     }
 
     public func tostringarray(encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> [String]? {
-        L.push(self)
+        push(state: L)
         let result = L.tostringarray(-1, encoding: encoding, convert: convert)
         L.pop()
         return result
     }
 
     public func tostringarray(encoding: String.Encoding, convert: Bool = false) -> [String]? {
-        L.push(self)
+        push(state: L)
         let result = L.tostringarray(-1, encoding: encoding, convert: convert)
         L.pop()
         return result
     }
 
     public func toany(guessType: Bool = true) -> Any? {
-        L.push(self)
+        push(state: L)
         let result = L.toany(-1, guessType: guessType)
         L.pop()
         return result
     }
 
     public func tovalue<T>() -> T? {
-        L.push(self)
+        push(state: L)
         let result: T? = L.tovalue(-1)
         L.pop()
         return result
     }
 
     public func touserdata<T>() -> T? {
-        L.push(self)
+        push(state: L)
         let result: T? = L.touserdata(-1)
         L.pop()
         return result
@@ -196,12 +198,12 @@ public class LuaValue: Equatable, Hashable, Pushable {
     // MARK: - Callable
 
     private func pushAndCheckCallable() throws {
-        try checkNonNil()
-        L.push(self)
-        try checkCallable()
+        try checkValid()
+        push(state: L)
+        try Self.checkTopIsCallable(L)
     }
 
-    private func checkCallable() throws {
+    private static func checkTopIsCallable(_ L: LuaState!) throws {
         if L.type(-1) != .function {
             let callMetafieldType = luaL_getmetafield(L, -1, "__call")
             L.pop()
@@ -250,9 +252,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     @discardableResult
     public func pcall(member: String, arguments: [Any?], traceback: Bool = true) throws -> LuaValue {
         let fn = try self.get(member)
-        try fn.checkNonNil()
+        try fn.checkValid()
         L.push(fn)
-        try checkCallable()
+        try Self.checkTopIsCallable(L)
         L.push(self)
         for arg in arguments {
             L.push(any: arg)
@@ -267,22 +269,25 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return try pcall(arguments: arguments, traceback: true)
     }
 
-    // MARK: - Get
+    // MARK: - Get/Set
 
-    func checkNonNil() throws {
+    func checkValid() throws {
         if !valid() {
             throw LuaValueError.nilValue
         }
     }
 
-    func checkIndexable() throws {
+    private static func checkTopIsIndexable(_ L: LuaState!) throws {
+        // Tables are always indexable, we don't actually need to check how
         if L.type(-1) != .table {
             let indexMetafieldType = luaL_getmetafield(L, -1, "__index")
-            L.pop()
-            if indexMetafieldType != LUA_TFUNCTION && indexMetafieldType != LUA_TTABLE {
-                L.pop() // The value itself
+            if indexMetafieldType == LUA_TNIL {
+                L.pop(2) // The metafield, and the value itself
                 throw LuaValueError.notIndexable
+            } else if indexMetafieldType != LUA_TFUNCTION {
+                try checkTopIsIndexable(L)
             }
+            L.pop() // index metafield
         }
     }
 
@@ -299,14 +304,13 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Parameter key: The key to use for indexing.
     /// - Returns: The value associated with `key` as a `LuaValue`.
-    /// - Throws: `LuaValueError.nilValue` if the Lua value is nil.
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
     /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
     /// - Throws: ``LuaCallError`` if an error is thrown during a metatable `__index` call.
-    ///
     public func get(_ key: Any) throws -> LuaValue {
-        try checkNonNil()
-        L.push(self)
-        try checkIndexable()
+        try self.checkValid()
+        push(state: L)
+        try Self.checkTopIsIndexable(L)
         // Don't call lua_gettable directly, it can error
         L.push { L in
             lua_gettable(L, 1)
@@ -318,16 +322,60 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return L.ref(index: -1)
     }
 
-    /// Non-throwing convenience function, otherwise identical to ``get(_:)``.
+    private static func checkTopIsNewIndexable(_ L: LuaState!) throws {
+        // Tables are always newindexable, we don't actually need to check how
+        if L.type(-1) != .table {
+            let newIndexMetafieldType = luaL_getmetafield(L, -1, "__newindex")
+            if newIndexMetafieldType == LUA_TNIL {
+                L.pop(2) // The metafield, and the value itself
+                throw LuaValueError.notNewIndexable
+            } else if newIndexMetafieldType != LUA_TFUNCTION {
+                try checkTopIsNewIndexable(L)
+            }
+            L.pop() // newindex metafield
+        }
+    }
+
+    /// Sets the value of `key` in the Lua value associated with `self` to `value`, assuming it supports indexing.
+    ///
+    /// ```swift
+    /// try L.globals.set("foo", "bar") // Equivalent to _G["foo"] = "bar"
+    /// ```
+    ///
+    /// - Parameter key: The key to use for indexing.
+    /// - Parameter value: The value to set. Can be nil to remove `key` from the table.
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
+    /// - Throws: `LuaValueError.notNewIndexable` if the Lua value does not support indexing.
+    /// - Throws: ``LuaCallError`` if an error is thrown during a metatable `__newindex` call.
+    public func set(_ key: Any, _ value: Any?) throws {
+        try self.checkValid()
+        push(state: L)
+        try Self.checkTopIsNewIndexable(L)
+        L.push { L in
+            lua_settable(L, 1)
+            return 0
+        }
+        lua_insert(L, -2) // Move the fn below self
+        L.push(any: key)
+        L.push(any: value)
+        try L.pcall(nargs: 3, nret: 0)
+    }
+
+    /// Non-throwing convenience function, otherwise identical to ``get(_:)`` or ``set(_:_:)``.
     ///
     /// ```swift
     /// let printFn = L.globals["print"]
+    /// L.globals["foo"] = bar
     /// ```
     ///
-    /// - Returns: The value associated with `key` as a `LuaValue`.
     /// - Precondition: The Lua value associated with `self` must support indexing without throwing an error.
     public subscript(key: Any) -> LuaValue {
-        return try! get(key)
+        get {
+            return try! get(key)
+        }
+        set(newValue) {
+            return try! set(key, newValue)
+        }
     }
 }
 
@@ -336,11 +384,13 @@ struct UnownedLuaValue {
 }
 
 /// Errors that can be thrown while using `LuaValue` (in addition to ``Lua/LuaCallError``).
-public enum LuaValueError: Error {
+public enum LuaValueError: Error, Equatable {
     /// A call or index was attempted on a `nil` value.
     case nilValue
-    /// An index operation was attempted on a value that is not indexable.
+    /// An index operation was attempted on a value that does not support it.
     case notIndexable
-    /// A call operation was attempted on a value that is not callable.
+    /// A newindex operation was attempted on a value that does not support it.
+    case notNewIndexable
+    /// A call operation was attempted on a value that does not support it.
     case notCallable
 }

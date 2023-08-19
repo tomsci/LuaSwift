@@ -555,4 +555,31 @@ final class LuaTests: XCTestCase {
         let anyNil: Any? = L.tovalue(1)
         XCTAssertNil(anyNil)
     }
+
+    func test_load_file() {
+        L = LuaState(libraries: [])
+        XCTAssertThrowsError(try L.load(file: "nopemcnopeface"), "", { err in
+            XCTAssertEqual(err as? LuaLoadError, .fileNotFound)
+        })
+    }
+
+    func test_load() throws {
+        L = LuaState(libraries: [])
+        try L.load(string: "return 'hello world'")
+        try L.pcall(nargs: 0, nret: 1)
+        XCTAssertEqual(L.tostring(-1), "hello world")
+
+        XCTAssertThrowsError(try L.load(string: "woop woop"), "", { err in
+            let expected = "[string \"?\"]:1: syntax error near 'woop'"
+            XCTAssertEqual((err as? LuaLoadError), .parseError(expected))
+            XCTAssertEqual((err as CustomStringConvertible).description, "LuaLoadError.parseError(\(expected))")
+            XCTAssertEqual(err.localizedDescription, "LuaLoadError.parseError(\(expected))")
+        })
+
+        XCTAssertThrowsError(try L.load(string: "woop woop", name: "@nope.lua"), "", { err in
+            let expected = "nope.lua:1: syntax error near 'woop'"
+            XCTAssertEqual((err as? LuaLoadError), .parseError(expected))
+        })
+
+    }
 }

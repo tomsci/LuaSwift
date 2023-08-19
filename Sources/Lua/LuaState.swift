@@ -124,20 +124,6 @@ public enum LuaType : CInt {
     case thread = 8 // LUA_TTHREAD
 }
 
-/// An `Error` type representing an error thrown by a Lua function.
-public struct LuaCallError: Error, Equatable, CustomStringConvertible, LocalizedError {
-    public init(_ error: LuaValue) {
-        self.error = error
-        // Construct this now in case the Error is not examined until the after the LuaState has gone out of scope
-        // (at which point you'll at least be able to still use the string version)
-        self.errStr = error.tostring(convert: true) ?? "<no error description available>"
-    }
-    public let error: LuaValue
-    public let errStr: String
-    public var description: String { return errStr }
-    public var errorDescription: String? { return self.description }
-}
-
 fileprivate var StateRegistryKey: Int = 0
 
 public extension UnsafeMutablePointer where Pointee == lua_State {
@@ -1278,9 +1264,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// On return, the function representing the file is left on the top of the stack.
     ///
     /// - Parameter data: The data to load.
+    /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
     /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
-    func load(data: Data, name: String, mode: LoadMode = .text) throws {
+    func load(data: Data, name: String?, mode: LoadMode = .text) throws {
         var err: CInt = 0
         data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
             let chars = ptr.bindMemory(to: CChar.self)
@@ -1294,6 +1281,17 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             fatalError("Unexpected error from luaL_loadbufferx")
         }
     }
+
+    /// Load a Lua chunk from memory, without executing it.
+    ///
+    /// On return, the function representing the file is left on the top of the stack.
+    ///
+    /// - Parameter data: The data to load.
+    /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
+    func load(string: String, name: String? = nil) throws {
+        try load(data: string.data(using: .utf8)!, name: name, mode: .text)
+    }
+
 
     /// Load a Lua chunk from file with `load(file:mode:)` and execute it.
     ///
@@ -1315,9 +1313,4 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         getState().luaValues[ref] = nil
         luaL_unref(self, LUA_REGISTRYINDEX, ref)
     }
-}
-
-public enum LuaLoadError: Error, Equatable {
-    case fileNotFound
-    case parseError(String)
 }

@@ -382,15 +382,3 @@ public class LuaValue: Equatable, Hashable, Pushable {
 struct UnownedLuaValue {
     unowned let val: LuaValue
 }
-
-/// Errors that can be thrown while using `LuaValue` (in addition to ``Lua/LuaCallError``).
-public enum LuaValueError: Error, Equatable {
-    /// A call or index was attempted on a `nil` value.
-    case nilValue
-    /// An index operation was attempted on a value that does not support it.
-    case notIndexable
-    /// A newindex operation was attempted on a value that does not support it.
-    case notNewIndexable
-    /// A call operation was attempted on a value that does not support it.
-    case notCallable
-}

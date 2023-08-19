@@ -375,7 +375,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Get the type of the value at the given index.
     ///
     /// - Parameter index: The stack index.
-    /// - Returns: the type of the value in the given valid index, or `nil` for a non-valid but acceptable index.
+    /// - Returns: the type of the value in the given valid index, or `nil` for a non-valid but acceptable index
+    /// (`nil` is the equivalent of `LUA_TNONE`).
     func type(_ index: CInt) -> LuaType? {
         let t = lua_type(self, index)
         assert(t >= LUA_TNONE && t <= LUA_TTHREAD)
@@ -1136,10 +1137,16 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return result
     }
 
-    func setfield<S, T>(_ name: S, _ value: T) where S: StringProtocol & Pushable, T: Pushable {
-        self.push(name)
+    /// Sets a key on the table on the top of the stack.
+    ///
+    /// Does not invoke metamethods, thus will not error.
+    ///
+    /// - Precondition: The value on the top of the stack must be a table.
+    func setfield<S, T>(_ key: S, _ value: T) where S: Pushable, T: Pushable {
+        precondition(type(-1) == .table, "Cannot call setfield on something that isn't a table")
+        self.push(key)
         self.push(value)
-        lua_settable(self, -3)
+        lua_rawset(self, -3)
     }
 
     @discardableResult

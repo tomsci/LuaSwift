@@ -161,9 +161,13 @@ public struct LuaNonHashable: Hashable {
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, LocalizedError {
     public init(_ error: LuaValue) {
         self.error = error
+        // Construct this now in case the Error is not examined until the after the LuaState has gone out of scope
+        // (at which point you'll at least be able to still use the string version)
+        self.errStr = error.tostring(convert: true) ?? "<no error description available>"
     }
     public let error: LuaValue
-    public var description: String { return error.tostring(convert: true) ?? "<no error description available>" }
+    public let errStr: String
+    public var description: String { return errStr }
     public var errorDescription: String? { return self.description }
 }
 

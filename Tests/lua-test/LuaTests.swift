@@ -81,6 +81,10 @@ final class LuaTests: XCTestCase {
         } catch let error as LuaCallError {
             expectedErr = error
         }
+        // Put L out of scope here, to make sure err.description still works
+        L.close()
+        L = nil
+    
         XCTAssertNotNil(expectedErr)
         XCTAssertEqual(expectedErr!.description, "Deliberate error")
     }

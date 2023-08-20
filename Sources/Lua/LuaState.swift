@@ -336,8 +336,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return LuaType(rawValue: t)
     }
 
-    func typename(_ index: CInt) -> String {
-        return String(cString: lua_typename(self, index))
+    func typename(type: CInt) -> String {
+        return String(cString: lua_typename(self, type))
+    }
+
+    func typename(index: CInt) -> String {
+        return typename(type: lua_type(self, index))
     }
 
     func absindex(_ index: CInt) -> CInt {

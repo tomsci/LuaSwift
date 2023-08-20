@@ -202,6 +202,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
         pushuserdata(state, metatableName: mtName)
         lua_rawsetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
+
+        // While we're here, register ClosureWrapper
+        // Are we doing too much non-deferred initialization in getState() now?
+        registerMetatable(for: ClosureWrapper.self, functions: [:])
+
         return state
     }
 
@@ -803,9 +808,142 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         push(data)
     }
 
-
     func push(_ fn: lua_CFunction) {
         lua_pushcfunction(self, fn)
+    }
+
+    private struct ClosureWrapper {
+        let closure: (LuaState) throws -> Void
+
+        static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
+            return L.convertThrowToError {
+                let wrapper: ClosureWrapper = L.tovalue(lua_upvalueindex(1))!
+                try wrapper.closure(L)
+                return 1
+            }
+        }
+    }
+
+    /// Pushes a zero-arguments closure on to the stack as a Lua function.
+    ///
+    /// The Lua function when called will call the `closure`, and convert any result to a Lua value using
+    /// `push(any:)`. If `closure` throws an error, it will be converted to a Lua error using
+    /// `convertThrowToError(:)`.
+    ///
+    /// If `closure` does not return a value, the Lua function will return `nil`.
+    ///
+    /// ```swift
+    /// L.push(closure: {
+    ///     print("I am callable from Lua!")
+    /// })
+    /// L.push(closure: {
+    ///     return "I am callable and return a result")
+    /// })
+    /// ```
+    func push(closure: @escaping () throws -> Any?) {
+        push(closureWrapper: { L in
+            L.push(any: try closure())
+        })
+    }
+
+    /// Pushes a one-argument closure on to the stack as a Lua function.
+    ///
+    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
+    /// and convert any result to a Lua value using `push(any:)`. If arguments cannot be converted, a Lua error will be
+    /// thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in with
+    /// `nil`.
+    ///
+    ///  If `closure` throws an error, it will be converted to a Lua error using `convertThrowToError(:)`. If
+    /// `closure` does not return a value, the Lua function will return `nil`.
+    ///
+    /// ```swift
+    /// L.push(closure: { (arg: String?) in
+    ///     // ...
+    /// })
+    /// L.push(closure: { (arg: String?) -> Int in
+    ///     // ...
+    /// })
+    /// ```
+    /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
+    func push<Arg1>(closure: @escaping (Arg1?) throws -> Any?) {
+        push(closureWrapper: { L in
+            let arg1: Arg1? = try L.checkClosureArgument(index: 1)
+            L.push(any: try closure(arg1))
+        })
+    }
+
+    /// Pushes a two-argument closure on to the stack as a Lua function.
+    ///
+    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
+    /// and convert any result to a Lua value using `push(any:)`. If arguments cannot be converted, a Lua error will be
+    /// thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in with
+    /// `nil`.
+    ///
+    ///  If `closure` throws an error, it will be converted to a Lua error using `convertThrowToError(:)`. If
+    /// `closure` does not return a value, the Lua function will return `nil`.
+    ///
+    /// ```swift
+    /// L.push(closure: { (arg1: String?, arg2: Int?) in
+    ///     // ...
+    /// })
+    /// L.push(closure: { (arg1: String?, arg2: Int?) -> Int in
+    ///     // ...
+    /// })
+    /// ```
+    /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
+    func push<Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Any?) {
+        push(closureWrapper: { L in
+            let arg1: Arg1? = try L.checkClosureArgument(index: 1)
+            let arg2: Arg2? = try L.checkClosureArgument(index: 2)
+            L.push(any: try closure(arg1, arg2))
+        })
+    }
+
+    /// Pushes a three-argument closure on to the stack as a Lua function.
+    ///
+    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
+    /// and convert any result to a Lua value using `push(any:)`. If arguments cannot be converted, a Lua error will be
+    /// thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in with
+    /// `nil`.
+    ///
+    ///  If `closure` throws an error, it will be converted to a Lua error using `convertThrowToError(:)`. If
+    /// `closure` does not return a value, the Lua function will return `nil`.
+    ///
+    /// ```swift
+    /// L.push(closure: { (arg1: String?, arg2: Int?, arg3: Any?) in
+    ///     // ...
+    /// })
+    /// L.push(closure: { (arg1: String?, arg2: Int?, arg3: Any?) -> Int in
+    ///     // ...
+    /// })
+    /// ```
+    /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
+    func push<Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Any?) {
+        push(closureWrapper: { L in
+            let arg1: Arg1? = try L.checkClosureArgument(index: 1)
+            let arg2: Arg2? = try L.checkClosureArgument(index: 2)
+            let arg3: Arg3? = try L.checkClosureArgument(index: 3)
+            L.push(any: try closure(arg1, arg2, arg3))
+        })
+    }
+
+    /// Helper function used by implementations of `push(closure:)`.
+    func push(closureWrapper: @escaping (LuaState) throws -> Void) {
+        let wrapper = ClosureWrapper(closure: closureWrapper)
+        push(userdata: wrapper)
+        lua_pushcclosure(self, ClosureWrapper.callClosure, 1)
+    }
+
+    /// Helper function used by implementations of `push(closure:)`.
+    func checkClosureArgument<T>(index: CInt) throws -> T? {
+        let val: T? = tovalue(index)
+        if val == nil && !isnoneornil(index) {
+            let t = typename(index: index)
+            let err = "Type of argument \(index) (\(t)) does not match type required by Swift closure (\(T.self))"
+            throw LuaCallError(ref(any: err))
+        } else {
+            return val
+        }
     }
 
     /// Push any value representable using `Any` onto the stack as a `userdata`.
@@ -855,12 +993,20 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// If `value` refers to a type that can be natively represented in Lua, such as `String`, `Array`, `Dictionary`
     /// etc, then the value is converted to the native type (ie an `Int` is converted to a `number`). Array and
-    /// Dictionary members are recursively converted using `push(any:)`. Any type not natively representable is pushed
-    /// as a `userdata` using `push(userdata:)`.
+    /// Dictionary members are recursively converted using `push(any:)`. `Void` (ie the empty tuple) is pushed as `nil`.
+    ///
+    /// Note, due to limitations in Swift type inference only zero-argument closures that return `Void` or `Any?` can be
+    /// pushed as Lua functions (using `push(closure:)`), any other closure will be pushed as a `userdata`.
+    ///
+    /// Any other type is pushed as a `userdata` using `push(userdata:)`.
     ///
     /// - Parameter value: The value to push, or nil (which is pushed as the Lua `nil` value).
     func push(any value: Any?) {
         guard let value else {
+            pushnil()
+            return
+        }
+        if value as? Void != nil {
             pushnil()
             return
         }
@@ -894,6 +1040,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 push(any: v)
                 lua_settable(self, -3)
             }
+        case let closure as () throws -> ():
+            push(closure: closure)
+        case let closure as () throws -> (Any?):
+            push(closure: closure)
         default:
             push(userdata: value)
         }
@@ -1296,7 +1446,6 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func load(string: String, name: String? = nil) throws {
         try load(data: string.data(using: .utf8)!, name: name, mode: .text)
     }
-
 
     /// Load a Lua chunk from file with `load(file:mode:)` and execute it.
     ///

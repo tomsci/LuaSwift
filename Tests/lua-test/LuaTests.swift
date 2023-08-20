@@ -383,6 +383,78 @@ final class LuaTests: XCTestCase {
         L.pop()
     }
 
+    func test_push_closure() throws {
+        L = LuaState(libraries: [])
+
+        var called = false
+        L.push(closure: {
+            called = true
+        })
+        try L.pcall()
+        XCTAssertTrue(called)
+
+        L.push(closure: {
+            return "Void->String closure"
+        })
+        XCTAssertEqual(try L.pcall(), "Void->String closure")
+
+        let c = { (val: String?) -> String in
+            let v = val ?? "no"
+            return "\(v) result"
+        }
+        L.push(closure: c)
+        let result: String? = try L.pcall("call")
+        XCTAssertEqual(result, "call result")
+
+        L.push(closure: c)
+        XCTAssertThrowsError(try L.pcall(1234, traceback: false), "", { err in
+            XCTAssertEqual((err as? LuaCallError)?.errorString,
+                           "Type of argument 1 (number) does not match type required by Swift closure (String)")
+        })
+
+    }
+
+    func test_push_any_closure() throws {
+        L = LuaState(libraries: [])
+        var called = false
+        let voidVoidClosure = {
+            called = true
+        }
+        L.push(any: voidVoidClosure)
+        try L.pcall()
+        XCTAssertTrue(called)
+
+        called = false
+        let voidAnyClosure = { () throws -> Any? in
+            called = true
+            return nil
+        }
+        L.push(any: voidAnyClosure)
+        try L.pcall()
+        XCTAssertTrue(called)
+    }
+
+    func test_extension_4arg_closure() throws {
+        // Test that more argument overloads of push(closure:) can be implemented if required by code not in the Lua
+        // package.
+        L = LuaState(libraries: [])
+        func push<Arg1, Arg2, Arg3, Arg4>(closure: @escaping (Arg1?, Arg2?, Arg3?, Arg4?) throws -> Any?) {
+            L.push(closureWrapper: { L in
+                let arg1: Arg1? = try L.checkClosureArgument(index: 1)
+                let arg2: Arg2? = try L.checkClosureArgument(index: 2)
+                let arg3: Arg3? = try L.checkClosureArgument(index: 3)
+                let arg4: Arg4? = try L.checkClosureArgument(index: 4)
+                L.push(any: try closure(arg1, arg2, arg3, arg4))
+            })
+        }
+        var gotArg4: String? = nil
+        push(closure: { (arg1: Bool?, arg2: Int?, arg3: String?, arg4: String?) in
+            gotArg4 = arg4
+        })
+        try L.pcall(true, 0, nil, "woop")
+        XCTAssertEqual(gotArg4, "woop")
+    }
+
     func testNonHashableTableKeys() {
         L = LuaState(libraries: [])
         struct NonHashable {
@@ -580,6 +652,5 @@ final class LuaTests: XCTestCase {
             let expected = "nope.lua:1: syntax error near 'woop'"
             XCTAssertEqual((err as? LuaLoadError), .parseError(expected))
         })
-
     }
 }

@@ -1356,14 +1356,20 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// ```swift
     /// L.push(any: val)
-    /// let result = L.ref(index: -1)
-    /// L.pop()
+    /// return L.popref()
     /// ```
     ///
     /// - Parameter any: The value to convert
     /// - Returns: A `LuaValue` representing the specified value.
     func ref(any: Any?) -> LuaValue {
         push(any: any)
+        return popref()
+    }
+
+    /// Convert the value on the top of the Lua stack into a Swift object of type `LuaValue` and pops it.
+    ///
+    /// - Returns: A `LuaValue` representing the value on the top of the stack.
+    func popref() -> LuaValue {
         let result = ref(index: -1)
         pop()
         return result

@@ -71,6 +71,8 @@ public enum LuaValueError: Error, Equatable {
     case notNewIndexable
     /// A call operation was attempted on a value that does not support it.
     case notCallable
+    /// `len` was called on a Lua value that does not support the length operator.
+    case noLength
 }
 
 extension LuaValueError: CustomStringConvertible, LocalizedError {
@@ -80,6 +82,7 @@ extension LuaValueError: CustomStringConvertible, LocalizedError {
        case .notIndexable: return "LuaValueError.notIndexable"
        case .notNewIndexable: return "LuaValueError.notNewIndexable"
        case .notCallable: return "LuaValueError.notCallable"
+       case .noLength: return "LuaValueError.noLength"
        }
    }
    public var errorDescription: String? { return self.description }

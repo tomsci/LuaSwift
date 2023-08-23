@@ -1538,6 +1538,47 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return LuaValue(L: self, ref: LUA_RIDX_GLOBALS, type: .table)
     }
 
+    /// Returns the raw length of a string, table or userdata.
+    ///
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: the length, or `nil` if the value is not one of the types that has a defined raw length.
+    func rawlen(_ index: CInt) -> lua_Integer? {
+        switch type(index) {
+        case .string, .table, .userdata:
+            return lua_Integer(lua_rawlen(self, index))
+        default:
+            return nil
+        }
+    }
+
+    /// Returns the length of a value, as per the [length operator](https://www.lua.org/manual/5.4/manual.html#3.4.7).
+    ///
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: the length, or `nil` if the value does not have a defined length or `__len` did not return an
+    ///   integer.
+    /// - Throws: ``LuaCallError`` if the value had a `__len` metafield which errored.
+    func len(_ index: CInt) throws -> lua_Integer? {
+        let t = type(index)
+        if t == .string {
+            // Len on strings cannot fail or error
+            return rawlen(index)!
+        }
+        let mt = luaL_getmetafield(self, index, "__len")
+        if mt == LUA_TNIL {
+            if t == .table {
+                // Raw len also cannot fail
+                return rawlen(index)!
+            } else {
+                // Some other type that doesn't have a length
+                return nil
+            }
+        } else {
+            lua_pushvalue(self, index)
+            try pcall(nargs: 1, nret: 1)
+            return tointeger(-1)
+        }
+    }
+
     // MARK: - Loading code
 
     enum LoadMode: String {

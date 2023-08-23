@@ -648,6 +648,7 @@ final class LuaTests: XCTestCase {
         let arrayRef = L.ref(any: [11,22,33,44])
         XCTAssertEqual(arrayRef[1].toint(), 11)
         XCTAssertEqual(arrayRef[4].toint(), 44)
+        XCTAssertEqual(try arrayRef.len, 4)
     }
 
     func test_ref_get_complexMetatable() throws {
@@ -766,4 +767,52 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual((err as? LuaLoadError), .parseError(expected))
         })
     }
+
+    func test_len() throws {
+        L = LuaState(libraries: [])
+        L.push(1234) // 1
+        L.push("woop") // 2
+        L.push([11, 22, 33, 44, 55]) // 3
+        lua_newtable(L)
+        L.setfuncs([
+            "__len": { (L: LuaState!) -> CInt in
+                L.push(999)
+                return 1
+            },
+        ])
+        lua_setmetatable(L, -2)
+
+        class Foo {}
+        L.registerMetatable(for: Foo.self, functions: [
+            "__len": { (L: LuaState!) -> CInt in
+                L.push(42)
+                return 1
+            },
+        ])
+        L.push(userdata: Foo()) // 4
+        L.pushnil() // 5
+
+        XCTAssertNil(L.rawlen(1))
+        XCTAssertEqual(L.rawlen(2), 4)
+        XCTAssertEqual(L.rawlen(3), 5)
+        XCTAssertEqual(L.rawlen(4), lua_Integer(MemoryLayout<Any>.size))
+        XCTAssertEqual(L.rawlen(5), nil)
+
+        XCTAssertNil(try L.len(1))
+        XCTAssertEqual(try L.len(2), 4)
+        XCTAssertEqual(try L.len(3), 999) // len of 3 is different to rawlen thanks to metatable
+        XCTAssertEqual(try L.len(4), 42)
+        XCTAssertEqual(try L.len(5), nil)
+
+        XCTAssertThrowsError(try L.ref(index: 1).len, "", { err in
+            XCTAssertEqual(err as? LuaValueError, .noLength)
+        })
+        XCTAssertEqual(try L.ref(index: 2).len, 4)
+        XCTAssertEqual(try L.ref(index: 3).len, 999)
+        XCTAssertEqual(try L.ref(index: 4).len, 42)
+        XCTAssertThrowsError(try L.ref(index: 5).len, "", { err in
+            XCTAssertEqual(err as? LuaValueError, .nilValue)
+        })
+    }
+
 }

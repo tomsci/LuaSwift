@@ -325,6 +325,27 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return L.popref()
     }
 
+    /// Returns the length of a value, as per the [length operator](https://www.lua.org/manual/5.4/manual.html#3.4.7).
+    ///
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
+    /// - Throws: `LuaValueError.noLength` if the Lua value does not support the length operator, or `__len` did not
+    ///   return an integer.
+    /// - Throws: ``LuaCallError`` if an error is thrown during a metatable `__len` call.
+   public var len: lua_Integer {
+       get throws {
+           try self.checkValid()
+           push(state: L)
+           defer {
+               L.pop()
+           }
+           if let result = try L.len(-1) {
+               return result
+           } else {
+               throw LuaValueError.noLength
+           }
+       }
+   }
+
     // On error, pops stack top
     private static func checkTopIsNewIndexable(_ L: LuaState!) throws {
         // Tables are always newindexable, we don't actually need to check how

@@ -256,6 +256,59 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(last_i, 2)
     }
 
+    func test_for_pairs_raw() throws {
+        L = LuaState(libraries: [])
+        var dict = [
+            "aaa": 111,
+            "bbb": 222,
+            "ccc": 333,
+        ]
+        L.push(dict)
+        try L.for_pairs(1) { k, v in
+            let key = L.tostring(k)!
+            let val = L.toint(v)!
+            let foundVal = dict.removeValue(forKey: key)
+            XCTAssertEqual(val, foundVal)
+            return true
+        }
+        XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
+    func test_for_pairs_mt() throws {
+        L = LuaState(libraries: [])
+        var dict = [
+            "aaa": 111,
+            "bbb": 222,
+            "ccc": 333,
+            "ddd": 444,
+        ]
+
+        // Check we're actually using non-raw accesses
+        try L.load(string: """
+            local dict = ...
+            tbl = setmetatable({}, {
+                __index = dict,
+                __pairs = function(tbl)
+                    return next, dict, nil
+                end,
+            })
+            return tbl
+            """)
+        L.push(dict)
+        try L.pcall(nargs: 1, nret: 1)
+
+        try L.for_pairs(-1) { k, v in
+            let key = L.tostring(k)
+            let val = L.toint(v)
+            XCTAssertNotNil(key)
+            XCTAssertNotNil(val)
+            let foundVal = dict.removeValue(forKey: key!)
+            XCTAssertEqual(val, foundVal)
+            return true
+        }
+        XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
     func test_pushuserdata() {
         struct Foo : Equatable {
             let intval: Int
@@ -591,6 +644,10 @@ final class LuaTests: XCTestCase {
 
         let nilType = try L.globals.get("type").pcall(nil).tostring()
         XCTAssertEqual(nilType, "nil")
+
+        let arrayRef = L.ref(any: [11,22,33,44])
+        XCTAssertEqual(arrayRef[1].toint(), 11)
+        XCTAssertEqual(arrayRef[4].toint(), 44)
     }
 
     func test_ref_get_complexMetatable() throws {

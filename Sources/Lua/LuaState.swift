@@ -425,6 +425,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Returns: the value as a `Data`, or `nil` if the value was not a Lua `string`.
     func todata(_ index: CInt) -> Data? {
         let L = self
+        // Check the type to avoid lua_tolstring potentially mutating a number (why does Lua still do this?)
         if type(index) == .string {
             var len: Int = 0
             let ptr = lua_tolstring(L, index, &len)!
@@ -765,7 +766,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             try pcall(nargs: 1, nret: 0)
         }
     }
-    class PairsIterator : Sequence, IteratorProtocol {
+
+    private class PairsRawIterator : Sequence, IteratorProtocol {
         let L: LuaState
         let index: CInt
         let top: CInt
@@ -776,6 +778,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             lua_pushnil(L) // initial k
         }
         public func next() -> (CInt, CInt)? {
+            if L.gettop() < top + 1 {
+                // The loop better not have messed up the stack, we rely on k staying valid
+                fatalError("Iteration popped more items from the stack than it pushed")
+            }
             L.settop(top + 1) // Pop everything except k
             let t = lua_next(L, index)
             if t == 0 {
@@ -789,25 +795,126 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Return a for-iterator that iterates all the members of a table.
+    /// Return a for-iterator that will iterate all the members of a table.
     ///
     /// The values in the table are iterated in an unspecified order. Each time
     /// through the for loop, the iterator returns the indexes of the key and
     /// value which are pushed onto the stack. The stack is reset each time
-    /// through the loop, and on exit.
+    /// through the loop, and on exit. The `__pairs` metafield is ignored if the
+    /// table has one, that is to say raw accesses are used.
     ///
-    ///     // Assuming top of stack is a table { a = 1, b = 2, c = 3 }
-    ///     for (k, v) in L.pairs(-1) {
-    ///         print(L.tostring(k, encoding: .utf8)!, L.toint(v)!)
-    ///     }
-    ///     // ...might output the following:
-    ///     // b 2
-    ///     // c 3
-    ///     // a 1
+    /// ```swift
+    /// // Assuming top of stack is a table { a = 1, b = 2, c = 3 }
+    /// for (k, v) in L.pairs(-1) {
+    ///     print("\(L.tostring(k)!) \(L.toint(v)!)")
+    /// }
+    /// // ...might output the following:
+    /// // b 2
+    /// // c 3
+    /// // a 1
+    /// ```
+    /// 
+    /// The Lua stack may be used during the loop providing the indexes `1` to `k` inclusive are not modified.
     ///
+    /// - Parameter index: Stack index of the table to iterate.
     /// - Precondition: `index` must refer to a table value.
-    func pairs(_ index: CInt) -> PairsIterator {
-        return PairsIterator(self, index)
+    func pairs(_ index: CInt) -> some Sequence<(CInt, CInt)> {
+        precondition(type(index) == .table, "Value must be a table to iterate with pairs()")
+        return PairsRawIterator(self, index)
+    }
+
+    /// Push the 3 values needed to iterate the value at the top of the stack.
+    ///
+    /// The value is popped from the stack.
+    ///
+    /// Returns: false (and pushes `next, value, nil`) if the value isn't iterable, otherwise `true`.
+    @discardableResult
+    func pushPairsParameters() throws -> Bool {
+        let L = self
+        if luaL_getmetafield(L, -1, "__pairs") == LUA_TNIL {
+            let isTable = L.type(-1) == .table
+            // Use next, value, nil
+            L.push({ (L: LuaState!) in
+                if lua_next(L, 1) == 0 {
+                    return 0
+                } else {
+                    return 2
+                }
+            })
+            lua_insert(L, -2) // push next below value
+            L.pushnil()
+            return isTable
+        } else {
+            lua_insert(L, -2) // Push __pairs below value
+            try L.pcall(nargs: 1, nret: 3)
+            return true
+        }
+    }
+
+    /// Iterate a Lua table-like value, calling `block` for each member.
+    ///
+    /// This function observes `__pairs` metatables if present. `block` should
+    /// return `true` to continue iteration, or `false` otherwise. `block` is
+    /// called with the stack indexes of each key and value.
+    ///
+    /// ```swift
+    /// for (k, v) in L.pairs(-1) {
+    ///     // iterates table with raw accesses
+    /// }
+    ///
+    /// // Compared to:
+    /// try L.for_pairs(-1) { k, v in
+    ///     // iterates table observing __pairs if present.
+    ///     return true // continue iteration
+    /// }
+    /// ```
+    ///
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter block: The code to execute.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of an iterator function or a `__pairs`
+    ///   metafield, or if the value at `index` does not support indexing.
+    func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Bool) throws {
+        let absidx = absindex(index)
+        try withoutActuallyEscaping(block) { escapingBlock in
+            let wrapper = makeClosureWrapper({ L in
+                // IMPORTANT: this closure uses unprotected lua_calls that may error. Therefore it must NOT put
+                // any non-trivial type onto the stack or rely on any Swift stack cleanup happening such as
+                // defer {...}.
+
+                // Stack: 1 = iterfn, 2 = state, 3 = initval (k)
+                assert(L.gettop() == 3)
+                while true {
+                    L.settop(3)
+                    lua_pushvalue(L, 1)
+                    lua_insert(L, 3) // put iterfn before k
+                    lua_pushvalue(L, 2)
+                    lua_insert(L, 4) // put state before k
+                    // 3, 4, 5 is now iterfn copy, state copy, k
+                    lua_call(L, 2, 2) // k, v = iterfn(state, k)
+                    // Stack is now 1 = iterfn, 2 = state, 3 = k, 4 = v
+                    if L.isnoneornil(3) {
+                        break
+                    }
+                    let shouldContinue = try escapingBlock(3, 4)
+                    if !shouldContinue {
+                        break
+                    }
+                    // new k is in position 3 ready to go round loop again
+                }
+                L.settop(0)
+                L.pushnil() // ClosureWrapper.callClosure expects a result val, bah
+            })
+
+            // Must ensure closure does not actually escape, since we cannot rely on prompt garbage collection of the
+            // upvalue, explicitly nil it in the ClosureWrapper instead.
+            defer {
+                wrapper.closure = nil
+            }
+
+            lua_pushvalue(self, absidx) // The value being iterated
+            try pushPairsParameters() // pops value, pushes iterfn, state, initval
+            try pcall(nargs: 3, nret: 0)
+        }
     }
 
     // MARK: - push() functions

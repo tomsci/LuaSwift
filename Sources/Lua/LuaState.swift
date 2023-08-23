@@ -653,24 +653,16 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - Iterators
 
-    class IPairsIterator : Sequence, IteratorProtocol {
+    private class IPairsRawIterator: Sequence, IteratorProtocol {
         let L: LuaState
         let index: CInt
         let top: CInt?
-        let requiredType: LuaType?
         var i: lua_Integer
-        init(_ L: LuaState, _ index: CInt, requiredType: LuaType?, start: lua_Integer? = nil, resetTop: Bool = true) {
-            precondition(requiredType != .nilType, "Cannot iterate with a required type of LUA_TNIL")
-            precondition(L.type(index) == .table, "Cannot iterate something that isn't a table!")
+        init(_ L: LuaState, _ index: CInt, start: lua_Integer?, resetTop: Bool) {
             self.L = L
             self.index = L.absindex(index)
-            self.requiredType = requiredType
             top = resetTop ? lua_gettop(L) : nil
-            if let start {
-                i = start - 1
-            } else {
-                i = 0
-            }
+            i = (start ?? 1) - 1
         }
         public func next() -> lua_Integer? {
             if let top {
@@ -678,12 +670,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             }
             i = i + 1
             let t = lua_rawgeti(L, index, i)
-            if let requiredType = self.requiredType {
-                if t != requiredType.rawValue {
-                    L.pop()
-                    return nil
-                }
-            } else if t == LUA_TNIL {
+            if t == LUA_TNIL {
                 L.pop()
                 return nil
             }
@@ -699,8 +686,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Return a for-iterator that iterates the array part of a table.
     ///
-    /// Inside the for loop, each element will on the top of the stack and
-    /// can be accessed using stack index -1.
+    /// Inside the for loop, each element will on the top of the stack and can be accessed using stack index -1. Indexes
+    /// are done raw, in other words the `__index` metafield is ignored if the table has one.
     ///
     ///     // Assuming { 11, 22, 33 } is on the top of the stack
     ///     for i in L.ipairs(-1) {
@@ -711,19 +698,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // Index 2 is 22
     ///     // Index 3 is 33
     ///
-    /// If `requiredType` is specified, iteration is halted once any value that
-    /// isn't of type `requiredType` is encountered. Eg for:
-    ///
-    ///     for i in L.ipairs(-1, requiredType: .number) {
-    ///         print(i, L.tonumber(-1)!)
-    ///     }
-    ///
-    /// when the table at the top of the stack was `{ 11, 22, "whoops", 44 }`
-    /// the iteration would stop after `22`.
-    ///
     /// - Parameter index:Stack index of the table to iterate.
-    /// - Parameter requiredType: An optional type which the table members must
-    ///   be in order for the iteration to proceed.
     /// - Parameter start: If set, start iteration at this index rather than the
     ///   beginning of the array.
     /// - Parameter resetTop: By default, the stack top is reset on exit and
@@ -732,10 +707,64 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   desirable and can be disabled by setting `resetTop` to false.
     /// - Precondition: `requiredType` must not be `.nilType`
     /// - Precondition: `index` must refer to a table value.
-    func ipairs(_ index: CInt, requiredType: LuaType? = nil, start: lua_Integer? = nil, resetTop: Bool = true) -> IPairsIterator {
-        return IPairsIterator(self, index, requiredType: requiredType, start: start, resetTop: resetTop)
+    func ipairs(_ index: CInt, start: lua_Integer? = nil, resetTop: Bool = true) -> some Sequence<lua_Integer> {
+        precondition(type(index) == .table, "Value must be a table to iterate with ipairs()")
+        return IPairsRawIterator(self, index, start: start, resetTop: resetTop)
     }
 
+    /// Iterates a Lua array, observing `__index` metafields.
+    ///
+    /// Because `__index` metafields can error, and `IteratorProtocol` is not allowed to, the iteration code must be
+    /// passed in as a block. The block should return `true` to continue iteration, or `false` to break.
+    ///
+    /// ```swift
+    /// for i in L.ipairs(-1) {
+    ///     // top of stack contains `rawget(value, i)`
+    /// }
+    ///
+    /// // Compared to:
+    /// try L.for_ipairs(-1) { i in
+    ///     // top of stack contains `value[i]`
+    ///     return true // continue iteration
+    /// }
+    /// ```
+    ///
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter start: If set, start iteration at this index rather than the
+    ///   beginning of the array.
+    /// - Parameter block: The code to execute.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution a `__index` metafield or if the value
+    ///   does not support indexing.
+    func for_ipairs(_ index: CInt, start: lua_Integer? = nil, _ block: (lua_Integer) throws -> Bool) throws {
+        let absidx = absindex(index)
+        try withoutActuallyEscaping(block) { escapingBlock in
+            let wrapper = makeClosureWrapper({ L in
+                var i = start ?? 1
+                while true {
+                    L.settop(1)
+                    let t = lua_geti(L, 1, i)
+                    if t == LUA_TNIL {
+                        break
+                    }
+                    let shouldContinue = try escapingBlock(i)
+                    if !shouldContinue {
+                        break
+                    }
+                    i = i + 1
+                }
+                L.pushnil() // ClosureWrapper.callClosure expects a result val, bah
+            })
+
+            // Must ensure closure does not actually escape, since we cannot rely on garbage collection of the upvalue
+            // of the closure, explicitly nil it in the ClosureWrapper instead
+            defer {
+                wrapper.closure = nil
+            }
+
+            lua_pushvalue(self, absidx) // The value being iterated is the first (and only arg) to wrapper above
+            try pcall(nargs: 1, nret: 0)
+        }
+    }
     class PairsIterator : Sequence, IteratorProtocol {
         let L: LuaState
         let index: CInt
@@ -812,13 +841,19 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_pushcfunction(self, fn)
     }
 
-    private struct ClosureWrapper {
-        let closure: (LuaState) throws -> Void
+    private class ClosureWrapper {
+        var closure: Optional<(LuaState) throws -> Void>
+
+        init(_ closure: @escaping (LuaState) throws -> Void) {
+            self.closure = closure
+        }
 
         static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
             return L.convertThrowToError {
-                let wrapper: ClosureWrapper = L.tovalue(lua_upvalueindex(1))!
-                try wrapper.closure(L)
+                // In case closure errors, make sure not to increment ref count of ClosureWrapper. We know the instance
+                // will remain retained because of the upvalue, so this is safe.
+                let wrapper: Unmanaged<ClosureWrapper> = .passUnretained(L.tovalue(lua_upvalueindex(1))!)
+                try wrapper.takeUnretainedValue().closure!(L)
                 return 1
             }
         }
@@ -929,9 +964,15 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Helper function used by implementations of `push(closure:)`.
     func push(closureWrapper: @escaping (LuaState) throws -> Void) {
-        let wrapper = ClosureWrapper(closure: closureWrapper)
+        makeClosureWrapper(closureWrapper)
+    }
+
+    @discardableResult
+    private func makeClosureWrapper(_ closureWrapper: @escaping (LuaState) throws -> Void) -> ClosureWrapper {
+        let wrapper = ClosureWrapper(closureWrapper)
         push(userdata: wrapper)
         lua_pushcclosure(self, ClosureWrapper.callClosure, 1)
+        return wrapper
     }
 
     /// Helper function used by implementations of `push(closure:)`.
@@ -1082,8 +1123,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             lua_remove(self, index)
         }
         if err != LUA_OK {
-            let errRef = ref(index: -1)
-            pop()
+            let errRef = popref()
             // print(errRef.tostring(convert: true)!)
             throw LuaCallError(errRef)
         }
@@ -1315,27 +1355,27 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   converts the error to a string then calls `lua_error()` (and therefore
     ///   does not return).
     func convertThrowToError(_ block: () throws -> CInt) -> CInt {
-        var nret: CInt = 0
-        var errored = false
         do {
-            nret = try block()
+            return try block()
         } catch let error as LuaCallError {
-            errored = true
             push(error.error)
         } catch LuaLoadError.parseError(let str) {
-            errored = true
             push(str)
         } catch {
-            errored = true
             push("Swift error: \(error.localizedDescription)")
         }
-        if errored {
-            // Be careful not to leave a String (or anything else) in the stack frame here, because it won't get cleaned up,
-            // hence why we push the string in the catch block above.
-            return lua_error(self)
-        } else {
-            return nret
-        }
+
+        // If we got here, we errored.
+
+        // Be careful not to leave a String (or anything else) in the stack frame here, because it won't get cleaned up,
+        // hence why we push the string in the catch block above.
+        self.lua_error()
+    }
+
+    /// Wrapper around `lua_error(lua_State *L)` which adds the noreturn `Never` annotation.
+    func lua_error() -> Never {
+        CLua.lua_error(self)
+        fatalError() // Not reached
     }
 
     /// Convert a Lua value on the stack into a Swift object of type `LuaValue`. Does not pop the value from the stack.

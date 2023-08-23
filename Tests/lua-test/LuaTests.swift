@@ -200,6 +200,62 @@ final class LuaTests: XCTestCase {
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
     }
 
+    func test_for_ipairs() throws {
+        L = LuaState(libraries: [])
+        let arr = [11, 22, 33, 44, 55, 66]
+        L.push(arr)
+        var expected_i: lua_Integer = 0
+        try L.for_ipairs(-1) { i in
+            expected_i = expected_i + 1
+            XCTAssertEqual(i, expected_i)
+            XCTAssertEqual(L.toint(-1), arr[Int(i-1)])
+            return i <= 4 // Test we can bail early
+        }
+        XCTAssertEqual(expected_i, 5)
+
+        // Check we're actually using non-raw accesses
+        try L.load(string: """
+            local data = { 11, 22, 33, 44 }
+            tbl = setmetatable({}, { __index = data })
+            return tbl
+            """)
+        try L.pcall(nargs: 0, nret: 1)
+        expected_i = 1
+        try L.for_ipairs(-1) { i in
+            XCTAssertEqual(i, expected_i)
+            expected_i = expected_i + 1
+            XCTAssertEqual(L.toint(-1), arr[Int(i-1)])
+            return true
+        }
+
+        // Check we can error from an indexing operation and not explode
+        try L.load(string: """
+            local data = { 11, 22, 33, 44 }
+            tbl = setmetatable({}, {
+                __index = function(_, idx)
+                    if idx == 3 then
+                        error("I'm an erroring __index")
+                    else
+                        return data[idx]
+                    end
+                end
+            })
+            return tbl
+            """)
+        try L.pcall(nargs: 0, nret: 1)
+        var last_i: lua_Integer = 0
+        let shouldError = {
+            try self.L.for_ipairs(-1) { i in
+                last_i = i
+                return true
+            }
+        }
+        XCTAssertThrowsError(try shouldError(), "", { err in
+            XCTAssertNotNil(err as? LuaCallError)
+        })
+        XCTAssertEqual(last_i, 2)
+    }
+
     func test_pushuserdata() {
         struct Foo : Equatable {
             let intval: Int

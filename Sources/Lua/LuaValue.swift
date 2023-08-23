@@ -203,12 +203,15 @@ public class LuaValue: Equatable, Hashable, Pushable {
         try Self.checkTopIsCallable(L)
     }
 
+    // On error, pops stack top
     private static func checkTopIsCallable(_ L: LuaState!) throws {
         if L.type(-1) != .function {
             let callMetafieldType = luaL_getmetafield(L, -1, "__call")
-            L.pop()
+            if callMetafieldType != LUA_TNIL {
+                L.pop() // Pop the metafield
+            }
             if callMetafieldType != LUA_TFUNCTION {
-                L.pop()
+                L.pop() // Pop the value
                 throw LuaValueError.notCallable
             }
         }
@@ -277,17 +280,21 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
+    // On error, pops stack top
     private static func checkTopIsIndexable(_ L: LuaState!) throws {
         // Tables are always indexable, we don't actually need to check how
         if L.type(-1) != .table {
             let indexMetafieldType = luaL_getmetafield(L, -1, "__index")
             if indexMetafieldType == LUA_TNIL {
-                L.pop(2) // The metafield, and the value itself
+                L.pop() // The value itself
                 throw LuaValueError.notIndexable
-            } else if indexMetafieldType != LUA_TFUNCTION {
+            }
+            defer {
+                L.pop() // index metafield
+            }
+            if indexMetafieldType != LUA_TFUNCTION {
                 try checkTopIsIndexable(L)
             }
-            L.pop() // index metafield
         }
     }
 
@@ -319,20 +326,26 @@ public class LuaValue: Equatable, Hashable, Pushable {
         lua_insert(L, -2) // Move the fn below self
         L.push(any: key)
         try L.pcall(nargs: 2, nret: 1)
-        return L.ref(index: -1)
+        let result = L.ref(index: -1)
+        L.pop()
+        return result
     }
 
+    // On error, pops stack top
     private static func checkTopIsNewIndexable(_ L: LuaState!) throws {
         // Tables are always newindexable, we don't actually need to check how
         if L.type(-1) != .table {
             let newIndexMetafieldType = luaL_getmetafield(L, -1, "__newindex")
             if newIndexMetafieldType == LUA_TNIL {
-                L.pop(2) // The metafield, and the value itself
+                L.pop() // The value itself
                 throw LuaValueError.notNewIndexable
-            } else if newIndexMetafieldType != LUA_TFUNCTION {
+            }
+            defer {
+                L.pop() // newindex metafield
+            }
+            if newIndexMetafieldType != LUA_TFUNCTION {
                 try checkTopIsNewIndexable(L)
             }
-            L.pop() // newindex metafield
         }
     }
 

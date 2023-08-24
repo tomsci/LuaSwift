@@ -81,6 +81,11 @@ public class LuaValue: Equatable, Hashable, Pushable {
         self.ref = ref
     }
 
+    /// Create a LuaValue with a nil value.
+    public static func nilValue(_ L: LuaState) -> LuaValue {
+        return LuaValue(L: L, ref: LUA_REFNIL, type: .nilType)
+    }
+
     deinit {
         // LUA_RIDX_GLOBALS is not actually a luaL_ref (despite otherwise acting like one) so doesn't need to be
         // unref'd (and mustn't be, because it is not tracked in _State.luaValues thus L won't be nilled if the
@@ -219,6 +224,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
         try pushAndCheckCallable()
+        lua_insert(L, -(nret + 1))
         try L.pcall(nargs: nargs, nret: nret, traceback: traceback)
     }
 
@@ -391,20 +397,225 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     /// Non-throwing convenience function, otherwise identical to ``get(_:)`` or ``set(_:_:)``.
     ///
+    /// If any error is thrown by the underlying `get()` or `set()` call, the error is silently ignored and (in the
+    /// case of `get()`) a `LuaValue` representing `nil` is returned instead. Use `get()` or `set()` if you want to
+    /// preserve any error.
+    ///
     /// ```swift
     /// let printFn = L.globals["print"]
     /// L.globals["foo"] = bar
     /// ```
-    ///
-    /// - Precondition: The Lua value associated with `self` must support indexing without throwing an error.
     public subscript(key: Any) -> LuaValue {
         get {
-            return try! get(key)
+            return (try? get(key)) ?? .nilValue(L)
         }
         set(newValue) {
-            return try! set(key, newValue)
+            do {
+                try set(key, newValue)
+            } catch {
+                // Ignore
+            }
         }
     }
+
+    // MARK: - Iterators
+
+    private class IPairsIterator : Sequence, IteratorProtocol {
+        let value: LuaValue
+        var i: lua_Integer
+        init(_ value: LuaValue, start: lua_Integer?) {
+            self.value = value
+            i = (start ?? 1) - 1
+        }
+        public func next() -> (lua_Integer, LuaValue)? {
+            i = i + 1
+            let val = value[i]
+            if val.type != .nilType {
+                return (i, val)
+            } else {
+                return nil
+            }
+        }
+    }
+
+    /// Return a for-iterator that iterates the array part of a table.
+    ///
+    /// Returning each array member as a `LuaValue`. Members are looked up using the same semantics as subscript,
+    /// thus any errors thrown by `get()` will treated like `nil` and will complete the iteration, and otherwise
+    /// ignored. Use `for_ipairs(block:)` instead, to preserve any errors thrown.
+    ///
+    /// ```swift
+    /// let foo = L.ref(any: [11, 22, 33])
+    /// for (i, val) in foo.ipairs() {
+    ///     print("Index \(i) is \(val.toint()!)")
+    /// }
+    /// // Prints:
+    /// // Index 1 is 11
+    /// // Index 2 is 22
+    /// // Index 3 is 33
+    /// ```
+    ///
+    /// - Parameter start: If set, start iteration at this index rather than the beginning of the array.
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is `nil`.
+    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
+    public func ipairs(start: lua_Integer? = nil) throws -> some Sequence<(lua_Integer, LuaValue)> {
+        try checkValid()
+        push(state: L)
+        try Self.checkTopIsIndexable(L)
+        L.pop()
+        return IPairsIterator(self, start: start)
+    }
+
+    private class PairsIterator: Sequence, IteratorProtocol {
+        let iterFn: LuaValue
+        let state: LuaValue
+        var k: LuaValue
+        init(_ value: LuaValue) throws {
+            let L = value.L!
+            value.push(state: L)
+            let isIterable = try L.pushPairsParameters()
+            if !isIterable {
+                L.pop(3)
+                throw LuaValueError.notIterable
+            }
+            k = L.popref()
+            state = L.popref()
+            iterFn = L.popref()
+        }
+
+        public func next() -> (LuaValue, LuaValue)? {
+            let L = iterFn.L!
+            L.push(state)
+            L.push(k)
+            do {
+                try iterFn.pcall(nargs: 2, nret: 2)
+            } catch {
+                // print warning?
+                return nil
+            }
+            let val = L.popref()
+            k = L.popref()
+            if k.type != .nilType {
+                return (k, val)
+            } else {
+                return nil
+            }
+        }
+    }
+
+    /// Return a for-iterator that will iterate all the members of a value.
+    ///
+    /// The values in the table are iterated in an unspecified order. The `__pairs` metafield is respected if present.
+    /// If `__pairs` returned an iterator function which errors at any point during the iteration, the error is
+    /// silently ignored and will be treated as if it returned `nil, nil`, ie will end the iteration. Use
+    /// `for_pairs(block:)` to preserve such errors.
+    ///
+    /// ```swift
+    /// let foo = L.ref(any: ["a": 1, "b": 2, "c": 3])
+    /// for (key, value) in try foo.pairs() {
+    ///     print("\(key.tostring()!) \(value.toint()!)")
+    /// }
+    /// // ...might output the following:
+    /// // b 2
+    /// // c 3
+    /// // a 1
+    /// ```
+    ///
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
+    /// - Throws: `LuaValueError.notIterable` if the Lua value is not a table and does not have a `__pairs` metafield.
+    /// - Throws: ``LuaCallError`` if an error is thrown during a `__pairs` call.
+    public func pairs() throws -> some Sequence<(LuaValue, LuaValue)> {
+        return try PairsIterator(self)
+    }
+
+    /// Calls the given closure with each array element in order.
+    ///
+    /// `__index` metafields are observed, if present, and any error thrown by them will be re-thrown from
+    /// `for_ipairs()` as a `LuaCallError`. `block` is called with two arguments, the integer `index` of the array
+    /// item, and a `LuaValue` representing the value. `block` can return `false` to halt the iteration early,
+    /// otherwise it should return `true`.
+    ///
+    /// ```swift
+    /// let foo = L.ref(any: [11, 22, 33])
+    /// for (i, val) in foo.ipairs() {
+    ///     print("Index \(i) is \(val.toint()!)")
+    /// }
+    /// // Prints:
+    /// // Index 1 is 11
+    /// // Index 2 is 22
+    /// // Index 3 is 33
+    /// ```
+    ///
+    /// - Parameter start: If set, start iteration at this index rather than the beginning of the array.
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is `nil`.
+    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
+    /// - Throws: ``LuaCallError`` if an error is thrown during an `__index` call.
+    public func for_ipairs(start: lua_Integer? = nil, block: (lua_Integer, LuaValue) throws -> Bool) throws {
+        try checkValid()
+        push(state: L)
+        try Self.checkTopIsIndexable(L)
+        defer {
+            L.pop()
+        }
+        try L.for_ipairs(-1, start: start) { i in
+            let value = L.popref()
+            return try block(i, value)
+        }
+    }
+
+    /// Iterate a Lua table-like value, calling `block` for each member.
+    ///
+    /// This function observes `__pairs` metatables if present. `block` should
+    /// return `true` to continue iteration, or `false` otherwise.
+    ///
+    /// ```swift
+    /// let foo = L.ref(any: ["a": 1, "b": 2, "c": 3])
+    /// try foo.for_pairs() { key, value in
+    ///     print("\(key.tostring()!) \(value.toint()!)")
+    ///     return true // continue iteration
+    /// }
+    /// ```
+    ///
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter block: The code to execute.
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
+    /// - Throws: `LuaValueError.notIterable` if the Lua value is not a table and does not have a `__pairs` metafield.
+    /// - Throws: ``LuaCallError`` if an error is thrown during a `__pairs` or iterator call.
+    public func for_pairs(block: (LuaValue, LuaValue) throws -> Bool) throws {
+        try checkValid()
+        push(state: L)
+        let iterable = try L.pushPairsParameters() // pops self, pushes iterfn, state, initval
+        if !iterable {
+            L.pop(3) // iterfn, state, initval
+            throw LuaValueError.notIterable
+        }
+
+        try L.do_for_pairs() { k, v in
+            let key = L.ref(index: k)
+            let value = L.ref(index: v)
+            return try block(key, value)
+        }
+    }
+
+    /// Convenience function to iterate the value as an array using `for_ipairs()`.
+    ///
+    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is `nil`.
+    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
+    /// - Throws: ``LuaCallError`` if an error is thrown during an `__index` call.
+    public func forEach(_ block: (LuaValue) throws -> Void) throws {
+        try for_ipairs() { _, value in
+            try block(value)
+            return true
+        }
+    }
+
+    public func forEach(_ block: (LuaValue, LuaValue) throws -> Void) throws {
+        try for_pairs() { key, value in
+            try block(key, value)
+            return true
+        }
+    }
+
 }
 
 struct UnownedLuaValue {

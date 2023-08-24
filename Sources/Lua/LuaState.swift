@@ -706,7 +706,6 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   each time through the iterator to what it was at the point of calling
     ///   `ipairs`. Occasionally (such as when using `luaL_Buffer`) this is not
     ///   desirable and can be disabled by setting `resetTop` to false.
-    /// - Precondition: `requiredType` must not be `.nilType`
     /// - Precondition: `index` must refer to a table value.
     func ipairs(_ index: CInt, start: lua_Integer? = nil, resetTop: Bool = true) -> some Sequence<lua_Integer> {
         precondition(type(index) == .table, "Value must be a table to iterate with ipairs()")
@@ -828,6 +827,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// The value is popped from the stack.
     ///
     /// Returns: false (and pushes `next, value, nil`) if the value isn't iterable, otherwise `true`.
+    /// Throws: ``LuaCallError`` if the value had a `__pairs` metafield which errored.
     @discardableResult
     func pushPairsParameters() throws -> Bool {
         let L = self
@@ -874,47 +874,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: `LuaCallError` if a Lua error is raised during the execution of an iterator function or a `__pairs`
     ///   metafield, or if the value at `index` does not support indexing.
     func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Bool) throws {
-        let absidx = absindex(index)
-        try withoutActuallyEscaping(block) { escapingBlock in
-            let wrapper = makeClosureWrapper({ L in
-                // IMPORTANT: this closure uses unprotected lua_calls that may error. Therefore it must NOT put
-                // any non-trivial type onto the stack or rely on any Swift stack cleanup happening such as
-                // defer {...}.
-
-                // Stack: 1 = iterfn, 2 = state, 3 = initval (k)
-                assert(L.gettop() == 3)
-                while true {
-                    L.settop(3)
-                    lua_pushvalue(L, 1)
-                    lua_insert(L, 3) // put iterfn before k
-                    lua_pushvalue(L, 2)
-                    lua_insert(L, 4) // put state before k
-                    // 3, 4, 5 is now iterfn copy, state copy, k
-                    lua_call(L, 2, 2) // k, v = iterfn(state, k)
-                    // Stack is now 1 = iterfn, 2 = state, 3 = k, 4 = v
-                    if L.isnoneornil(3) {
-                        break
-                    }
-                    let shouldContinue = try escapingBlock(3, 4)
-                    if !shouldContinue {
-                        break
-                    }
-                    // new k is in position 3 ready to go round loop again
-                }
-                L.settop(0)
-                L.pushnil() // ClosureWrapper.callClosure expects a result val, bah
-            })
-
-            // Must ensure closure does not actually escape, since we cannot rely on prompt garbage collection of the
-            // upvalue, explicitly nil it in the ClosureWrapper instead.
-            defer {
-                wrapper.closure = nil
-            }
-
-            lua_pushvalue(self, absidx) // The value being iterated
-            try pushPairsParameters() // pops value, pushes iterfn, state, initval
-            try pcall(nargs: 3, nret: 0)
-        }
+        lua_pushvalue(self, index) // The value being iterated
+        try pushPairsParameters() // pops value, pushes iterfn, state, initval
+        try do_for_pairs(block)
     }
 
     // MARK: - push() functions
@@ -1661,4 +1623,47 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         getState().luaValues[ref] = nil
         luaL_unref(self, LUA_REGISTRYINDEX, ref)
     }
+
+    // Top of stack must have iterfn, state, initval
+    func do_for_pairs(_ block: (CInt, CInt) throws -> Bool) throws {
+        try withoutActuallyEscaping(block) { escapingBlock in
+            let wrapper = makeClosureWrapper({ L in
+                // IMPORTANT: this closure uses unprotected lua_calls that may error. Therefore it must NOT put
+                // any non-trivial type onto the stack or rely on any Swift stack cleanup happening such as
+                // defer {...}.
+
+                // Stack: 1 = iterfn, 2 = state, 3 = initval (k)
+                assert(L.gettop() == 3)
+                while true {
+                    L.settop(3)
+                    lua_pushvalue(L, 1)
+                    lua_insert(L, 3) // put iterfn before k
+                    lua_pushvalue(L, 2)
+                    lua_insert(L, 4) // put state before k
+                    // 3, 4, 5 is now iterfn copy, state copy, k
+                    lua_call(L, 2, 2) // k, v = iterfn(state, k)
+                    // Stack is now 1 = iterfn, 2 = state, 3 = k, 4 = v
+                    if L.isnoneornil(3) {
+                        break
+                    }
+                    let shouldContinue = try escapingBlock(3, 4)
+                    if !shouldContinue {
+                        break
+                    }
+                    // new k is in position 3 ready to go round loop again
+                }
+                L.settop(0)
+                L.pushnil() // ClosureWrapper.callClosure expects a result val, bah
+            })
+
+            // Must ensure closure does not actually escape, since we cannot rely on prompt garbage collection of the
+            // upvalue, explicitly nil it in the ClosureWrapper instead.
+            defer {
+                wrapper.closure = nil
+            }
+            lua_insert(self, -4) // Push wrapper below iterfn, state, initval
+            try pcall(nargs: 3, nret: 0)
+        }
+    }
+
 }

@@ -181,6 +181,85 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.gettop(), 1)
     }
 
+    func test_LuaValue_ipairs_table() throws {
+        L = LuaState(libraries: [])
+        let array = L.ref(any: [11, 22, 33, 44])
+        var expected: lua_Integer = 0
+        for (i, val) in try array.ipairs() {
+            expected = expected + 1
+            XCTAssertEqual(i, expected)
+            XCTAssertEqual(L.gettop(), 0)
+            XCTAssertEqual(val.tointeger(), expected * 11)
+        }
+        XCTAssertEqual(expected, 4)
+        XCTAssertEqual(L.gettop(), 0)
+    }
+
+    func test_LuaValue_ipairs_mt() throws {
+        L = LuaState(libraries: [])
+        // This errors on 5th index, thus appears to be an array of 4 items to ipairs
+        try L.load(string: """
+            local data = { 11, 22, 33, 44, 55, 66 }
+            tbl = setmetatable({}, { __index = function(_, i)
+                if i == 5 then
+                    error("NOPE!")
+                else
+                    return data[i]
+                end
+            end})
+            return tbl
+            """)
+        try L.pcall(nargs: 0, nret: 1)
+        let array = L.popref()
+        var expected: lua_Integer = 0
+        for (i, val) in try array.ipairs() {
+            expected = expected + 1
+            XCTAssertEqual(i, expected)
+            XCTAssertEqual(L.gettop(), 0)
+            XCTAssertEqual(val.tointeger(), expected * 11)
+        }
+        XCTAssertEqual(expected, 4)
+        XCTAssertEqual(L.gettop(), 0)
+    }
+
+    func test_LuaValue_ipairs_errors() throws {
+        L = LuaState(libraries: [])
+        let bad_ipairs: (LuaValue) throws -> Void = { val in
+            for _ in try val.ipairs() {
+                XCTFail("Shouldn't get here!")
+            }
+        }
+        XCTAssertThrowsError(try bad_ipairs(.nilValue(L)), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .nilValue)
+        })
+        XCTAssertThrowsError(try bad_ipairs(L.ref(any: 123)), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .notIndexable)
+        })
+    }
+
+    func test_LuaValue_for_ipairs_errors() throws {
+        L = LuaState(libraries: [])
+        let bad_ipairs: (LuaValue) throws -> Void = { val in
+            try val.for_ipairs() { _, _ in
+                XCTFail("Shouldn't get here!")
+                return false
+            }
+        }
+        XCTAssertThrowsError(try bad_ipairs(.nilValue(L)), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .nilValue)
+        })
+        XCTAssertThrowsError(try bad_ipairs(L.ref(any: 123)), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .notIndexable)
+        })
+
+        try L.load(string: "return setmetatable({}, { __index = function() error('DOOM!') end })")
+        try L.pcall(nargs: 0, nret: 1)
+        XCTAssertThrowsError(try bad_ipairs(L.popref()), "", { err in
+            XCTAssertNotNil(err as? LuaCallError)
+        })
+
+    }
+
     func test_pairs() {
         L = LuaState(libraries: [])
         var dict = [
@@ -190,6 +269,8 @@ final class LuaTests: XCTestCase {
         ]
         L.push(dict)
         for (k, v) in L.pairs(1) {
+            XCTAssertTrue(k > 1)
+            XCTAssertTrue(v > 1)
             let key = L.tostring(k)
             let val = L.toint(v)
             XCTAssertNotNil(key)
@@ -307,6 +388,94 @@ final class LuaTests: XCTestCase {
             return true
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
+    func test_LuaValue_pairs_raw() throws {
+        L = LuaState(libraries: [])
+        var dict = [
+            "aaa": 111,
+            "bbb": 222,
+            "ccc": 333,
+        ]
+        let dictValue = L.ref(any: dict)
+        for (k, v) in try dictValue.pairs() {
+            let key = k.tostring()
+            let val = v.toint()
+            XCTAssertNotNil(key)
+            XCTAssertNotNil(val)
+            let foundVal = dict.removeValue(forKey: key!)
+            XCTAssertEqual(val, foundVal)
+        }
+        XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
+    func test_LuaValue_pairs_mt() throws {
+        L = LuaState(libraries: [])
+        var dict = [
+            "aaa": 111,
+            "bbb": 222,
+            "ccc": 333,
+            "ddd": 444,
+        ]
+
+        // Check we're actually using non-raw accesses
+        try L.load(string: """
+            local dict = ...
+            tbl = setmetatable({}, {
+                __index = dict,
+                __pairs = function(tbl)
+                    return next, dict, nil
+                end,
+            })
+            return tbl
+            """)
+        L.push(dict)
+        try L.pcall(nargs: 1, nret: 1)
+        let dictValue = L.popref()
+        
+        for (k, v) in try dictValue.pairs() {
+            let key = k.tostring()
+            let val = v.toint()
+            XCTAssertNotNil(key)
+            XCTAssertNotNil(val)
+            let foundVal = dict.removeValue(forKey: key!)
+            XCTAssertEqual(val, foundVal)
+        }
+        XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
+    func test_LuaValue_for_pairs_mt() throws {
+        L = LuaState(libraries: [])
+        var dict = [
+            "aaa": 111,
+            "bbb": 222,
+            "ccc": 333,
+            "ddd": 444,
+        ]
+
+        // Check we're actually using non-raw accesses
+        try L.load(string: """
+            local dict = ...
+            return setmetatable({}, {
+                __pairs = function()
+                    return next, dict, nil
+                end,
+            })
+            """)
+        L.push(dict)
+        try L.pcall(nargs: 1, nret: 1)
+        let dictValue = L.popref()
+
+        for (k, v) in try dictValue.pairs() {
+            let key = k.tostring()
+            let val = v.toint()
+            XCTAssertNotNil(key)
+            XCTAssertNotNil(val)
+            let foundVal = dict.removeValue(forKey: key!)
+            XCTAssertEqual(val, foundVal)
+        }
+        XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+
     }
 
     func test_pushuserdata() {
@@ -604,6 +773,9 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(ref.tostring(), "hello")
         XCTAssertEqual(L.gettop(), 0)
 
+        ref = .nilValue(L)
+        XCTAssertEqual(ref.type, .nilType)
+
         ref = L.ref(any: nil)
         XCTAssertEqual(ref.type, .nilType)
 
@@ -814,5 +986,4 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(err as? LuaValueError, .nilValue)
         })
     }
-
 }

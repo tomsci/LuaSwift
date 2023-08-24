@@ -71,6 +71,8 @@ public enum LuaValueError: Error, Equatable {
     case notNewIndexable
     /// A call operation was attempted on a value that does not support it.
     case notCallable
+    /// A `pairs` operation was attempted on a value that does not support it.
+    case notIterable
     /// `len` was called on a Lua value that does not support the length operator.
     case noLength
 }
@@ -82,6 +84,7 @@ extension LuaValueError: CustomStringConvertible, LocalizedError {
        case .notIndexable: return "LuaValueError.notIndexable"
        case .notNewIndexable: return "LuaValueError.notNewIndexable"
        case .notCallable: return "LuaValueError.notCallable"
+       case .notIterable: return "LuaValueError.notIterable"
        case .noLength: return "LuaValueError.noLength"
        }
    }

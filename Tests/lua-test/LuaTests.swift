@@ -889,8 +889,13 @@ final class LuaTests: XCTestCase {
         try L.pcall(nargs: 0, nret: 1)
         XCTAssertEqual(L.tostring(-1), "hello world")
 
+        let asArray: [UInt8] = "return 'hello world'".map { $0.asciiValue! }
+        try L.load(data: asArray, name: "Hello")
+        try L.pcall(nargs: 0, nret: 1)
+        XCTAssertEqual(L.tostring(-1), "hello world")
+
         XCTAssertThrowsError(try L.load(string: "woop woop"), "", { err in
-            let expected = "[string \"?\"]:1: syntax error near 'woop'"
+            let expected = #"[string "?"]:1: syntax error near 'woop'"#
             XCTAssertEqual((err as? LuaLoadError), .parseError(expected))
             XCTAssertEqual((err as CustomStringConvertible).description, "LuaLoadError.parseError(\(expected))")
             XCTAssertEqual(err.localizedDescription, "LuaLoadError.parseError(\(expected))")

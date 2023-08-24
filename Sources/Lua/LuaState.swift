@@ -1578,7 +1578,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
     /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
-    func load(data: Data, name: String?, mode: LoadMode = .text) throws {
+    func load(data: ContiguousBytes, name: String?, mode: LoadMode = .text) throws {
         var err: CInt = 0
         data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
             let chars = ptr.bindMemory(to: CChar.self)

@@ -41,7 +41,7 @@ final class LuaTests: XCTestCase {
     var L: LuaState!
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+        L = LuaState(libraries: [])
     }
 
     override func tearDownWithError() throws {
@@ -52,7 +52,7 @@ final class LuaTests: XCTestCase {
     }
 
     func testSafeLibraries() {
-        L = LuaState(libraries: .safe)
+        L.openLibraries(.safe)
         let unsafeLibs = ["os", "io", "package", "debug"]
         for lib in unsafeLibs {
             let t = L.getglobal(lib)
@@ -63,7 +63,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pcall() throws {
-        L = LuaState(libraries: [])
         L.getglobal("type")
         L.push(123)
         try L.pcall(nargs: 1, nret: 1)
@@ -73,7 +72,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pcall_throw() throws {
-        L = LuaState(libraries: [])
         var expectedErr: LuaCallError? = nil
         do {
             L.getglobal("error")
@@ -90,7 +88,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_toint() {
-        L = LuaState(libraries: [])
         L.push(1234) // 1
         L.push(true) // 2
         L.push("hello") // 3
@@ -106,7 +103,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_tonumber() {
-        L = LuaState(libraries: [])
         L.push(1234) // 1
         L.push(true) // 2
         L.push("hello") // 3
@@ -122,7 +118,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_tobool() {
-        L = LuaState(libraries: [])
         L.push(1234) // 1
         L.push(true) // 2
         L.push(false) // 3
@@ -136,7 +131,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_tostring() {
-        L = LuaState(libraries: [])
         L.push("Hello")
         L.push("A ü†ƒ8 string")
         L.push(1234)
@@ -154,7 +148,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_ipairs() {
-        L = LuaState(libraries: [])
         let arr = [11, 22, 33, 44]
         L.push(arr) // Because Array<Int> conforms to Array<T: Pushable> which is itself Pushable
         var expected: lua_Integer = 0
@@ -182,7 +175,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_LuaValue_ipairs_table() throws {
-        L = LuaState(libraries: [])
         let array = L.ref(any: [11, 22, 33, 44])
         var expected: lua_Integer = 0
         for (i, val) in try array.ipairs() {
@@ -196,7 +188,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_LuaValue_ipairs_mt() throws {
-        L = LuaState(libraries: [])
         // This errors on 5th index, thus appears to be an array of 4 items to ipairs
         try L.load(string: """
             local data = { 11, 22, 33, 44, 55, 66 }
@@ -223,7 +214,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_LuaValue_ipairs_errors() throws {
-        L = LuaState(libraries: [])
         let bad_ipairs: (LuaValue) throws -> Void = { val in
             for _ in try val.ipairs() {
                 XCTFail("Shouldn't get here!")
@@ -238,7 +228,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_LuaValue_for_ipairs_errors() throws {
-        L = LuaState(libraries: [])
         let bad_ipairs: (LuaValue) throws -> Void = { val in
             try val.for_ipairs() { _, _ in
                 XCTFail("Shouldn't get here!")
@@ -261,7 +250,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pairs() {
-        L = LuaState(libraries: [])
         var dict = [
             "aaa": 111,
             "bbb": 222,
@@ -282,7 +270,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_for_ipairs() throws {
-        L = LuaState(libraries: [])
         let arr = [11, 22, 33, 44, 55, 66]
         L.push(arr)
         var expected_i: lua_Integer = 0
@@ -338,7 +325,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_for_pairs_raw() throws {
-        L = LuaState(libraries: [])
         var dict = [
             "aaa": 111,
             "bbb": 222,
@@ -356,7 +342,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_for_pairs_mt() throws {
-        L = LuaState(libraries: [])
         var dict = [
             "aaa": 111,
             "bbb": 222,
@@ -391,7 +376,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_LuaValue_pairs_raw() throws {
-        L = LuaState(libraries: [])
         var dict = [
             "aaa": 111,
             "bbb": 222,
@@ -410,7 +394,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_LuaValue_pairs_mt() throws {
-        L = LuaState(libraries: [])
         var dict = [
             "aaa": 111,
             "bbb": 222,
@@ -445,7 +428,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_LuaValue_for_pairs_mt() throws {
-        L = LuaState(libraries: [])
         var dict = [
             "aaa": 111,
             "bbb": 222,
@@ -483,7 +465,6 @@ final class LuaTests: XCTestCase {
             let intval: Int
             let strval: String
         }
-        L = LuaState(libraries: [])
         L.registerMetatable(for: Foo.self, functions: [:])
         let val = Foo(intval: 123, strval: "abc")
         L.push(userdata: val)
@@ -511,7 +492,6 @@ final class LuaTests: XCTestCase {
         var val: DeinitChecker? = DeinitChecker(deinitPtr: &deinited)
         XCTAssertEqual(deinited, 0)
 
-        L = LuaState(libraries: [])
         L.registerMetatable(for: DeinitChecker.self, functions: [:])
         L.push(userdata: val!)
         L.push(any: val!)
@@ -532,7 +512,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_registerMetatable() throws {
-        L = LuaState(libraries: [])
         class SomeClass {
             var member: String? = nil
         }
@@ -557,7 +536,6 @@ final class LuaTests: XCTestCase {
             var str: String?
         }
         let f = Foo()
-        L = LuaState(libraries: [])
         L.registerMetatable(for: Foo.self, functions: ["__call": { (L: LuaState!) -> CInt in
             let f: Foo? = L.touserdata(1)
             // Above would have failed if we get called with an innerfoo
@@ -591,7 +569,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pushany() {
-        L = LuaState(libraries: [])
 
         L.push(any: 1234)
         XCTAssertEqual(L.toany(1) as? Int, 1234)
@@ -628,7 +605,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pushany_table() {
-        L = LuaState(libraries: [])
 
         let stringArray = ["abc", "def"]
         L.push(any: stringArray)
@@ -662,7 +638,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_push_closure() throws {
-        L = LuaState(libraries: [])
 
         var called = false
         L.push(closure: {
@@ -693,7 +668,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_push_any_closure() throws {
-        L = LuaState(libraries: [])
         var called = false
         let voidVoidClosure = {
             called = true
@@ -715,7 +689,6 @@ final class LuaTests: XCTestCase {
     func test_extension_4arg_closure() throws {
         // Test that more argument overloads of push(closure:) can be implemented if required by code not in the Lua
         // package.
-        L = LuaState(libraries: [])
         func push<Arg1, Arg2, Arg3, Arg4>(closure: @escaping (Arg1?, Arg2?, Arg3?, Arg4?) throws -> Any?) {
             L.push(closureWrapper: { L in
                 let arg1: Arg1? = try L.checkClosureArgument(index: 1)
@@ -734,7 +707,6 @@ final class LuaTests: XCTestCase {
     }
 
     func testNonHashableTableKeys() {
-        L = LuaState(libraries: [])
         struct NonHashable {
             let nope = true
         }
@@ -759,14 +731,12 @@ final class LuaTests: XCTestCase {
     func testForeignUserdata() {
         // Tests that a userdata not set via pushuserdata (and thus, doesn't necessarily contain an `Any`) does not
         // crash or return anything if you attempt to access it via touserdata().
-        L = LuaState(libraries: [])
         let _ = lua_newuserdatauv(L, MemoryLayout<Any>.size, 0)
         let bad: Any? = L.touserdata(-1)
         XCTAssertNil(bad)
     }
 
     func test_ref() {
-        L = LuaState(libraries: [])
         var ref: LuaValue! = L.ref(any: "hello")
         XCTAssertEqual(ref.type, .string)
         XCTAssertEqual(ref.toboolean(), true)
@@ -799,7 +769,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_ref_scoping() {
-        L = LuaState(libraries: [])
         var ref: LuaValue? = L.ref(any: "hello")
         XCTAssertEqual(ref!.type, .string) // shut up compiler complaining about unused ref
         L.close()
@@ -810,7 +779,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_ref_get() throws {
-        L = LuaState(libraries: [])
         let strType = try L.globals["type"].pcall("foo").tostring()
         XCTAssertEqual(strType, "string")
 
@@ -824,7 +792,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_ref_get_complexMetatable() throws {
-        L = LuaState(libraries: [])
         struct IndexableValue {}
         L.registerMetatable(for: IndexableValue.self, functions: [
             "__index": { L in
@@ -847,13 +814,13 @@ final class LuaTests: XCTestCase {
     }
 
     func test_ref_chaining() throws {
-        L = LuaState(libraries: [.string])
+        L.openLibraries([.string])
         let result = try L.globals.get("type").pcall(L.globals["print"]).pcall(member: "sub", 1, 4).tostring()
         XCTAssertEqual(result, "func")
     }
 
     func test_ref_errors() throws {
-        L = LuaState(libraries: [.string])
+        L.openLibraries([.string])
 
         XCTAssertThrowsError(try L.globals["nope"](), "", { err in
             XCTAssertEqual(err as? LuaValueError, .nilValue)
@@ -877,13 +844,11 @@ final class LuaTests: XCTestCase {
     }
 
     func test_ref_set() throws {
-        L = LuaState(libraries: [.string])
         L.globals["foo"] = L.ref(any: 123)
         XCTAssertEqual(L.globals["foo"].toint(), 123)
     }
 
     func test_nil() throws {
-        L = LuaState(libraries: [])
         XCTAssertEqual(L.type(1), nil)
         L.pushnil()
         XCTAssertEqual(L.type(1), .nilType)
@@ -902,7 +867,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_tovalue_anynil() {
-        L = LuaState(libraries: [])
 
         L.push(true)
         let anyTrue: Any? = L.tovalue(1)
@@ -915,14 +879,12 @@ final class LuaTests: XCTestCase {
     }
 
     func test_load_file() {
-        L = LuaState(libraries: [])
         XCTAssertThrowsError(try L.load(file: "nopemcnopeface"), "", { err in
             XCTAssertEqual(err as? LuaLoadError, .fileNotFound)
         })
     }
 
     func test_load() throws {
-        L = LuaState(libraries: [])
         try L.load(string: "return 'hello world'")
         try L.pcall(nargs: 0, nret: 1)
         XCTAssertEqual(L.tostring(-1), "hello world")
@@ -941,7 +903,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_len() throws {
-        L = LuaState(libraries: [])
         L.push(1234) // 1
         L.push("woop") // 2
         L.push([11, 22, 33, 44, 55]) // 3

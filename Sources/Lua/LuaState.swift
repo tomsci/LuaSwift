@@ -270,17 +270,16 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Configure the directory to look in when loading modules with `require`.
     ///
-    /// This replaces the default system search paths, and also disables native
-    /// module loading.
+    /// This replaces the default system search paths, and also disables native module loading.
     ///
-    /// For example `require "foo"` will look for `<path>/foo.lua`, and
-    /// `require "foo.bar"` will look for `<path>/foo/bar.lua`.
+    /// For example `require "foo"` will look for `<path>/foo.lua`, and `require "foo.bar"` will look for
+    /// `<path>/foo/bar.lua`.
     ///
-    /// - Parameter path: The root directory containing .lua files
-    /// - Parameter displayPrefix: Optional string to prefix onto paths shown in
-    ///   for example error messages.
+    /// - Parameter path: The root directory containing .lua files. Specify `nil` to disable all module loading (except
+    ///   for any preloads configured with `addModules()`).
+    /// - Parameter displayPrefix: Optional string to prefix onto paths shown in for example error messages.
     /// - Precondition: The `package` standard library must have been opened.
-    func setRequireRoot(_ path: String, displayPrefix: String = "") {
+    func setRequireRoot(_ path: String?, displayPrefix: String = "") {
         let L = self
         // Now configure the require path
         guard getglobal("package") == .table else {
@@ -288,19 +287,67 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
 
         // Set package.path even though our moduleSearcher doesn't use it
-        L.push(string: path + "/?.lua", encoding: .utf8)
+        if let path {
+            L.push(string: path + "/?.lua", encoding: .utf8)
+        } else {
+            L.pushnil()
+        }
         lua_setfield(L, -2, "path")
 
         lua_getfield(L, -1, "searchers")
-        L.push(string: path, encoding: .utf8)
-        L.push(string: displayPrefix, encoding: .utf8)
-        lua_pushcclosure(L, moduleSearcher, 2) // pops path.path
+        if let path {
+            L.push(string: path, encoding: .utf8)
+            L.push(string: displayPrefix, encoding: .utf8)
+            lua_pushcclosure(L, moduleSearcher, 2) // pops path.path
+        } else {
+            pushnil()
+        }
         lua_rawseti(L, -2, 2) // 2nd searcher is the .lua lookup one
         pushnil()
         lua_rawseti(L, -2, 3) // And prevent 3 from being used
         pushnil()
         lua_rawseti(L, -2, 4) // Ditto 4
         pop(2) // searchers, package
+    }
+
+    /// Add built-in modules to the [preload](https://www.lua.org/manual/5.4/manual.html#pdf-package.preload) table.
+    ///
+    /// Such that they can loaded by `require(name)`. The modules are not loaded until `require` is called.
+    ///
+    /// - Parameter modules: A dictionary of module names to data suitable to be passed to `load(data:)`.
+    /// - Parameter mode: The `LoadMode` to be used when loading any of the modules in `modules`.
+    func addModules(_ modules: [String: [UInt8]], mode: LoadMode = .binary) {
+        luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE)
+        for (name, data) in modules {
+            push(closureWrapper: { L in
+                let filename = name.replacingOccurrences(of: ".", with: "/")
+                try L.load(data: data, name: "@\(filename).lua", mode: mode)
+                L.push(name)
+                try L.pcall(nargs: 1, nret: 1)
+            })
+            lua_setfield(self, -2, name)
+        }
+        pop() // preload table
+    }
+
+    /// Add built-in modules to the [preload](https://www.lua.org/manual/5.4/manual.html#pdf-package.preload) table,
+    /// removing any others.
+    ///
+    /// Such that they can loaded by `require(name)`. The modules are not loaded until `require` is called. Any modules
+    /// previously in the preload table are removed. Note this will have no effect on modules that have already been
+    /// loaded.
+    ///
+    /// - Parameter modules: A dictionary of module names to data suitable to be passed to `load(data:)`.
+    /// - Parameter mode: The `LoadMode` to be used when loading any of the modules in `modules`.
+    func setModules(_ modules: [String: [UInt8]], mode: LoadMode = .binary) {
+        luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE)
+        for (_, _) in pairs(-1) {
+            pop() // Remove v
+            pushnil()
+            lua_settable(self, -3)
+        }
+        pop() // preload table
+        addModules(modules, mode: mode)
     }
 
     enum WhatGarbage: CInt {
@@ -801,6 +848,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// value which are pushed onto the stack. The stack is reset each time
     /// through the loop, and on exit. The `__pairs` metafield is ignored if the
     /// table has one, that is to say raw accesses are used.
+    ///
+    /// The indexes to the key and value will always be `top+1` and `top+2`, where `top` is the value of `gettop()`
+    /// prior to the call to `pairs()`, thus are provided for convenience only. `-2` and `-1` can be used instead, if
+    /// desired.
     ///
     /// ```swift
     /// // Assuming top of stack is a table { a = 1, b = 2, c = 3 }

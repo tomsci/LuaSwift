@@ -270,6 +270,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return L.popref()
     }
 
+    @discardableResult
     public func dynamicallyCall(withArguments arguments: [Any?]) throws -> LuaValue {
         return try pcall(arguments: arguments, traceback: true)
     }

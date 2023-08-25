@@ -907,6 +907,19 @@ final class LuaTests: XCTestCase {
         })
     }
 
+    func test_setModules() throws {
+        let mod = """
+            print("Hello from module land!")
+            return "hello"
+            """.map { $0.asciiValue! }
+        // To be extra awkward, we call addModules before opening package (which sets up the package loaders) to
+        // make sure that our approach works with that
+        L.setModules(["test": mod], mode: .text)
+        L.openLibraries([.package])
+        let ret = try L.globals["require"]("test")
+        XCTAssertEqual(ret.tostring(), "hello")
+    }
+
     func test_len() throws {
         L.push(1234) // 1
         L.push("woop") // 2

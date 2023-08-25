@@ -144,3 +144,28 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 ## Thread safety
 
 There is no hidden global state used to implement the type conversions, or to implement `setDefaultStringEncoding()`. Each top-level `LuaState` is completely independent, just a normal C `lua_State` is. Meaning you can safely use different `LuaState` instances from different threads at the same time. More technically, all `LuaState` APIs are [_reentrant_ but _not_ thread-safe](https://doc.qt.io/qt-6/threads-reentrancy.html), in the same way that the Lua C API is.
+
+## Embedding Lua modules into a Swift binary
+
+Normally if you want to be able to use `require(moduleName)` in your Lua code you must use `LuaState.setRequireRoot()` to specify a root directory in which to search for `.lua` files (unless you are happy to use the system search paths, which seems unlikely when using embedded Lua). This is not always feasible if you want to build a fully self-contained executable with no external dependencies.
+
+There is another option, which is to compile your .lua files into generated Swift code which can then be compiled into your executable/binary just like any other Swift code. This is a cut-down version of similar resources-as-code systems such as Qt resources. To facilitate this a SwiftPM plugin `EmbedLuaPlugin` is supplied, which handles the code generation. Add it to your `Package.swift` as follows:
+
+```swift
+    .executableTarget(
+        name: "my-standalone-executable",
+        dependencies: [
+            .product(name: "Lua", package: "LuaSwift")
+        ],
+        plugins: [
+            .plugin(name: "EmbedLuaPlugin", package: "LuaSwift")
+        ]
+    )
+```
+
+This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's source tree. This doesn't handle nested modules (everything is assumed to be a top-level module) or support exclusions or customisations, yet. Pass this to `addModules` when you construct your `LuaState`:
+
+```swift
+L = LuaState(libraries: .all)
+L.addModules(lua_sources)
+```

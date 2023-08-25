@@ -15,6 +15,12 @@ let package = Package(
                 "CLua",
                 "Lua",
             ]),
+        .plugin(
+            name: "EmbedLuaPlugin",
+            targets: [
+                "EmbedLuaPlugin"
+            ]
+        ),
     ],
     dependencies: [],
     targets: [
@@ -47,6 +53,19 @@ let package = Package(
                 .headerSearchPath("lua"),
             ]
         ),
+        .executableTarget(
+            name: "embedlua",
+            dependencies: [
+                "CLua",
+                "Lua",
+            ]
+        ),
+        .plugin(
+            name: "EmbedLuaPlugin",
+            capability: .buildTool(),
+            dependencies: [
+                "embedlua",
+            ]),
         .testTarget(
             name: "lua-test",
             dependencies: ["Lua", "CLua"]

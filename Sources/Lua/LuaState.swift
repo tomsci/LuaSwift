@@ -165,7 +165,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter libraries: Which of the standard libraries to open.
     init(libraries: Libraries) {
         self = luaL_newstate()
-        requiref(name: "_G", function: luaopen_base)
+        requiref_unsafe(name: "_G", function: luaopen_base)
         openLibraries(libraries)
     }
 
@@ -240,31 +240,31 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     func openLibraries(_ libraries: Libraries) {
         if libraries.contains(.package) {
-            requiref(name: "package", function: luaopen_package)
+            requiref_unsafe(name: "package", function: luaopen_package)
         }
         if libraries.contains(.coroutine) {
-            requiref(name: "coroutine", function: luaopen_coroutine)
+            requiref_unsafe(name: "coroutine", function: luaopen_coroutine)
         }
         if libraries.contains(.table) {
-            requiref(name: "table", function: luaopen_table)
+            requiref_unsafe(name: "table", function: luaopen_table)
         }
         if libraries.contains(.io) {
-            requiref(name: "io", function: luaopen_io)
+            requiref_unsafe(name: "io", function: luaopen_io)
         }
         if libraries.contains(.os) {
-            requiref(name: "os", function: luaopen_os)
+            requiref_unsafe(name: "os", function: luaopen_os)
         }
         if libraries.contains(.string) {
-            requiref(name: "string", function: luaopen_string)
+            requiref_unsafe(name: "string", function: luaopen_string)
         }
         if libraries.contains(.math) {
-            requiref(name: "math", function: luaopen_math)
+            requiref_unsafe(name: "math", function: luaopen_math)
         }
         if libraries.contains(.utf8) {
-            requiref(name: "utf8", function: luaopen_utf8)
+            requiref_unsafe(name: "utf8", function: luaopen_utf8)
         }
         if libraries.contains(.debug) {
-            requiref(name: "debug", function: luaopen_debug)
+            requiref_unsafe(name: "debug", function: luaopen_debug)
         }
     }
 
@@ -1428,8 +1428,74 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Wrapper around [`luaL_requiref()`](https://www.lua.org/manual/5.4/manual.html#luaL_requiref).
     ///
-    /// Pops the module from the stack.
-    func requiref(name: UnsafePointer<CChar>!, function: lua_CFunction, global: Bool = true) {
+    /// Does not leave the module on the stack.
+    ///
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function.
+    func requiref(name: UnsafePointer<CChar>!, function: lua_CFunction, global: Bool = true) throws {
+        let wrapper: lua_CFunction = { (L: LuaState!) in
+            let name = lua_tostring(L, 1)
+            let fn = lua_tocfunction(L, 2)
+            let global = lua_toboolean(L, 3)
+            luaL_requiref(L, name, fn, global)
+            return 0
+        }
+        push(wrapper)
+        lua_pushstring(self, name)
+        push(function)
+        push(global)
+        try pcall(nargs: 3, nret: 0)
+    }
+
+    /// Load a function pushed by `closure` as if it were a Lua module.
+    ///
+    /// This is similar to [`luaL_requiref()`](https://www.lua.org/manual/5.4/manual.html#luaL_requiref) but instead of
+    /// providing a `lua_CFunction` that when called forms the body of the module, pass in a `closure` which must push a
+    /// function on to the Lua stack. It is this resulting function which is called to create the module.
+    ///
+    /// This allows code like:
+    ///
+    /// ```swift
+    /// try L.requiref(name: "a_module") {
+    ///     try L.load(string: "return { ... }")
+    /// }
+    /// ```
+    ///
+    /// - Parameter name: The name of the module.
+    /// - Parameter global: Whether or not to set _G[name].
+    /// - Parameter closure: This closure is called to push the module function onto the stack. Note, it will not be
+    ///   called if a module called `name` is already loaded.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function.
+    /// - Throws: rethrows if `closure` throws.
+    func requiref(name: String, global: Bool = true, closure: () throws -> Void) throws {
+        // There's just no reasonable way to shoehorn this into calling luaL_requiref, we have to unroll it...
+        let L = self
+        luaL_getsubtable(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE)
+        lua_getfield(L, -1, name)  /* LOADED[modname] */
+        let loaded_idx = L.gettop()
+        defer {
+            lua_remove(L, loaded_idx)
+        }
+        if (lua_toboolean(L, -1) == 0) {  /* package not already loaded? */
+            lua_pop(L, 1)  /* remove field */
+            
+            let top = L.gettop()
+            try closure()
+            precondition(L.gettop() == top + 1 && L.type(-1) == .function,
+                         "requiref closure did not push a function onto the stack!")
+
+            lua_pushstring(L, name)  /* argument to open function */
+            try pcall(nargs: 1, nret: 1)  /* call 'openf' to open module */
+            lua_pushvalue(L, -1)  /* make copy of module (call result) */
+            lua_setfield(L, -3, name)  /* LOADED[modname] = module */
+        }
+        if (global) {
+            lua_pushvalue(L, -1)  /* copy of module */
+            lua_setglobal(L, name)  /* _G[modname] = module */
+        }
+    }
+
+    // unsafe version, function must not error
+    private func requiref_unsafe(name: UnsafePointer<CChar>!, function: lua_CFunction, global: Bool = true) {
         luaL_requiref(self, name, function, global ? 1 : 0)
         pop()
     }

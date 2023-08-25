@@ -167,5 +167,25 @@ This will add a constant called `lua_sources` to your target which contains the 
 
 ```swift
 L = LuaState(libraries: .all)
+L.setRequireRoot(nil) // Disable system search paths
 L.addModules(lua_sources)
+```
+
+Assuming your project contained a file called `example.lua`, you can now do:
+
+```lua
+require("example")
+```
+
+Or, if you need to load the Lua code from Swift:
+
+```swift
+try L.load(data: lua_sources["example"]!, mode: .binary)
+try L.pcall(nargs: 0, nret: 0) // Or nret: 1 if the file returns a table of module fns, etc
+
+// or:
+
+try L.requiref(name: "example") {
+    try L.load(data: lua_sources["example"]!, mode: .binary)
+}
 ```

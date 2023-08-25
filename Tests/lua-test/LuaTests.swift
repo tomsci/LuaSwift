@@ -920,6 +920,19 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(ret.tostring(), "hello")
     }
 
+    func test_lua_sources_requiref() throws {
+        let lua_sources = [
+            "test": """
+                print("Hello from module land!")
+                return "hello"
+                """.map { $0.asciiValue! }
+        ]
+        try L.requiref(name: "test") {
+            try L.load(data: lua_sources["test"]!, name: "test", mode: .text)
+        }
+        XCTAssertEqual(L.globals["test"].tostring(), "hello")
+    }
+
     func test_len() throws {
         L.push(1234) // 1
         L.push("woop") // 2

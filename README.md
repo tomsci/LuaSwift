@@ -163,7 +163,9 @@ There is another option, which is to compile your .lua files into generated Swif
     )
 ```
 
-This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's source tree. This doesn't handle nested modules (everything is assumed to be a top-level module) or support exclusions or customisations, yet. Pass this to `addModules` when you construct your `LuaState`:
+This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's sources. Add and exclude Lua files with `sources` and `exclude` directives in your Target, as if they were Swift files to be compiled. This doesn't handle nested modules yet - everything is assumed to be a top-level module, currently.
+
+Pass `lua_sources` to `addModules` when you construct your `LuaState`:
 
 ```swift
 L = LuaState(libraries: .all)

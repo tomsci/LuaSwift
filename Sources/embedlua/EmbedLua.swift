@@ -48,7 +48,11 @@ struct EmbedLua {
             result.append("\n    \"\(baseName)\": \(escape(data)),")
 
         }
-        result.append("\n]")
+        if inputs.count == 0 {
+            result.append(":]")
+        } else {
+            result.append("\n]")
+        }
 
         try! result.write(toFile: output, atomically: true, encoding: .utf8)
     }

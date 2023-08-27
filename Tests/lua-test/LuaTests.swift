@@ -552,7 +552,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pushany() {
-
         L.push(any: 1234)
         XCTAssertEqual(L.toany(1) as? Int, 1234)
         L.pop()
@@ -588,7 +587,6 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pushany_table() {
-
         let stringArray = ["abc", "def"]
         L.push(any: stringArray)
         let stringArrayResult: [String]? = L.tovalue(1)
@@ -618,10 +616,14 @@ final class LuaTests: XCTestCase {
         let arrayDictDictResult: [[String : [Int : String]]]? = L.tovalue(1)
         XCTAssertEqual(arrayDictDictResult, arrayDictDict)
         L.pop()
+
+        let intDict = [11: [], 22: ["22a", "22b"], 33: ["3333"]]
+        L.push(any: intDict)
+        let intDictResult: [Int: [String]]? = L.tovalue(1)
+        XCTAssertEqual(intDictResult, intDict)
     }
 
     func test_push_closure() throws {
-
         var called = false
         L.push(closure: {
             called = true

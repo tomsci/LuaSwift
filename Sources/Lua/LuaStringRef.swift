@@ -12,11 +12,11 @@ public struct LuaStringRef {
         self.index = L.absindex(index)
     }
 
-    public func toString(encoding: ExtendedStringEncoding? = nil) -> String? {
-        return L.tostring(index, encoding: encoding)
+    public func toString() -> String? {
+        return L.tostring(index)
     }
 
-    public func toData() -> Data {
+    public func toData() -> [UInt8] {
         return L.todata(index)! // Definitely won't error (assuming index still valid) as type has already been checked
     }
 

@@ -1,7 +1,6 @@
 // Copyright (c) 2023 Tom Sutcliffe
 // See LICENSE file for license information.
 
-import Foundation
 import CLua
 
 /// A Swift type which holds a reference to a Lua value.
@@ -127,37 +126,16 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return result
     }
 
-    public func todata() -> Data? {
+    public func todata() -> [UInt8]? {
         push(state: L)
         let result = L.todata(-1)
         L.pop()
         return result
     }
 
-    public func tostring(encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
+    public func tostring(convert: Bool = false) -> String? {
         push(state: L)
-        let result = L.tostring(-1, encoding: encoding, convert: convert)
-        L.pop()
-        return result
-    }
-
-    public func tostring(encoding: String.Encoding, convert: Bool = false) -> String? {
-        push(state: L)
-        let result = L.tostring(-1,  encoding: encoding, convert: convert)
-        L.pop()
-        return result
-    }
-
-    public func tostringarray(encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> [String]? {
-        push(state: L)
-        let result = L.tostringarray(-1, encoding: encoding, convert: convert)
-        L.pop()
-        return result
-    }
-
-    public func tostringarray(encoding: String.Encoding, convert: Bool = false) -> [String]? {
-        push(state: L)
-        let result = L.tostringarray(-1, encoding: encoding, convert: convert)
+        let result = L.tostring(-1, convert: convert)
         L.pop()
         return result
     }

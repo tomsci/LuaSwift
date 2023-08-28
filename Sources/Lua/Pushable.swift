@@ -2,7 +2,6 @@
 // See LICENSE file for license information.
 
 import CLua
-import Foundation
 
 /// Protocol adopted by all fundamental Swift types that can unambiguously be converted to basic Lua types.
 public protocol Pushable {
@@ -49,18 +48,9 @@ extension Double: Pushable {
     }
 }
 
-extension Data: Pushable {
-    public func push(state L: LuaState!) {
-        self.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> Void in
-            let chars = buf.bindMemory(to: CChar.self)
-            lua_pushlstring(L, chars.baseAddress, chars.count)
-        }
-    }
-}
-
 extension String: Pushable {
     public func push(state L: LuaState!) {
-        L.push(string: self, encoding: L.getDefaultStringEncoding())
+        L.push(string: self)
     }
 }
 

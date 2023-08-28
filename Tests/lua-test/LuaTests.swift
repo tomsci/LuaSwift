@@ -117,6 +117,26 @@ final class LuaTests: XCTestCase {
         L.push("Hello")
         L.push("A ü†ƒ8 string")
         L.push(1234)
+
+        XCTAssertEqual(L.tostring(1, convert: false), "Hello")
+        XCTAssertEqual(L.tostring(2, convert: false), "A ü†ƒ8 string")
+        XCTAssertEqual(L.tostring(3, convert: false), nil)
+        XCTAssertEqual(L.tostring(3, convert: true), "1234")
+
+        XCTAssertEqual(L.tostringUtf8(1, convert: false), "Hello")
+        XCTAssertEqual(L.tostringUtf8(2, convert: false), "A ü†ƒ8 string")
+        XCTAssertEqual(L.tostringUtf8(3, convert: false), nil)
+        XCTAssertEqual(L.tostringUtf8(3, convert: true), "1234")
+
+        L.push(utf8String: "A ü†ƒ8 string")
+        XCTAssertTrue(L.rawequal(2, 4))
+        L.pop()
+
+#if !LUASWIFT_NO_FOUNDATION
+        L.push(string: "A ü†ƒ8 string", encoding: .utf8)
+        XCTAssertTrue(L.rawequal(2, 4))
+        L.pop()
+
         L.push(string: "îsø", encoding: .isoLatin1)
 
         XCTAssertEqual(L.tostring(1, encoding: .utf8, convert: false), "Hello")
@@ -128,6 +148,7 @@ final class LuaTests: XCTestCase {
 
         L.setDefaultStringEncoding(.stringEncoding(.isoLatin1))
         XCTAssertEqual(L.tostring(4), "îsø") // this should now succeed
+#endif
     }
 
     func test_ipairs() {

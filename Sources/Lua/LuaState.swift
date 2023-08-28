@@ -1,7 +1,9 @@
 // Copyright (c) 2023 Tom Sutcliffe
 // See LICENSE file for license information.
 
+#if !LUASWIFT_NO_FOUNDATION
 import Foundation
+#endif
 import CLua
 
 /// Provides swift wrappers for the underlying `lua_State` C APIs.
@@ -23,44 +25,10 @@ public typealias LuaState = UnsafeMutablePointer<lua_State>
 
 public typealias lua_Integer = CLua.lua_Integer
 
-// That this should be necessary is a sad commentary on how string encodings are handled in Swift...
-public enum ExtendedStringEncoding {
-    case stringEncoding(String.Encoding)
-    case cfStringEncoding(CFStringEncodings)
-}
-
-public extension String {
-    init?(data: Data, encoding: ExtendedStringEncoding) {
-        switch encoding {
-        case .stringEncoding(let enc):
-            self.init(data: data, encoding: enc)
-        case .cfStringEncoding(let enc):
-            let nsenc =  CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(enc.rawValue))
-            if let nsstring = NSString(data: data, encoding: nsenc) {
-                self.init(nsstring)
-            } else {
-                return nil
-            }
-        }
-    }
-
-    func data(using encoding: ExtendedStringEncoding) -> Data? {
-        switch encoding {
-        case .stringEncoding(let enc):
-            return self.data(using: enc)
-        case .cfStringEncoding(let enc):
-            let nsstring = self as NSString
-            let nsenc = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(enc.rawValue))
-            return nsstring.data(using: nsenc)
-        }
-    }
-}
-
 fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
     return L.convertThrowToError {
-        let pathRoot = L.tostring(lua_upvalueindex(1), encoding: .utf8)!
-        let displayPrefix = L.tostring(lua_upvalueindex(2), encoding: .utf8)!
-        guard let module = L.tostring(1, encoding: .utf8) else {
+        let pathRoot = L.tostringUtf8(lua_upvalueindex(1))!
+        guard let module = L.tostringUtf8(1) else {
             L.pushnil()
             return 1
         }
@@ -69,13 +37,13 @@ fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
         let relPath = parts.joined(separator: "/") + ".lua"
         let path = pathRoot + "/" + relPath
 
-        if let data = FileManager.default.contents(atPath: path) {
-            try L.load(data: data, name: "@" + displayPrefix + relPath, mode: .text)
+        do {
+            try L.load(file: path, mode: .text)
             return 1
-        } else {
-            L.push("\n\tno resource '\(module)'")
+        } catch LuaLoadError.fileNotFound {
+            L.push("\n\tno file '\(path)'")
             return 1
-        }
+        } // Otherwise throw
     }
 }
 
@@ -159,68 +127,6 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_close(self)
     }
 
-    private class _State {
-        var defaultStringEncoding = ExtendedStringEncoding.stringEncoding(.utf8)
-        var metatableDict = Dictionary<String, Array<Any.Type>>()
-        var userdataMetatables = Set<UnsafeRawPointer>()
-        var luaValues = Dictionary<CInt, UnownedLuaValue>()
-
-        deinit {
-            for (_, val) in luaValues {
-                val.val.L = nil
-            }
-        }
-    }
-
-    private func getState() -> _State {
-        if let state = maybeGetState() {
-            return state
-        }
-        let state = _State()
-        // Register a metatable for this type with a fixed name to avoid infinite recursion of getMetatableName
-        // trying to call getState()
-        let mtName = "LuaState._State"
-        doRegisterMetatable(typeName: mtName, functions: [:])
-        state.userdataMetatables.insert(lua_topointer(self, -1))
-        pop() // metatable
-        pushuserdata(state, metatableName: mtName)
-        lua_rawsetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
-
-        // While we're here, register ClosureWrapper
-        // Are we doing too much non-deferred initialization in getState() now?
-        registerMetatable(for: ClosureWrapper.self, functions: [:])
-
-        return state
-    }
-
-    private func maybeGetState() -> _State? {
-        lua_rawgetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
-        var result: _State? = nil
-        // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
-        // safe because we know the value of StateRegistryKey does not need checking.
-        if let state: _State = unchecked_touserdata(-1) {
-            result = state
-        }
-        pop()
-        return result
-    }
-
-    /// Override the default string encoding.
-    ///
-    /// See `getDefaultStringEncoding()`. If this function is not called, the default encoding is assumed to be UTF-8.
-    func setDefaultStringEncoding(_ encoding: ExtendedStringEncoding) {
-        getState().defaultStringEncoding = encoding
-    }
-
-    /// Get the default string encoding.
-    ///
-    /// This is the encoding which Lua strings are assumed to be in if an explicit encoding is not supplied when
-    /// converting strings to or from Lua, for example when calling `tostring()` or `push(<string>)`. By default, it is
-    /// assumed all Lua strings are (or should be) UTF-8.
-    func getDefaultStringEncoding() -> ExtendedStringEncoding {
-        return maybeGetState()?.defaultStringEncoding ?? .stringEncoding(.utf8)
-    }
-
     func openLibraries(_ libraries: Libraries) {
         if libraries.contains(.package) {
             requiref_unsafe(name: "package", function: luaopen_package)
@@ -260,9 +166,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter path: The root directory containing .lua files. Specify `nil` to disable all module loading (except
     ///   for any preloads configured with `addModules()`).
-    /// - Parameter displayPrefix: Optional string to prefix onto paths shown in for example error messages.
     /// - Precondition: The `package` standard library must have been opened.
-    func setRequireRoot(_ path: String?, displayPrefix: String = "") {
+    func setRequireRoot(_ path: String?) {
         let L = self
         // Now configure the require path
         guard getglobal("package") == .table else {
@@ -271,7 +176,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
         // Set package.path even though our moduleSearcher doesn't use it
         if let path {
-            L.push(string: path + "/?.lua", encoding: .utf8)
+            L.push(utf8String: path + "/?.lua")
         } else {
             L.pushnil()
         }
@@ -279,9 +184,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
         lua_getfield(L, -1, "searchers")
         if let path {
-            L.push(string: path, encoding: .utf8)
-            L.push(string: displayPrefix, encoding: .utf8)
-            lua_pushcclosure(L, moduleSearcher, 2) // pops path.path
+            L.push(utf8String: path)
+            lua_pushcclosure(L, moduleSearcher, 1) // pops path.path
         } else {
             pushnil()
         }
@@ -383,10 +287,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return lua_absindex(self, index)
     }
 
+    /// See [lua_isnone](https://www.lua.org/manual/5.4/manual.html#lua_isnone).
     func isnone(_ index: CInt) -> Bool {
         return type(index) == nil
     }
 
+    /// See [lua_isnoneornil](https://www.lua.org/manual/5.4/manual.html#lua_isnoneornil).
     func isnoneornil(_ index: CInt) -> Bool {
         if let t = type(index) {
             return t == .nilType
@@ -396,16 +302,18 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     func pop(_ nitems: CInt = 1) {
-        // For performance Lua does check this itself, but it leads to such weird errors further down the line it's
-        // worth guarding against here
+        // For performance Lua doesn't check this itself, but it leads to such weird errors further down the line it's
+        // worth trying to catch here.
         precondition(gettop() - nitems >= 0, "Attempt to pop more items from the stack than it contains")
         lua_pop(self, nitems)
     }
 
+    /// See [lua_gettop](https://www.lua.org/manual/5.4/manual.html#lua_gettop).
     func gettop() -> CInt {
         return lua_gettop(self)
     }
 
+    /// See [lua_settop](https://www.lua.org/manual/5.4/manual.html#lua_settop).
     func settop(_ top: CInt) {
         lua_settop(self, top)
     }
@@ -447,20 +355,24 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Convert the value at the given stack index into a Swift `Data`.
+    /// Convert the value at the given stack index into raw bytes.
     ///
     /// If the value is is not a Lua string this returns `nil`.
     ///
     /// - Parameter index: The stack index.
-    /// - Returns: the value as a `Data`, or `nil` if the value was not a Lua `string`.
-    func todata(_ index: CInt) -> Data? {
-        let L = self
+    /// - Returns: the value as a `UInt8` array, or `nil` if the value was not a Lua `string`.
+    func todata(_ index: CInt) -> [UInt8]? {
         // Check the type to avoid lua_tolstring potentially mutating a number (why does Lua still do this?)
         if type(index) == .string {
             var len: Int = 0
-            let ptr = lua_tolstring(L, index, &len)!
-            let buf = UnsafeBufferPointer(start: ptr, count: len)
-            return Data(buffer: buf)
+            let charptr = lua_tolstring(self, index, &len)!
+            let lstrbuf = UnsafeBufferPointer(start: charptr, count: len)
+            return lstrbuf.withMemoryRebound(to: UInt8.self) { stringBuffer in
+                return Array<UInt8>(unsafeUninitializedCapacity: len) { arrayBuffer, initializedCount in
+                    let _ = arrayBuffer.initialize(fromContentsOf: stringBuffer)
+                    initializedCount = len
+                }
+            }
         } else {
             return nil
         }
@@ -468,54 +380,67 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Convert the value at the given stack index into a Swift `String`.
     ///
-    /// If the value is is not a Lua string and `convert` is false, or if the
-    /// string data cannot be converted to the specified encoding, this returns
-    /// `nil`. If `convert` is true, `nil` will only be returned if the string
-    /// failed to be decoded using `encoding`.
+    /// If the value is is not a Lua string and `convert` is `false`, or if the string data cannot be converted to the
+    /// default encoding, this returns `nil`. If `convert` is true, `nil` will only be returned if the string failed to
+    /// parse in the default encoding.
+    ///
+    /// - Note: If `LUASWIFT_NO_FOUNDATION` is defined, the default encoding is always UTF-8.
     ///
     /// - Parameter index: The stack index.
-    /// - Parameter encoding: The encoding to use to decode the string data, or `nil` to use the default encoding.
-    /// - Parameter convert: If true and the value at the given index is not a
-    ///   Lua string, it will be converted to a string (invoking `__tostring`
-    ///   metamethods if necessary) before being decoded.
-    /// - Returns: the value as a String, or `nil` if it could not be converted.
-    func tostring(_ index: CInt, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
-        let enc = encoding ?? getDefaultStringEncoding()
-        if let data = todata(index) {
-            return String(data: data, encoding: enc)
+    /// - Parameter convert: If true and the value at the given index is not a Lua string, it will be converted to a
+    ///   string (invoking `__tostring` metamethods if necessary) before being decoded. If a metamethod errors, returns
+    ///   `nil`.
+    /// - Returns: The value as a `String`, or `nil` if it could not be converted.
+    func tostring(_ index: CInt, convert: Bool = false) -> String? {
+#if LUASWIFT_NO_FOUNDATION
+        if var data = todata(index) {
+            data.append(0) // Must be null terminated for String(utf8String:)
+            return data.withUnsafeBufferPointer { buf in
+                return buf.withMemoryRebound(to: CChar.self) { ccharbuf in
+                    return String(utf8String: ccharbuf.baseAddress!)
+                }
+            }
         } else if convert {
-            var len: Int = 0
-            let ptr = luaL_tolstring(self, index, &len)!
-            let buf = UnsafeBufferPointer(start: ptr, count: len)
-            let result = String(data: Data(buffer: buf), encoding: enc)
-            pop() // the val from luaL_tolstring
-            return result
+            let tostringfn: lua_CFunction = { (L: LuaState!) in
+                var len: Int = 0
+                let ptr = luaL_tolstring(L, 1, &len)
+                lua_pushlstring(L, ptr, len)
+                return 1
+            }
+            push(tostringfn)
+            lua_pushvalue(self, index)
+            do {
+                try pcall(nargs: 1, nret: 1)
+            } catch {
+                return nil
+            }
+            defer {
+                pop()
+            }
+            return tostring(-1, convert: false)
         } else {
             return nil
         }
+#else
+        return tostring(index, encoding: nil, convert: convert)
+#endif
     }
 
-    func tostring(_ index: CInt, encoding: String.Encoding, convert: Bool = false) -> String? {
-        return tostring(index, encoding: .stringEncoding(encoding), convert: convert)
-    }
-
-    func tostringarray(_ index: CInt, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> [String]? {
-        guard type(index) == .table else {
-            return nil
-        }
-        var result: [String] = []
-        for _ in ipairs(index) {
-            if let val = tostring(-1, encoding: encoding, convert: convert) {
-                result.append(val)
-            } else {
-                break
-            }
-        }
-        return result
-    }
-
-    func tostringarray(_ index: CInt, encoding: String.Encoding, convert: Bool = false) -> [String]? {
-        return tostringarray(index, encoding: .stringEncoding(encoding), convert: convert)
+    /// Convert a Lua value to a UTF-8 string.
+    ///
+    /// - Note: If `LUASWIFT_NO_FOUNDATION` is defined, this function behaves identically to `tostring()`.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Parameter convert: If true and the value at the given index is not a Lua string, it will be converted to a
+    ///   string (invoking `__tostring` metamethods if necessary) before being decoded. If a metamethod errors, returns
+    ///   `nil`.
+    /// - Returns: The value as a `String`, or `nil` if it could not be converted.
+    func tostringUtf8(_ index: CInt, convert: Bool = false) -> String? {
+#if LUASWIFT_NO_FOUNDATION
+        return tostring(index, convert: convert)
+#else
+        return tostring(index, encoding: .utf8, convert: convert)
+#endif
     }
 
     /// Convert a value on the Lua stack to a Swift `Any`.
@@ -662,24 +587,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return getfield(index, key: key, self.toboolean) ?? false
     }
 
-    func todata(_ index: CInt, key: String) -> Data? {
+    func todata(_ index: CInt, key: String) -> [UInt8]? {
         return getfield(index, key: key, self.todata)
     }
 
-    func tostring(_ index: CInt, key: String, encoding: String.Encoding, convert: Bool = false) -> String? {
-        return tostring(index, key: key, encoding: .stringEncoding(encoding), convert: convert)
-    }
-
-    func tostring(_ index: CInt, key: String, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
-        return getfield(index, key: key, { tostring($0, encoding: encoding, convert: convert) })
-    }
-
-    func tostringarray(_ index: CInt, key: String, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> [String]? {
-        return getfield(index, key: key, { tostringarray($0, encoding: encoding, convert: convert) })
-    }
-
-    func tostringarray(_ index: CInt, key: String, encoding: String.Encoding, convert: Bool = false) -> [String]? {
-        return tostringarray(index, key: key, encoding: .stringEncoding(encoding), convert: convert)
+    func tostring(_ index: CInt, key: String, convert: Bool = false) -> String? {
+        return getfield(index, key: key, { tostring($0, convert: convert) })
     }
 
     // MARK: - Iterators
@@ -846,7 +759,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// // c 3
     /// // a 1
     /// ```
-    /// 
+    ///
     /// The Lua stack may be used during the loop providing the indexes `1` to `k` inclusive are not modified.
     ///
     /// - Parameter index: Stack index of the table to iterate.
@@ -927,17 +840,29 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    func push(string: String, encoding: String.Encoding) {
-        push(string: string, encoding: .stringEncoding(encoding))
+    func push(string: String) {
+#if LUASWIFT_NO_FOUNDATION
+        let data = Array<UInt8>(string.utf8)
+        push(data)
+#else
+        push(string: string, encoding: getDefaultStringEncoding())
+#endif
     }
 
-    func push(string: String, encoding: ExtendedStringEncoding) {
-        guard let data = string.data(using: encoding) else {
-            assertionFailure("Cannot represent string in the given encoding?!")
-            pushnil()
-            return
+    func push(utf8String string: String) {
+#if LUASWIFT_NO_FOUNDATION
+        push(string: string)
+#else
+        push(string: string, encoding: .utf8)
+#endif
+    }
+
+    func push(_ data: [UInt8]) {
+        data.withUnsafeBytes { rawBuf in
+            rawBuf.withMemoryRebound(to: CChar.self) { charBuf -> Void in
+                lua_pushlstring(self, charBuf.baseAddress, charBuf.count)
+            }
         }
-        push(data)
     }
 
     func push(_ fn: lua_CFunction) {
@@ -1140,7 +1065,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Dictionary members are recursively converted using `push(any:)`. `Void` (ie the empty tuple) is pushed as `nil`.
     ///
     /// Note, due to limitations in Swift type inference only zero-argument closures that return `Void` or `Any?` can be
-    /// pushed as Lua functions (using `push(closure:)`), any other closure will be pushed as a `userdata`.
+    /// pushed as Lua functions (using `push(closure:)`). `lua_CFunction` is pushed directly as a function. Any other
+    /// closure will be pushed as a `userdata`.
     ///
     /// Any other type is pushed as a `userdata` using `push(userdata:)`.
     ///
@@ -1159,6 +1085,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             push(pushable)
         case let str as String: // HACK for _NSCFString not being Pushable??
             push(str)
+#if !LUASWIFT_NO_FOUNDATION
         case let num as NSNumber: // Ditto for _NSCFNumber
             if let int = num as? Int {
                 push(int)
@@ -1169,7 +1096,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 // a non-optional Double. The double-parenthesis tells it we know what we're doing.
                 push((num as! Double))
             }
-        case let data as Data: // Presumably this is needed too for NSData...
+        case let data as ContiguousBytes:
+            push(bytes: data)
+#endif
+        case let data as [UInt8]:
             push(data)
         case let array as Array<Any>:
             lua_createtable(self, CInt(array.count), 0)
@@ -1184,6 +1114,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 push(any: v)
                 lua_settable(self, -3)
             }
+        case let function as lua_CFunction:
+            push(function)
         case let closure as () throws -> ():
             push(closure: closure)
         case let closure as () throws -> (Any?):
@@ -1380,7 +1312,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         if t != .table && t != .userdata {
             return nil // Prevent lua_gettable erroring
         }
-        push(string: key, encoding: .ascii)
+        push(utf8String: key)
         let _ = lua_gettable(self, absidx)
         let result = accessor(-1)
         pop()
@@ -1641,6 +1573,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// See [lua_rawequal](https://www.lua.org/manual/5.4/manual.html#lua_rawequal).
+    func rawequal(_ index1: CInt, _ index2: CInt) -> Bool {
+        return lua_rawequal(self, index1, index2) != 0
+    }
+
     // MARK: - Loading code
 
     enum LoadMode: String {
@@ -1658,7 +1595,17 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened.
     /// - Throws: `LuaLoadError.parseError` if the file cannot be parsed.
     func load(file path: String, mode: LoadMode = .text) throws {
-        let err = luaL_loadfilex(self, FileManager.default.fileSystemRepresentation(withPath: path), mode.rawValue)
+        var err: CInt = 0
+#if LUASWIFT_NO_FOUNDATION
+        var ospath = Array<UInt8>(path.utf8)
+        ospath.append(0) // Zero-terminate the path
+        ospath.withUnsafeBytes { ptr in
+            let cpath = ptr.bindMemory(to: CChar.self)
+            err = luaL_loadfilex(self, cpath.baseAddress!, mode.rawValue)
+        }
+#else
+        err = luaL_loadfilex(self, FileManager.default.fileSystemRepresentation(withPath: path), mode.rawValue)
+#endif
         if err == LUA_ERRFILE {
             throw LuaLoadError.fileNotFound
         } else if err == LUA_ERRSYNTAX {
@@ -1678,7 +1625,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
     /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
-    func load(data: ContiguousBytes, name: String?, mode: LoadMode = .text) throws {
+    func load(data: [UInt8], name: String?, mode: LoadMode = .text) throws {
         var err: CInt = 0
         data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
             let chars = ptr.bindMemory(to: CChar.self)
@@ -1697,10 +1644,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// On return, the function representing the file is left on the top of the stack.
     ///
-    /// - Parameter data: The data to load.
+    /// - Parameter string: The Lua script to load.
     /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
     func load(string: String, name: String? = nil) throws {
-        try load(data: string.data(using: .utf8)!, name: name, mode: .text)
+        try load(data: Array<UInt8>(string.utf8), name: name, mode: .text)
     }
 
     /// Load a Lua chunk from file with `load(file:mode:)` and execute it.
@@ -1719,6 +1666,55 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
 // package internal (but not private) API
 extension UnsafeMutablePointer where Pointee == lua_State {
+
+    class _State {
+#if !LUASWIFT_NO_FOUNDATION
+        var defaultStringEncoding = ExtendedStringEncoding.stringEncoding(.utf8)
+#endif
+        var metatableDict = Dictionary<String, Array<Any.Type>>()
+        var userdataMetatables = Set<UnsafeRawPointer>()
+        var luaValues = Dictionary<CInt, UnownedLuaValue>()
+
+        deinit {
+            for (_, val) in luaValues {
+                val.val.L = nil
+            }
+        }
+    }
+
+    func getState() -> _State {
+        if let state = maybeGetState() {
+            return state
+        }
+        let state = _State()
+        // Register a metatable for this type with a fixed name to avoid infinite recursion of getMetatableName
+        // trying to call getState()
+        let mtName = "LuaState._State"
+        doRegisterMetatable(typeName: mtName, functions: [:])
+        state.userdataMetatables.insert(lua_topointer(self, -1))
+        pop() // metatable
+        pushuserdata(state, metatableName: mtName)
+        lua_rawsetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
+
+        // While we're here, register ClosureWrapper
+        // Are we doing too much non-deferred initialization in getState() now?
+        registerMetatable(for: ClosureWrapper.self, functions: [:])
+
+        return state
+    }
+
+    func maybeGetState() -> _State? {
+        lua_rawgetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
+        var result: _State? = nil
+        // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
+        // safe because we know the value of StateRegistryKey does not need checking.
+        if let state: _State = unchecked_touserdata(-1) {
+            result = state
+        }
+        pop()
+        return result
+    }
+
     func unref(_ ref: CInt) {
         getState().luaValues[ref] = nil
         luaL_unref(self, LUA_REGISTRYINDEX, ref)

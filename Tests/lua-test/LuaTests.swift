@@ -984,4 +984,31 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(err as? LuaValueError, .nilValue)
         })
     }
+
+    func test_todecodable() throws {
+        L.push(1234) // 1
+        L.push(true) // 2
+        L.push("hello") // 3
+        L.push(123.456) // 4
+        L.pushnil() // 5
+        L.push(["hello": 123, "world": 456]) // 6
+        L.push(any: ["bar": "sheep", "baz": 321, "bat": [true, false]] as [String : Any]) // 7
+
+        struct Foo: Equatable, Codable {
+            let bar: String
+            let baz: Int
+            let bat: [Bool]
+        }
+
+        XCTAssertEqual(L.todecodable(1, Int.self), 1234)
+        XCTAssertEqual(L.todecodable(1, Int16.self), 1234)
+        XCTAssertEqual(L.todecodable(1, Bool.self), nil)
+        XCTAssertEqual(L.todecodable(2, Bool.self), true)
+        XCTAssertEqual(L.todecodable(2, Int.self), nil)
+        XCTAssertEqual(L.todecodable(3, String.self), "hello")
+        XCTAssertEqual(L.todecodable(4, Double.self), 123.456)
+        XCTAssertEqual(L.todecodable(5, Bool.self), nil)
+        XCTAssertEqual(L.todecodable(6, Dictionary<String, Int>.self), ["hello": 123, "world": 456])
+        XCTAssertEqual(L.todecodable(7, Foo.self), Foo(bar: "sheep", baz: 321, bat: [true, false]))
+    }
 }

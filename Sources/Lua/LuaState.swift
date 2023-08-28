@@ -572,6 +572,24 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return typedPtr.pointee as? T
     }
 
+    /// Convert a value on the stack to the specified `Decodable` type.
+    ///
+    /// If `T` is a composite struct or class type, the Lua representation must be a table with members corresponding
+    /// to the Swift member names. Userdata values, or tables containing userdatas, are not convertible using this
+    /// function - use `touserdata()` ot `tovalue()` instead.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Parameter type: The `Decodable` type to convert to.
+    /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
+    func todecodable<T: Decodable>(_ index: Int32, _ type: T.Type) -> T? {
+        let top = gettop()
+        defer {
+            settop(top)
+        }
+        let decoder = LuaDecoder(state: self, index: index, codingPath: [])
+        return try? decoder.decode(T.self)
+    }
+
     // MARK: - Convenience dict fns
     // assumes key is an ascii string
 

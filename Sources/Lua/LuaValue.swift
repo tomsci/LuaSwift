@@ -282,14 +282,11 @@ public class LuaValue: Equatable, Hashable, Pushable {
         try self.checkValid()
         push(state: L)
         try Self.checkTopIsIndexable(L)
-        // Don't call lua_gettable directly, it can error
-        L.push { L in
-            lua_gettable(L, 1)
-            return 1
+        defer {
+            L.pop()
         }
-        lua_insert(L, -2) // Move the fn below self
         L.push(any: key)
-        try L.pcall(nargs: 2, nret: 1)
+        try L.gettable(-2)
         return L.popref()
     }
 

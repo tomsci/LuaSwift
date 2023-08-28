@@ -1319,6 +1319,28 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return result
     }
 
+    /// Wrapper around [lua_gettable](http://www.lua.org/manual/5.4/manual.html#lua_gettable).
+    ///
+    /// Any errors caused by the value not being indexable or a metafield erroring are converted to a Swift error.
+    /// Otherwise, the resulting value is pushed onto the stack.
+    ///
+    /// - Parameter index: The stack index of the table.
+    /// - Returns: The type of the resulting value.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_gettable`.
+    @discardableResult
+    func gettable(_ index: CInt) throws -> LuaType {
+        let absidx = absindex(index)
+        push { L in
+            lua_gettable(L, 1)
+            return 1
+        }
+        lua_insert(self, -2) // Move the fn below key
+        lua_pushvalue(self, absidx)
+        lua_insert(self, -2) // move tbl below key
+        try pcall(nargs: 2, nret: 1)
+        return type(-1)!
+    }
+
     /// Sets a key on the table on the top of the stack.
     ///
     /// Does not invoke metamethods, thus will not error.

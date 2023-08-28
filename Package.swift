@@ -64,6 +64,7 @@ let package = Package(
             publicHeadersPath: "include",
             cSettings: [
                 .define("LUA_USE_POSIX"),
+                .define("LUA_USE_IOS", .when(platforms: [.iOS])),
                 .headerSearchPath("lua"),
             ]
         ),

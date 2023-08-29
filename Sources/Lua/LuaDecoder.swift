@@ -162,11 +162,10 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
     }
 
     func decode<T>(_ type: T.Type) throws -> T where T : Decodable {
-        // Not sure what this is here for tbh...
 #if !LUASWIFT_NO_FOUNDATION
         if type == Data.self {
             try checkType(type, .string)
-            return L.todata(index)! as! T
+            return Data(L.todata(index)!) as! T
         }
 #endif
         return try T(from: self)

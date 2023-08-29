@@ -591,26 +591,25 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     // MARK: - Convenience dict fns
-    // assumes key is an ascii string
 
     func toint(_ index: CInt, key: String) -> Int? {
-        return getfield(index, key: key, self.toint)
+        return get(index, key: key, self.toint)
     }
 
     func tonumber(_ index: CInt, key: String) -> Double? {
-        return getfield(index, key: key, self.tonumber)
+        return get(index, key: key, self.tonumber)
     }
 
     func toboolean(_ index: CInt, key: String) -> Bool {
-        return getfield(index, key: key, self.toboolean) ?? false
+        return get(index, key: key, self.toboolean) ?? false
     }
 
     func todata(_ index: CInt, key: String) -> [UInt8]? {
-        return getfield(index, key: key, self.todata)
+        return get(index, key: key, self.todata)
     }
 
     func tostring(_ index: CInt, key: String, convert: Bool = false) -> String? {
-        return getfield(index, key: key, { tostring($0, convert: convert) })
+        return get(index, key: key, { tostring($0, convert: convert) })
     }
 
     // MARK: - Iterators
@@ -1322,31 +1321,49 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
     }
 
-    // MARK: - Misc functions
+    // MARK: - get/set functions
 
-    func getfield<T>(_ index: CInt, key: String, _ accessor: (CInt) -> T?) -> T? {
+    /// Wrapper around [lua_rawget](http://www.lua.org/manual/5.4/manual.html#lua_rawget).
+    ///
+    /// - Precondition: The value at `index` must be a table.
+    /// - Parameter index: The stack index of the table.
+    /// - Returns: The type of the resulting value.
+    @discardableResult
+    func rawget(_ index: CInt) -> LuaType {
+        precondition(type(index) == .table)
+        return LuaType(rawValue: lua_rawget(self, index))!
+    }
+
+    /// Convenience function which calls `rawget(_:)` using `key` as the key.
+    ///
+    /// - Precondition: The value at `index` must be a table.
+    /// - Parameter index: The stack index of the table.
+    /// - Parameter key: The key to look up in the table.
+    /// - Returns: The type of the resulting value.
+    @discardableResult
+    func rawget<K: Pushable>(_ index: CInt, key: K) -> LuaType {
         let absidx = absindex(index)
-        let t = self.type(absidx)
-        if t != .table && t != .userdata {
-            return nil // Prevent lua_gettable erroring
-        }
-        push(utf8String: key)
-        let _ = lua_gettable(self, absidx)
+        push(key)
+        return rawget(absidx)
+    }
+
+    /// Look up a value using `rawget` and convert it to `T` using the given accessor.
+    func rawget<K: Pushable, T>(_ index: CInt, key: K, _ accessor: (CInt) -> T?) -> T? {
+        rawget(index, key: key)
         let result = accessor(-1)
         pop()
         return result
     }
 
-    /// Wrapper around [lua_gettable](http://www.lua.org/manual/5.4/manual.html#lua_gettable).
+    /// Pushes onto the stack the value `tbl[key]`. May invoke metamethods.
     ///
-    /// Any errors caused by the value not being indexable or a metafield erroring are converted to a Swift error.
-    /// Otherwise, the resulting value is pushed onto the stack.
+    /// Where `tbl` is the table at `index` on the stack and `key` is the value on the top of the stack.
     ///
     /// - Parameter index: The stack index of the table.
     /// - Returns: The type of the resulting value.
     /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_gettable`.
     @discardableResult
-    func gettable(_ index: CInt) throws -> LuaType {
+    func get(_ index: CInt) throws -> LuaType {
         let absidx = absindex(index)
         push { L in
             lua_gettable(L, 1)
@@ -1359,17 +1376,126 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return type(-1)!
     }
 
-    /// Sets a key on the table on the top of the stack.
+    /// Pushes onto the stack the value `tbl[key]`. May invoke metamethods.
     ///
-    /// Does not invoke metamethods, thus will not error.
+    /// Where `tbl` is the table at `index` on the stack.
     ///
-    /// - Precondition: The value on the top of the stack must be a table.
-    func setfield<S, T>(_ key: S, _ value: T) where S: Pushable, T: Pushable {
-        precondition(type(-1) == .table, "Cannot call setfield on something that isn't a table")
-        self.push(key)
-        self.push(value)
-        lua_rawset(self, -3)
+    /// - Parameter index: The stack index of the table.
+    /// - Parameter key: The key to look up in the table.
+    /// - Returns: The type of the resulting value.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_gettable`.
+    @discardableResult
+    func get<K: Pushable>(_ index: CInt, key: K) throws -> LuaType {
+        let absidx = absindex(index)
+        push(key)
+        return try get(absidx)
     }
+
+    /// Look up a value `tbl[key]` and convert it to `T` using the given accessor.
+    ///
+    /// Where `tbl` is the table at `index` on the stack.
+    ///
+    /// - Parameter index: The stack index of the table.
+    /// - Parameter key: The key to look up in the table.
+    /// - Parameter accessor: A function which takes a stack index and returns a `T?`.
+    /// - Returns: The type of the resulting value.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_gettable`.
+    func get<K: Pushable, T>(_ index: CInt, key: K, _ accessor: (CInt) -> T?) -> T? {
+        if let _ = try? get(index, key: key) {
+            let result = accessor(-1)
+            pop()
+            return result
+        } else {
+            return nil
+        }
+    }
+
+    /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack, `val` is the value on the top of the stack, and `key` is the
+    /// value just below the top.
+    ///
+    /// - Precondition: The value at `index` must be a table.
+    func rawset(_ index: CInt) {
+        precondition(type(index) == .table, "Cannot call rawset on something that isn't a table")
+        lua_rawset(self, index)
+    }
+
+    /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack, and `val` is the value on the top of the stack.
+    ///
+    /// - Parameter key: The key to use.
+    /// - Precondition: The value at `index` must be a table.
+    func rawset<K: Pushable>(_ index: CInt, key: K) {
+        let absidx = absindex(index)
+        // val on top of stack
+        push(key)
+        lua_insert(self, -2) // Push key below val
+        rawset(absidx)
+    }
+
+    /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack.
+    ///
+    /// - Parameter key: The key to use.
+    /// - Parameter value: The value to set.
+    /// - Precondition: The value at `index` must be a table.
+    func rawset<K: Pushable, V: Pushable>(_ index: CInt, key: K, value: V) {
+        let absidx = absindex(index)
+        push(key)
+        push(value)
+        rawset(absidx)
+    }
+
+    /// Performs `tbl[key] = val`. May invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack, `val` is the value on the top of the stack, and `key` is the
+    /// value just below the top.
+    ///
+    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
+    func set(_ index: CInt) throws {
+        let absidx = absindex(index)
+        push { L in
+            lua_settable(L, 1)
+            return 0
+        }
+        lua_insert(self, -3) // Move the fn below key and val
+        lua_pushvalue(self, absidx)
+        lua_insert(self, -3) // move tbl below key and val
+        try pcall(nargs: 3, nret: 0)
+    }
+
+    /// Performs `tbl[key] = val`. May invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack and `val` is the value on the top of the stack
+    ///
+    /// - Parameter key: The key to use.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
+    func set<K: Pushable>(_ index: CInt, key: K) throws {
+        let absidx = absindex(index)
+        // val on top of stack
+        push(key)
+        lua_insert(self, -2) // Push key below val
+        try set(absidx)
+    }
+
+    /// Performs `tbl[key] = val`. May invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack and `val` is the value on the top of the stack
+    ///
+    /// - Parameter key: The key to use.
+    /// - Parameter value: The value to set.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
+    func set<K: Pushable, V: Pushable>(_ index: CInt, key: K, value: V) throws {
+        let absidx = absindex(index)
+        push(key)
+        push(value)
+        try set(absidx)
+    }
+
+    // MARK: - Misc functions
 
     @discardableResult
     func getglobal(_ name: UnsafePointer<CChar>) -> LuaType {

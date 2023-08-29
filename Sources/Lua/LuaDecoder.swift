@@ -215,7 +215,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
 
         func decoderForKey<LocalKey: CodingKey>(_ key: LocalKey) throws -> LuaDecoder {
             decoder.push(key: key)
-            try decoder.L.gettable(decoder.index)
+            try decoder.L.get(decoder.index)
             var newPath = self.codingPath
             newPath.append(key)
             return decoder.nestedDecoderForIndex(-1, codingPath: newPath)
@@ -233,7 +233,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
 
         func contains(_ key: Key) -> Bool {
             decoder.push(key: key)
-            let t = try? decoder.L.gettable(decoder.index)
+            let t = try? decoder.L.get(decoder.index)
             if let t {
                 decoder.L.pop() // the result
                 return t != .nilType

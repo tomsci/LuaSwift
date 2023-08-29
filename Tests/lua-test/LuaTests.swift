@@ -812,7 +812,7 @@ final class LuaTests: XCTestCase {
 
         lua_newuserdatauv(L, 4, 0) // will become udref
         lua_newtable(L) // udref's metatable
-        L.setfield("__index", ref)
+        L.rawset(-1, key: "__index", value: ref)
         lua_setmetatable(L, -2) // pops metatable
         // udref is now a userdata with an __index metafield that points to ref
         let udref = L.ref(index: -1)
@@ -915,7 +915,7 @@ final class LuaTests: XCTestCase {
 
     func test_setModules() throws {
         let mod = """
-            print("Hello from module land!")
+            -- print("Hello from module land!")
             return "hello"
             """.map { $0.asciiValue! }
         // To be extra awkward, we call addModules before opening package (which sets up the package loaders) to
@@ -1010,5 +1010,66 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.todecodable(5, Bool.self), nil)
         XCTAssertEqual(L.todecodable(6, Dictionary<String, Int>.self), ["hello": 123, "world": 456])
         XCTAssertEqual(L.todecodable(7, Foo.self), Foo(bar: "sheep", baz: 321, bat: [true, false]))
+    }
+
+    func test_get_set() throws {
+        L.push([11, 22, 33, 44, 55])
+        // Do all accesses here with negative indexes to make sure they are handled right.
+
+        L.push(2)
+        XCTAssertEqual(L.rawget(-2), .number)
+        XCTAssertEqual(L.gettop(), 2)
+        XCTAssertEqual(L.toint(-1), 22)
+        L.pop()
+        XCTAssertEqual(L.gettop(), 1)
+
+        L.rawget(-1, key: 3)
+        XCTAssertEqual(L.toint(-1), 33)
+        L.pop()
+        XCTAssertEqual(L.gettop(), 1)
+
+        L.push(2)
+        try L.get(-2)
+        XCTAssertEqual(L.toint(-1), 22)
+        L.pop()
+        XCTAssertEqual(L.gettop(), 1)
+
+        try L.get(-1, key: 3)
+        XCTAssertEqual(L.toint(-1), 33)
+        L.pop()
+        XCTAssertEqual(L.gettop(), 1)
+
+        L.push(6)
+        L.push(66)
+        L.rawset(-3)
+        XCTAssertEqual(L.gettop(), 1)
+        XCTAssertEqual(L.rawlen(-1), 6)
+        XCTAssertEqual(L.rawget(-1, key: 6, L.toint), 66)
+        XCTAssertEqual(L.gettop(), 1)
+
+        L.push(666)
+        L.rawset(-2, key: 6)
+        XCTAssertEqual(L.rawget(-1, key: 6, L.toint), 666)
+        XCTAssertEqual(L.gettop(), 1)
+
+        L.rawset(-1, key: 6, value: 6666)
+        XCTAssertEqual(L.gettop(), 1)
+        XCTAssertEqual(L.rawget(-1, key: 6, L.toint), 6666)
+        XCTAssertEqual(L.gettop(), 1)
+
+        L.push(1)
+        L.push(111)
+        try L.set(-3)
+        XCTAssertEqual(L.rawget(-1, key: 1, L.toint), 111)
+        XCTAssertEqual(L.gettop(), 1)
+
+        L.push(222)
+        try L.set(-2, key: 2)
+        XCTAssertEqual(L.rawget(-1, key: 2, L.toint), 222)
+        XCTAssertEqual(L.gettop(), 1)
+
+        try L.set(-1, key: 3, value: 333)
+        XCTAssertEqual(L.rawget(-1, key: 3, L.toint), 333)
+        XCTAssertEqual(L.gettop(), 1)
     }
 }

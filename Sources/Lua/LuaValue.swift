@@ -301,7 +301,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
             L.pop()
         }
         L.push(any: key)
-        try L.gettable(-2)
+        try L.get(-2)
         return L.popref()
     }
 

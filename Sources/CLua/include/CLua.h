@@ -155,4 +155,8 @@ int lua_gc3(lua_State* L, int what, int arg1, int arg2, int arg3) {
     return lua_gc(L, what, arg1, arg2, arg3);
 }
 
+LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename,
+                                             const char *displayname,
+                                             const char *mode);
+
 #endif /* clua_bridge_h */

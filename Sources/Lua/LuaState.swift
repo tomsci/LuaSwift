@@ -28,6 +28,7 @@ public typealias lua_Integer = CLua.lua_Integer
 fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
     return L.convertThrowToError {
         let pathRoot = L.tostringUtf8(lua_upvalueindex(1))!
+        let displayPrefix = L.tostringUtf8(lua_upvalueindex(2))!
         guard let module = L.tostringUtf8(1) else {
             L.pushnil()
             return 1
@@ -36,12 +37,13 @@ fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
         let parts = module.split(separator: ".", omittingEmptySubsequences: false)
         let relPath = parts.joined(separator: "/") + ".lua"
         let path = pathRoot + "/" + relPath
+        let displayPath = displayPrefix == "" ? relPath : displayPrefix + "/" + relPath
 
         do {
-            try L.load(file: path, mode: .text)
+            try L.load(file: path, displayPath: displayPath, mode: .text)
             return 1
         } catch LuaLoadError.fileNotFound {
-            L.push("\n\tno file '\(path)'")
+            L.push("no file '\(displayPath)'")
             return 1
         } // Otherwise throw
     }
@@ -166,8 +168,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter path: The root directory containing .lua files. Specify `nil` to disable all module loading (except
     ///   for any preloads configured with `addModules()`).
+    /// - Parameter displayPath: What to display in stacktraces instead of showing the full `path`. The default `""`
+    ///   means stacktraces will contain just the Lua module names. Pass in `path` or `nil` to show the unmodified real
+    ///   path.
     /// - Precondition: The `package` standard library must have been opened.
-    func setRequireRoot(_ path: String?) {
+    func setRequireRoot(_ path: String?, displayPath: String? = "") {
         let L = self
         // Now configure the require path
         guard getglobal("package") == .table else {
@@ -180,20 +185,21 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         } else {
             L.pushnil()
         }
-        lua_setfield(L, -2, "path")
+        L.rawset(-2, utf8Key: "path")
 
-        lua_getfield(L, -1, "searchers")
+        L.rawget(-1, utf8Key: "searchers")
         if let path {
             L.push(utf8String: path)
-            lua_pushcclosure(L, moduleSearcher, 1) // pops path.path
+            L.push(utf8String: displayPath ?? path)
+            lua_pushcclosure(L, moduleSearcher, 2) // pops path, displayPath
         } else {
             pushnil()
         }
-        lua_rawseti(L, -2, 2) // 2nd searcher is the .lua lookup one
+        L.rawset(-2, key: 2) // 2nd searcher is the .lua lookup one
         pushnil()
-        lua_rawseti(L, -2, 3) // And prevent 3 from being used
+        L.rawset(-2, key: 3) // And prevent 3 from being used
         pushnil()
-        lua_rawseti(L, -2, 4) // Ditto 4
+        L.rawset(-2, key: 4) // Ditto 4
         pop(2) // searchers, package
     }
 
@@ -1351,6 +1357,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return rawget(absidx)
     }
 
+    @discardableResult
+    func rawget(_ index: CInt, utf8Key key: String) -> LuaType {
+        let absidx = absindex(index)
+        push(utf8String: key)
+        return rawget(absidx)
+    }
+
     /// Look up a value using `rawget` and convert it to `T` using the given accessor.
     func rawget<K: Pushable, T>(_ index: CInt, key: K, _ accessor: (CInt) -> T?) -> T? {
         rawget(index, key: key)
@@ -1458,6 +1471,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         rawset(absidx)
     }
 
+    func rawset(_ index: CInt, utf8Key key: String) {
+        let absidx = absindex(index)
+        // val on top of stack
+        push(utf8String: key)
+        lua_insert(self, -2) // Push key below val
+        rawset(absidx)
+    }
+
     /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
     ///
     /// Where `tbl` is the table at `index` on the stack.
@@ -1468,6 +1489,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func rawset<K: Pushable, V: Pushable>(_ index: CInt, key: K, value: V) {
         let absidx = absindex(index)
         push(key)
+        push(value)
+        rawset(absidx)
+    }
+
+    func rawset<V: Pushable>(_ index: CInt, utf8Key key: String, value: V) {
+        let absidx = absindex(index)
+        push(utf8String: key)
         push(value)
         rawset(absidx)
     }
@@ -1780,20 +1808,21 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// On return, the function representing the file is left on the top of the stack.
     ///
     /// - Parameter file: Path to a Lua text or binary file.
+    /// - Parameter displayPath: If set, use this instead of `file` in Lua stacktraces.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
     /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened.
     /// - Throws: `LuaLoadError.parseError` if the file cannot be parsed.
-    func load(file path: String, mode: LoadMode = .text) throws {
+    func load(file path: String, displayPath: String? = nil, mode: LoadMode = .text) throws {
         var err: CInt = 0
 #if LUASWIFT_NO_FOUNDATION
         var ospath = Array<UInt8>(path.utf8)
         ospath.append(0) // Zero-terminate the path
         ospath.withUnsafeBytes { ptr in
             let cpath = ptr.bindMemory(to: CChar.self)
-            err = luaL_loadfilex(self, cpath.baseAddress!, mode.rawValue)
+            err = luaL_loadfilexx(self, cpath.baseAddress!, displayPath ?? path, mode.rawValue)
         }
 #else
-        err = luaL_loadfilex(self, FileManager.default.fileSystemRepresentation(withPath: path), mode.rawValue)
+        err = luaL_loadfilexx(self, FileManager.default.fileSystemRepresentation(withPath: path), displayPath ?? path, mode.rawValue)
 #endif
         if err == LUA_ERRFILE {
             throw LuaLoadError.fileNotFound

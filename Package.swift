@@ -63,8 +63,9 @@ let package = Package(
             ],
             publicHeadersPath: "include",
             cSettings: [
-                .define("LUA_USE_POSIX"),
-                .define("LUA_USE_IOS", .when(platforms: [.iOS])),
+                // LUA_USE_IOS sets LUA_USE_POSIX automatically meaning we have to avoid setting it on iOS...
+                .define("LUA_USE_POSIX", .when(platforms: [.macOS, .linux])),
+                .define("LUA_USE_IOS", .when(platforms: [.iOS, .macCatalyst])),
                 .headerSearchPath("lua"),
             ]
         ),

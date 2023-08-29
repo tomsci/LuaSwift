@@ -590,6 +590,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return try? decoder.decode(T.self)
     }
 
+    func todecodable<T: Decodable>(_ index: Int32) -> T? {
+        return todecodable(index, T.self)
+    }
+
     // MARK: - Convenience dict fns
 
     func toint(_ index: CInt, key: String) -> Int? {
@@ -1393,16 +1397,35 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Look up a value `tbl[key]` and convert it to `T` using the given accessor.
     ///
-    /// Where `tbl` is the table at `index` on the stack.
+    /// Where `tbl` is the table at `index` on the stack. If an error is thrown during the table lookup, `nil` is
+    /// returned.
     ///
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to look up in the table.
     /// - Parameter accessor: A function which takes a stack index and returns a `T?`.
-    /// - Returns: The type of the resulting value.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_gettable`.
+    /// - Returns: The resulting value.
     func get<K: Pushable, T>(_ index: CInt, key: K, _ accessor: (CInt) -> T?) -> T? {
         if let _ = try? get(index, key: key) {
             let result = accessor(-1)
+            pop()
+            return result
+        } else {
+            return nil
+        }
+    }
+
+    /// Look up a value `tbl[key]` and decode it using `todecodable<T>()`.
+    ///
+    /// Where `tbl` is the table at `index` on the stack. If an error is thrown during the table lookup or decode,
+    /// `nil` is returned.
+    ///
+    /// - Parameter index: The stack index of the table.
+    /// - Parameter key: The key to look up in the table.
+    /// - Parameter accessor: A function which takes a stack index and returns a `T?`.
+    /// - Returns: The resulting value.
+    func getdecodable<K: Pushable, T: Decodable>(_ index: CInt, key: K) -> T? {
+        if let _ = try? get(index, key: key) {
+            let result: T? = todecodable(-1)
             pop()
             return result
         } else {

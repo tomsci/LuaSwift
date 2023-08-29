@@ -167,6 +167,20 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// to the Swift member names. Userdata values, or tables containing userdatas, are not convertible using this
     /// function - use `touserdata()` ot `tovalue()` instead.
     ///
+    /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
+    func todecodable<T: Decodable>() -> T? {
+        push(state: L)
+        let result = L.todecodable(-1, T.self)
+        L.pop()
+        return result
+    }
+
+    /// Convert a value on the stack to the specified `Decodable` type.
+    ///
+    /// If `T` is a composite struct or class type, the Lua representation must be a table with members corresponding
+    /// to the Swift member names. Userdata values, or tables containing userdatas, are not convertible using this
+    /// function - use `touserdata()` ot `tovalue()` instead.
+    ///
     /// - Parameter type: The `Decodable` type to convert to.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
     func todecodable<T: Decodable>(_ type: T.Type) -> T? {

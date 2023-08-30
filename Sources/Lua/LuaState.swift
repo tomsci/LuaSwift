@@ -351,6 +351,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_settop(self, top)
     }
 
+    /// See [lua_checkstack](https://www.lua.org/manual/5.4/manual.html#lua_checkstack).
+    func checkstack(_ n: CInt) {
+        if (lua_checkstack(self, n) == 0) {
+            // This isn't really recoverable
+            fatalError("lua_checkstack failed!")
+        }
+    }
+
     // MARK: - to...() functions
 
     func toboolean(_ index: CInt) -> Bool {

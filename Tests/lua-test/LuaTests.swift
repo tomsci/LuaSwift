@@ -696,13 +696,14 @@ final class LuaTests: XCTestCase {
         // Test that more argument overloads of push(closure:) can be implemented if required by code not in the Lua
         // package.
         func push<Arg1, Arg2, Arg3, Arg4>(closure: @escaping (Arg1?, Arg2?, Arg3?, Arg4?) throws -> Any?) {
-            L.push(closureWrapper: { L in
+            L.push(ClosureWrapper({ L in
                 let arg1: Arg1? = try L.checkClosureArgument(index: 1)
                 let arg2: Arg2? = try L.checkClosureArgument(index: 2)
                 let arg3: Arg3? = try L.checkClosureArgument(index: 3)
                 let arg4: Arg4? = try L.checkClosureArgument(index: 4)
                 L.push(any: try closure(arg1, arg2, arg3, arg4))
-            })
+                return 1
+            }))
         }
         var gotArg4: String? = nil
         push(closure: { (arg1: Bool?, arg2: Int?, arg3: String?, arg4: String?) in

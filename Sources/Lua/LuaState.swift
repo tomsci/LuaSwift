@@ -62,6 +62,32 @@ fileprivate func tracebackFn(_ L: LuaState!) -> CInt {
     return 1
 }
 
+/// A class which wraps a Swift closure of type `LuaState -> CInt` and can be pushed as a Lua function.
+public class ClosureWrapper: Pushable {
+    var closure: Optional<(LuaState) throws -> CInt>
+
+    public init(_ closure: @escaping (LuaState) throws -> CInt) {
+        self.closure = closure
+    }
+
+    private static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
+        return L.convertThrowToError {
+            // In case closure errors, make sure not to increment ref count of ClosureWrapper. We know the instance
+            // will remain retained because of the upvalue, so this is safe.
+            let wrapper: Unmanaged<ClosureWrapper> = .passUnretained(L.tovalue(lua_upvalueindex(1))!)
+            guard let closure = wrapper.takeUnretainedValue().closure else {
+                fatalError("Attempt to call a ClosureWrapper after it has been explicitly nilled")
+            }
+            return try closure(L)
+        }
+    }
+
+    public func push(state L: LuaState) {
+        L.push(userdata: self)
+        lua_pushcclosure(L, Self.callClosure, 1)
+    }
+}
+
 /// A Swift enum of the Lua types.
 public enum LuaType : CInt {
     // Annoyingly can't use LUA_TNIL etc here because the bridge exposes them as `var LUA_TNIL: CInt { get }`
@@ -212,12 +238,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func addModules(_ modules: [String: [UInt8]], mode: LoadMode = .binary) {
         luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE)
         for (name, data) in modules {
-            push(closureWrapper: { L in
+            push(ClosureWrapper({ L in
                 let filename = name.replacingOccurrences(of: ".", with: "/")
                 try L.load(data: data, name: "@\(filename).lua", mode: mode)
                 L.push(name)
                 try L.pcall(nargs: 1, nret: 1)
-            })
+                return 1
+            }))
             lua_setfield(self, -2, name)
         }
         pop() // preload table
@@ -708,7 +735,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func for_ipairs(_ index: CInt, start: lua_Integer? = nil, _ block: (lua_Integer) throws -> Bool) throws {
         let absidx = absindex(index)
         try withoutActuallyEscaping(block) { escapingBlock in
-            let wrapper = makeClosureWrapper({ L in
+            let wrapper = ClosureWrapper({ L in
                 var i = start ?? 1
                 while true {
                     L.settop(1)
@@ -722,7 +749,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                     }
                     i = i + 1
                 }
-                L.pushnil() // ClosureWrapper.callClosure expects a result val, bah
+                return 0
             })
 
             // Must ensure closure does not actually escape, since we cannot rely on garbage collection of the upvalue
@@ -731,6 +758,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 wrapper.closure = nil
             }
 
+            push(wrapper)
             lua_pushvalue(self, absidx) // The value being iterated is the first (and only arg) to wrapper above
             try pcall(nargs: 1, nret: 0)
         }
@@ -896,24 +924,6 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_pushcfunction(self, fn)
     }
 
-    private class ClosureWrapper {
-        var closure: Optional<(LuaState) throws -> Void>
-
-        init(_ closure: @escaping (LuaState) throws -> Void) {
-            self.closure = closure
-        }
-
-        static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
-            return L.convertThrowToError {
-                // In case closure errors, make sure not to increment ref count of ClosureWrapper. We know the instance
-                // will remain retained because of the upvalue, so this is safe.
-                let wrapper: Unmanaged<ClosureWrapper> = .passUnretained(L.tovalue(lua_upvalueindex(1))!)
-                try wrapper.takeUnretainedValue().closure!(L)
-                return 1
-            }
-        }
-    }
-
     /// Pushes a zero-arguments closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call the `closure`, and convert any result to a Lua value using
@@ -931,9 +941,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// })
     /// ```
     func push(closure: @escaping () throws -> Any?) {
-        push(closureWrapper: { L in
+        push(ClosureWrapper({ L in
             L.push(any: try closure())
-        })
+            return 1
+        }))
     }
 
     /// Pushes a one-argument closure on to the stack as a Lua function.
@@ -956,10 +967,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
     func push<Arg1>(closure: @escaping (Arg1?) throws -> Any?) {
-        push(closureWrapper: { L in
+        push(ClosureWrapper({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             L.push(any: try closure(arg1))
-        })
+            return 1
+        }))
     }
 
     /// Pushes a two-argument closure on to the stack as a Lua function.
@@ -982,11 +994,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
     func push<Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Any?) {
-        push(closureWrapper: { L in
+        push(ClosureWrapper({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
             L.push(any: try closure(arg1, arg2))
-        })
+            return 1
+        }))
     }
 
     /// Pushes a three-argument closure on to the stack as a Lua function.
@@ -1009,25 +1022,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
     func push<Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Any?) {
-        push(closureWrapper: { L in
+        push(ClosureWrapper({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
             let arg3: Arg3? = try L.checkClosureArgument(index: 3)
             L.push(any: try closure(arg1, arg2, arg3))
-        })
-    }
-
-    /// Helper function used by implementations of `push(closure:)`.
-    func push(closureWrapper: @escaping (LuaState) throws -> Void) {
-        makeClosureWrapper(closureWrapper)
-    }
-
-    @discardableResult
-    private func makeClosureWrapper(_ closureWrapper: @escaping (LuaState) throws -> Void) -> ClosureWrapper {
-        let wrapper = ClosureWrapper(closureWrapper)
-        push(userdata: wrapper)
-        lua_pushcclosure(self, ClosureWrapper.callClosure, 1)
-        return wrapper
+            return 1
+        }))
     }
 
     /// Helper function used by implementations of `push(closure:)`.
@@ -1382,10 +1383,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     @discardableResult
     func get(_ index: CInt) throws -> LuaType {
         let absidx = absindex(index)
-        push { L in
+        push({ L in
             lua_gettable(L, 1)
             return 1
-        }
+        })
         lua_insert(self, -2) // Move the fn below key
         lua_pushvalue(self, absidx)
         lua_insert(self, -2) // move tbl below key
@@ -1508,10 +1509,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
     func set(_ index: CInt) throws {
         let absidx = absindex(index)
-        push { L in
+        push({ L in
             lua_settable(L, 1)
             return 0
-        }
+        })
         lua_insert(self, -3) // Move the fn below key and val
         lua_pushvalue(self, absidx)
         lua_insert(self, -3) // move tbl below key and val
@@ -1941,7 +1942,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     // Top of stack must have iterfn, state, initval
     func do_for_pairs(_ block: (CInt, CInt) throws -> Bool) throws {
         try withoutActuallyEscaping(block) { escapingBlock in
-            let wrapper = makeClosureWrapper({ L in
+            let wrapper = ClosureWrapper({ L in
                 // IMPORTANT: this closure uses unprotected lua_calls that may error. Therefore it must NOT put
                 // any non-trivial type onto the stack or rely on any Swift stack cleanup happening such as
                 // defer {...}.
@@ -1967,7 +1968,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                     // new k is in position 3 ready to go round loop again
                 }
                 L.settop(0)
-                L.pushnil() // ClosureWrapper.callClosure expects a result val, bah
+                return 0
             })
 
             // Must ensure closure does not actually escape, since we cannot rely on prompt garbage collection of the
@@ -1975,6 +1976,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             defer {
                 wrapper.closure = nil
             }
+            push(wrapper)
             lua_insert(self, -4) // Push wrapper below iterfn, state, initval
             try pcall(nargs: 3, nret: 0)
         }

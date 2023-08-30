@@ -7,13 +7,6 @@ import CLua
 import Foundation
 #endif
 
-//    func getfield<T: Decodable>(_ index: Int32, _ key: String, _ type: T.Type) -> T? {
-//        getfield(index, key: key) { index in
-//            tovalue(index, T.self)
-//        }
-//    }
-//
-
 struct LuaDecoder: Decoder, SingleValueDecodingContainer {
     private let L: LuaState
     private let index: CInt

@@ -91,7 +91,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// Pushes the value this `LuaValue` represents onto the Lua stack of `L`.
     ///
     /// - Note: `L` must be related to the `LuaState` used to construct the object.
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         precondition(self.L != nil, "LuaValue used after LuaState has been deinited!")
         lua_rawgeti(L, LUA_REGISTRYINDEX, lua_Integer(self.ref))
     }

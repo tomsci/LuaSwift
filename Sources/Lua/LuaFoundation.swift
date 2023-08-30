@@ -152,7 +152,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 }
 
 extension Data: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         L.push(bytes: self)
     }
 }

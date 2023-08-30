@@ -5,35 +5,35 @@ import CLua
 
 /// Protocol adopted by all fundamental Swift types that can unambiguously be converted to basic Lua types.
 public protocol Pushable {
-    func push(state L: LuaState!)
+    func push(state L: LuaState)
 }
 
 extension Bool: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         lua_pushboolean(L, self ? 1 : 0)
     }
 }
 
 extension Int: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         lua_pushinteger(L, lua_Integer(self))
     }
 }
 
 extension CInt: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         lua_pushinteger(L, lua_Integer(self))
     }
 }
 
 extension Int64: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         lua_pushinteger(L, self)
     }
 }
 
 extension UInt64: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         if self < 0x8000000000000000 {
             lua_pushinteger(L, lua_Integer(self))
         } else {
@@ -43,19 +43,19 @@ extension UInt64: Pushable {
 }
 
 extension Double: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         lua_pushnumber(L, self)
     }
 }
 
 extension String: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         L.push(string: self)
     }
 }
 
 extension Array: Pushable where Element: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         lua_createtable(L, CInt(self.count), 0)
         for (i, val) in self.enumerated() {
             val.push(state: L)
@@ -65,7 +65,7 @@ extension Array: Pushable where Element: Pushable {
 }
 
 extension Dictionary: Pushable where Key: Pushable, Value: Pushable {
-    public func push(state L: LuaState!) {
+    public func push(state L: LuaState) {
         lua_createtable(L, 0, CInt(self.count))
         for (k, v) in self {
             L.push(k)

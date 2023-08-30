@@ -1263,20 +1263,30 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return index! == 0 ? prefix : "\(prefix)[\(index!)]"
     }
 
-    private func doRegisterMetatable(typeName: String, functions: [String: lua_CFunction]) {
+    enum MetafieldType {
+        case function(lua_CFunction)
+        case closure((LuaState) -> CInt)
+    }
+
+    private func doRegisterMetatable(typeName: String, functions: [String: MetafieldType]) {
         precondition(functions["__gc"] == nil, "__gc function for Swift userdata types is registered automatically")
         if luaL_newmetatable(self, typeName) == 0 {
             fatalError("Metatable for type \(typeName) is already registered!")
         }
 
-        for (name, fn) in functions {
-            lua_pushcfunction(self, fn)
-            lua_setfield(self, -2, name)
+        for (name, function) in functions {
+            switch function {
+            case let .function(cfunction):
+                push(cfunction)
+            case let .closure(closure):
+                push(ClosureWrapper(closure))
+            }
+            rawset(-2, utf8Key: name)
         }
 
         if functions["__index"] == nil {
             lua_pushvalue(self, -1)
-            lua_setfield(self, -2, "__index")
+            rawset(-2, utf8Key: "__index")
         }
 
         lua_pushcfunction(self, gcUserdata)
@@ -1296,7 +1306,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// For example, to make a type `Foo` callable:
     ///
     ///     L.registerMetatable(for: Foo.self, functions: [
-    ///         "__call": : { L in
+    ///         "__call": .function { L in
     ///            print("TODO call support")
     ///            return 0
     ///        }
@@ -1306,7 +1316,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// created which refers to the metatable, thus additional items in `functions` are accessible Lua-side:
     ///
     ///     L.registerMetatable(for: Foo.self, functions: [
-    ///         "bar": : { L in
+    ///         "bar": .function { L in
     ///             print("This is a call to bar()!")
     ///             return 0
     ///         }
@@ -1316,7 +1326,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter type: Type to register.
     /// - Parameter functions: Map of functions.
     /// - Precondition: There must not already be a metatable defined for `type`.
-    func registerMetatable<T>(for type: T.Type, functions: [String: lua_CFunction]) {
+    func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
         doRegisterMetatable(typeName: getMetatableName(for: type), functions: functions)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
@@ -1326,8 +1336,16 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// explicit call to `registerMetatable`.
     ///
     /// - Parameter functions: map of functions
-    func registerDefaultMetatable(functions: [String: lua_CFunction]) {
+    func registerDefaultMetatable(functions: [String: MetafieldType]) {
         doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions)
+        getState().userdataMetatables.insert(lua_topointer(self, -1))
+        pop() // metatable
+    }
+
+    // Kept for compat
+    func registerDefaultMetatable(functions: [String: lua_CFunction]) {
+        let fns = functions.mapValues { MetafieldType.function($0) }
+        doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: fns)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
     }

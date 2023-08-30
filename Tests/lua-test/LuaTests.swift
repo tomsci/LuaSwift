@@ -520,7 +520,7 @@ final class LuaTests: XCTestCase {
             var member: String? = nil
         }
         L.registerMetatable(for: SomeClass.self, functions: [
-            "__call": { (L: LuaState!) -> CInt in
+            "__call": .function { (L: LuaState!) -> CInt in
                 guard let obj: SomeClass = L.touserdata(1) else {
                     fatalError("Shouldn't happen")
                 }
@@ -540,7 +540,7 @@ final class LuaTests: XCTestCase {
             var str: String?
         }
         let f = Foo()
-        L.registerMetatable(for: Foo.self, functions: ["__call": { (L: LuaState!) -> CInt in
+        L.registerMetatable(for: Foo.self, functions: ["__call": .function { (L: LuaState!) -> CInt in
             let f: Foo? = L.touserdata(1)
             // Above would have failed if we get called with an innerfoo
             XCTAssertNotNil(f)
@@ -554,7 +554,7 @@ final class LuaTests: XCTestCase {
             class Foo {
                 var str: String?
             }
-            L.registerMetatable(for: Foo.self, functions: ["__call": { (L: LuaState!) -> CInt in
+            L.registerMetatable(for: Foo.self, functions: ["__call": .function { (L: LuaState!) -> CInt in
                 let f: Foo? = L.touserdata(1)
                 // Above would have failed if we get called with an outerfoo
                 XCTAssertNotNil(f)
@@ -570,6 +570,21 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(g.str, "innerfoo")
             XCTAssertEqual(f.str, "outerfoo")
         }
+    }
+
+    func testClosureMetafields() throws {
+        struct Foo {}
+        var barCalled = false
+        L.registerMetatable(for: Foo.self, functions: [
+            "bar": .closure { L in
+                barCalled = true
+                return 0
+            }
+        ])
+        try L.load(string: "foo = ...; foo.bar()")
+        L.push(any: Foo())
+        try L.pcall(nargs: 1, nret: 0)
+        XCTAssertTrue(barCalled)
     }
 
     func test_pushany() {
@@ -801,7 +816,7 @@ final class LuaTests: XCTestCase {
     func test_ref_get_complexMetatable() throws {
         struct IndexableValue {}
         L.registerMetatable(for: IndexableValue.self, functions: [
-            "__index": { L in
+            "__index": .function { L in
                 return 1 // Ie just return whatever the key name was
             }
         ])
@@ -955,7 +970,7 @@ final class LuaTests: XCTestCase {
 
         class Foo {}
         L.registerMetatable(for: Foo.self, functions: [
-            "__len": { (L: LuaState!) -> CInt in
+            "__len": .closure { L in
                 L.push(42)
                 return 1
             },

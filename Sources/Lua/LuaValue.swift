@@ -49,13 +49,6 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// The type of the value this `LuaValue` represents.
     public let type: LuaType
 
-    init(L: LuaState, index: CInt) {
-        self.L = L
-        self.type = L.type(index)!
-        lua_pushvalue(L, index)
-        self.ref = luaL_ref(L, LUA_REGISTRYINDEX)
-    }
-
     // Takes ownership of an existing ref
     init(L: LuaState, ref: CInt, type: LuaType) {
         self.L = L

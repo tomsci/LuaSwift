@@ -419,13 +419,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+#if LUASWIFT_NO_FOUNDATION
     /// Convert the value at the given stack index into a Swift `String`.
     ///
-    /// If the value is is not a Lua string and `convert` is `false`, or if the string data cannot be converted to the
-    /// default encoding, this returns `nil`. If `convert` is true, `nil` will only be returned if the string failed to
-    /// parse in the default encoding.
-    ///
-    /// - Note: If `LUASWIFT_NO_FOUNDATION` is defined, the default encoding is always UTF-8.
+    /// If the value is is not a Lua string and `convert` is `false`, or if the string data cannot be converted to
+    /// UTF-8, this returns `nil`. If `convert` is true, `nil` will only be returned if the string failed to
+    /// parse as UTF-8.
     ///
     /// - Parameter index: The stack index.
     /// - Parameter convert: If true and the value at the given index is not a Lua string, it will be converted to a
@@ -433,7 +432,6 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   `nil`.
     /// - Returns: The value as a `String`, or `nil` if it could not be converted.
     func tostring(_ index: CInt, convert: Bool = false) -> String? {
-#if LUASWIFT_NO_FOUNDATION
         if var data = todata(index) {
             data.append(0) // Must be null terminated for String(utf8String:)
             return data.withUnsafeBufferPointer { buf in
@@ -442,14 +440,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 }
             }
         } else if convert {
-            let tostringfn: lua_CFunction = { (L: LuaState!) in
+            push({ L in
                 var len: Int = 0
                 let ptr = luaL_tolstring(L, 1, &len)
                 lua_pushlstring(L, ptr, len)
                 return 1
-            }
-            push(tostringfn)
-            lua_pushvalue(self, index)
+            })
+            push(index: index)
             do {
                 try pcall(nargs: 1, nret: 1)
             } catch {
@@ -462,10 +459,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         } else {
             return nil
         }
-#else
-        return tostring(index, encoding: nil, convert: convert)
-#endif
     }
+#endif
 
     /// Convert a Lua value to a UTF-8 string.
     ///
@@ -767,7 +762,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             }
 
             push(wrapper)
-            lua_pushvalue(self, absidx) // The value being iterated is the first (and only arg) to wrapper above
+            push(index: absidx) // The value being iterated is the first (and only arg) to wrapper above
             try pcall(nargs: 1, nret: 0)
         }
     }
@@ -884,7 +879,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: `LuaCallError` if a Lua error is raised during the execution of an iterator function or a `__pairs`
     ///   metafield, or if the value at `index` does not support indexing.
     func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Bool) throws {
-        lua_pushvalue(self, index) // The value being iterated
+        push(index: index) // The value being iterated
         try pushPairsParameters() // pops value, pushes iterfn, state, initval
         try do_for_pairs(block)
     }
@@ -893,6 +888,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     func pushnil() {
         lua_pushnil(self)
+    }
+
+    /// Pushes a copy of the element at the given index onto the top of the stack.
+    ///
+    /// - Parameter index: Stack index of the value to copy.
+    func push(index: CInt) {
+        lua_pushvalue(self, index)
     }
 
     func push<T>(_ value: T?) where T: Pushable {
@@ -1293,12 +1295,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
 
         if functions["__index"] == nil {
-            lua_pushvalue(self, -1)
+            push(index: -1)
             rawset(-2, utf8Key: "__index")
         }
 
-        lua_pushcfunction(self, gcUserdata)
-        lua_setfield(self, -2, "__gc")
+        push(gcUserdata)
+        rawset(-2, utf8Key: "__gc")
     }
 
     private static let DefaultMetatableName = "SwiftType_Any"
@@ -1414,7 +1416,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             return 1
         })
         lua_insert(self, -2) // Move the fn below key
-        lua_pushvalue(self, absidx)
+        push(index: absidx)
         lua_insert(self, -2) // move tbl below key
         try pcall(nargs: 2, nret: 1)
         return type(-1)!
@@ -1540,7 +1542,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             return 0
         })
         lua_insert(self, -3) // Move the fn below key and val
-        lua_pushvalue(self, absidx)
+        push(index: absidx)
         lua_insert(self, -3) // move tbl below key and val
         try pcall(nargs: 3, nret: 0)
     }
@@ -1590,16 +1592,15 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Does not leave the module on the stack.
     ///
     /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function.
-    func requiref(name: UnsafePointer<CChar>!, function: lua_CFunction, global: Bool = true) throws {
-        let wrapper: lua_CFunction = { (L: LuaState!) in
+    func requiref(name: String, function: lua_CFunction, global: Bool = true) throws {
+        push({ L in
             let name = lua_tostring(L, 1)
             let fn = lua_tocfunction(L, 2)
             let global = lua_toboolean(L, 3)
             luaL_requiref(L, name, fn, global)
             return 0
-        }
-        push(wrapper)
-        lua_pushstring(self, name)
+        })
+        push(utf8String: name)
         push(function)
         push(global)
         try pcall(nargs: 3, nret: 0)
@@ -1629,9 +1630,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         // There's just no reasonable way to shoehorn this into calling luaL_requiref, we have to unroll it...
         let L = self
         luaL_getsubtable(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE)
-        lua_getfield(L, -1, name)  /* LOADED[modname] */
+        rawget(-1, utf8Key: name)  /* LOADED[modname] */
         let loaded_idx = L.gettop()
         defer {
+            // Note unlike luaL_requiref we do not leave the module on the stack
             lua_remove(L, loaded_idx)
         }
         if (lua_toboolean(L, -1) == 0) {  /* package not already loaded? */
@@ -1642,7 +1644,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             precondition(L.gettop() == top + 1 && L.type(-1) == .function,
                          "requiref closure did not push a function onto the stack!")
 
-            lua_pushstring(L, name)  /* argument to open function */
+            push(utf8String: name)  /* argument to open function */
             try pcall(nargs: 1, nret: 1)  /* call 'openf' to open module */
             lua_pushvalue(L, -1)  /* make copy of module (call result) */
             lua_setfield(L, -3, name)  /* LOADED[modname] = module */
@@ -1667,10 +1669,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         for (name, fn) in fns {
             for _ in 0 ..< nup {
                 // copy upvalues to the top
-                lua_pushvalue(self, -nup)
+                push(index: -nup)
             }
             lua_pushcclosure(self, fn, nup)
-            lua_setfield(self, -(nup + 2), name)
+            rawset(-(nup + 2), utf8Key: name)
         }
         if nup > 0 {
             pop(nup)
@@ -1728,9 +1730,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: The stack index of the value.
     /// - Returns: A `LuaValue` representing the value at the given stack index.
     func ref(index: CInt) -> LuaValue {
-        let result = LuaValue(L: self, index: index)
-        if result.type != .nilType {
-            getState().luaValues[result.ref] = UnownedLuaValue(val: result)
+        push(index: index)
+        let type = type(-1)!
+        let ref = luaL_ref(self, LUA_REGISTRYINDEX)
+        let result = LuaValue(L: self, ref: ref, type: type)
+        if type != .nilType {
+            getState().luaValues[ref] = UnownedLuaValue(val: result)
         }
         return result
     }
@@ -1811,7 +1816,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 return nil
             }
         } else {
-            lua_pushvalue(self, index)
+            push(index: index)
             try pcall(nargs: 1, nret: 1)
             return tointeger(-1)
         }
@@ -1977,9 +1982,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 assert(L.gettop() == 3)
                 while true {
                     L.settop(3)
-                    lua_pushvalue(L, 1)
+                    L.push(index: 1)
                     lua_insert(L, 3) // put iterfn before k
-                    lua_pushvalue(L, 2)
+                    L.push(index: 2)
                     lua_insert(L, 4) // put state before k
                     // 3, 4, 5 is now iterfn copy, state copy, k
                     lua_call(L, 2, 2) // k, v = iterfn(state, k)

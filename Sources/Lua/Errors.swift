@@ -30,7 +30,9 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Localized
 
 /// Errors than can be thrown by `LuaState.load()`
 public enum LuaLoadError: Error, Equatable {
+    /// An error indicating that the specified file could not be found or opened.
     case fileNotFound
+    /// An error indicating that invalid Lua syntax was encountered during parsing.
     case parseError(String)
 }
 

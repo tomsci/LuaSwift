@@ -1642,8 +1642,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter global: Whether or not to set _G[name].
     /// - Parameter closure: This closure is called to push the module function onto the stack. Note, it will not be
     ///   called if a module called `name` is already loaded.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function.
-    /// - Throws: rethrows if `closure` throws.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function. Rethrows if `closure`
+    ///   throws.
     func requiref(name: String, global: Bool = true, closure: () throws -> Void) throws {
         // There's just no reasonable way to shoehorn this into calling luaL_requiref, we have to unroll it...
         let L = self
@@ -1881,8 +1881,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter file: Path to a Lua text or binary file.
     /// - Parameter displayPath: If set, use this instead of `file` in Lua stacktraces.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
-    /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened.
-    /// - Throws: `LuaLoadError.parseError` if the file cannot be parsed.
+    /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened. `LuaLoadError.parseError` if the file cannot
+    ///   be parsed.
     func load(file path: String, displayPath: String? = nil, mode: LoadMode = .text) throws {
         var err: CInt = 0
 #if LUASWIFT_NO_FOUNDATION
@@ -1945,8 +1945,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter file: Path to a Lua text or binary file.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
-    /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened.
-    /// - Throws: `LuaLoadError.parseError` if the file cannot be parsed.
+    /// - Throws: ``LuaLoadError/fileNotFound`` if `file` cannot be opened.
+    ///   ``LuaLoadError/parseError(_:)`` if the file cannot be parsed.
     func dofile(_ path: String, mode: LoadMode = .text) throws {
         try load(file: path, mode: mode)
         try pcall(nargs: 0, nret: LUA_MULTRET)

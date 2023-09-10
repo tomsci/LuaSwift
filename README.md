@@ -93,13 +93,16 @@ Swift structs and classes can be bridged into Lua in a type-safe and reference-c
 
 Each Swift type is assigned a Lua metatable, which defines which members the bridged object has and how to call them. A bridged type with no additional members defined will not be callable from Lua, but retains a reference to the Swift value until it is garbage collected.
 
-The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a `lua_CFunction` compatible "bar" closure which calls `Foo.bar()`. `tovalue<Foo>()` is used to convert the Lua value back to a Swift `Foo` type.
+The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a "bar" closure which calls `Foo.bar()`. `tovalue<Foo>()` is used to convert the Lua value back to a Swift `Foo` type. Note that by using the `.closure` type, "bar" is allowed to throw Swift errors which are converted to Lua errors.
 
 ```swift
 import Lua
 
 class Foo {
     let baz: String
+    init(baz: String) {
+        self.baz = baz
+    }
     func bar() {
         print("Foo.bar() called, baz=\(baz)")
     }
@@ -107,9 +110,11 @@ class Foo {
 
 let L = LuaState(libraries: [])
 L.registerMetatable(for: Foo.self, functions: [
-    "bar": { (L: LuaState!) -> CInt in
+    "bar": .closure { L in
         // Recover the `Foo` instance from the first argument to the function
-        let foo: Foo = L.tovalue(1)
+        guard let foo: Foo = L.tovalue(1) else {
+            throw L.error("Bad argument #1 to bar()")
+        }
         // Call the function
         foo.bar()
         // Tell Lua that this function returns zero results

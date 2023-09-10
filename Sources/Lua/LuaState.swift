@@ -63,6 +63,10 @@ fileprivate func tracebackFn(_ L: LuaState!) -> CInt {
 }
 
 /// A class which wraps a Swift closure of type `LuaState -> CInt` and can be pushed as a Lua function.
+///
+/// Normally you would call one of the `L.push(closure:)` overloads rather than using this class directly. It should
+/// only ever be pushed onto the Lua stack using the `Pushable` overload, eg `L.push(closureWrapper)` (or
+/// `closureWrapper.push(L)`) and not with `push(userdata:)` - it will not be callable when pushed as a `userdata`.
 public class ClosureWrapper: Pushable {
     var closure: Optional<(LuaState) throws -> CInt>
 
@@ -1275,7 +1279,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     enum MetafieldType {
         case function(lua_CFunction)
-        case closure((LuaState) -> CInt)
+        case closure((LuaState) throws -> CInt)
     }
 
     private func doRegisterMetatable(typeName: String, functions: [String: MetafieldType]) {
@@ -1305,13 +1309,19 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     private static let DefaultMetatableName = "SwiftType_Any"
 
-    /// Register a metatable for values of type `T` when they are pushed using
-    /// `push(userdata:)` or `push(any:)`. Note, attempting to register a
-    /// metatable for types that are bridged to Lua types (such as `Integer,`
-    /// or `String`), will not work with values pushed with `push(any:)` - if
-    /// you really need to do that, they must always be pushed with
-    /// `push(userdata:)` (at which point they cannot be used as normal Lua
-    /// numbers/strings/etc).
+    /// Register a metatable for values of type `T`.
+    ///
+    /// For when they are pushed using `push(userdata:)` or `push(any:)`. Note, attempting to register a metatable for
+    /// types that are bridged to Lua types (such as `Integer,` or `String`), will not work with values pushed with
+    /// `push(any:)` - if you really need to do that, they must always be pushed with `push(userdata:)` (at which point
+    /// they cannot be used as normal Lua numbers/strings/etc).
+    ///
+    /// Use `.function` to specify a `lua_CFunction` directly. You can use a Swift closure in lieu of a `lua_CFunction`
+    /// pointer providing it does not capture any variables and has the right signature, for example
+    /// `.function { (L: LuaState!) -> CInt in ... }`.
+    ///
+    /// Use `.closure { L in ... }` to specify an arbitrary Swift closure, which is both allowed to capture things, and
+    /// allowed to throw (it is called as if wrapped by `convertThrowToError()`).
     ///
     /// For example, to make a type `Foo` callable:
     ///
@@ -1342,6 +1352,16 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
     }
 
+    /// Returns true if `registerMetatable()` has already been called for `T`.
+    ///
+    /// Note, does not consider any metatable set with `registerDefaultMetatable()`.
+    func isMetatableRegistered<T>(for type: T.Type) -> Bool {
+        let name = getMetatableName(for: type)
+        let t = luaL_getmetatable(self, name)
+        pop()
+        return t == LUA_TTABLE
+    }
+
     /// Register a metatable to be used for all values which have not had an
     /// explicit call to `registerMetatable`.
     ///
@@ -1355,9 +1375,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     // Kept for compat
     func registerDefaultMetatable(functions: [String: lua_CFunction]) {
         let fns = functions.mapValues { MetafieldType.function($0) }
-        doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: fns)
-        getState().userdataMetatables.insert(lua_topointer(self, -1))
-        pop() // metatable
+        registerDefaultMetatable(functions: fns	)
     }
 
     // MARK: - get/set functions
@@ -1723,6 +1741,27 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func lua_error() -> Never {
         CLua.lua_error(self)
         fatalError() // Not reached
+    }
+
+    /// Returns an `Error` wrapping the given string.
+    ///
+    /// Which when caught by `convertThrowToError` will be converted back to a Lua error with exactly the given string
+    /// contents.
+    ///
+    /// This is useful in combination with `convertThrowToError` inside a `lua_CFunction` to safely throw a Lua error.
+    ///
+    /// Example:
+    ///
+    /// ```swift
+    /// func myluafn(_ L: LuaState!) -> CInt {
+    ///     return L.convertThrowToError {
+    ///         // ...
+    ///         throw L.error("Something error-worthy happened")
+    ///     }
+    /// }
+    /// ```
+    func error(_ string: String) -> some Error {
+        return LuaCallError(ref(any: string))
     }
 
     /// Convert a Lua value on the stack into a Swift object of type `LuaValue`. Does not pop the value from the stack.

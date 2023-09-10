@@ -519,6 +519,7 @@ final class LuaTests: XCTestCase {
         class SomeClass {
             var member: String? = nil
         }
+        XCTAssertFalse(L.isMetatableRegistered(for: SomeClass.self))
         L.registerMetatable(for: SomeClass.self, functions: [
             "__call": .function { (L: LuaState!) -> CInt in
                 guard let obj: SomeClass = L.touserdata(1) else {
@@ -528,6 +529,7 @@ final class LuaTests: XCTestCase {
                 return 0
             }
         ])
+        XCTAssertTrue(L.isMetatableRegistered(for: SomeClass.self))
         let val = SomeClass()
         L.push(userdata: val)
         try L.pcall("A string arg")
@@ -540,6 +542,7 @@ final class LuaTests: XCTestCase {
             var str: String?
         }
         let f = Foo()
+        XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
         L.registerMetatable(for: Foo.self, functions: ["__call": .function { (L: LuaState!) -> CInt in
             let f: Foo? = L.touserdata(1)
             // Above would have failed if we get called with an innerfoo
@@ -547,6 +550,7 @@ final class LuaTests: XCTestCase {
             f!.str = L.tostring(2)
             return 0
         }])
+        XCTAssertTrue(L.isMetatableRegistered(for: Foo.self))
         L.push(userdata: f)
 
         if true {
@@ -554,6 +558,7 @@ final class LuaTests: XCTestCase {
             class Foo {
                 var str: String?
             }
+            XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
             L.registerMetatable(for: Foo.self, functions: ["__call": .function { (L: LuaState!) -> CInt in
                 let f: Foo? = L.touserdata(1)
                 // Above would have failed if we get called with an outerfoo
@@ -561,6 +566,7 @@ final class LuaTests: XCTestCase {
                 f!.str = L.tostring(2)
                 return 0
             }])
+            XCTAssertTrue(L.isMetatableRegistered(for: Foo.self))
             let g = Foo()
             L.push(userdata: g)
 
@@ -1087,5 +1093,32 @@ final class LuaTests: XCTestCase {
         try L.set(-1, key: 3, value: 333)
         XCTAssertEqual(L.rawget(-1, key: 3, L.toint), 333)
         XCTAssertEqual(L.gettop(), 1)
+    }
+
+    // Just checking the readme example code compiles
+    func test_readme_bridge() throws {
+        class Foo {
+            let baz: String
+            init(baz: String) {
+                self.baz = baz
+            }
+            func bar() {
+                print("Foo.bar() called, baz=\(baz)")
+            }
+        }
+
+        let L = LuaState(libraries: [])
+        L.registerMetatable(for: Foo.self, functions: [
+            "bar": .closure { L in
+                // Recover the `Foo` instance from the first argument to the function
+                guard let foo: Foo = L.tovalue(1) else {
+                    throw L.error("Bad argument #1 to bar()")
+                }
+                // Call the function
+                foo.bar()
+                // Tell Lua that this function returns zero results
+                return 0
+            }
+        ])
     }
 }

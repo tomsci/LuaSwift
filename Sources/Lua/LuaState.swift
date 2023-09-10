@@ -243,7 +243,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE)
         for (name, data) in modules {
             push(ClosureWrapper({ L in
-                let filename = name.replacingOccurrences(of: ".", with: "/")
+                let filename = name.map { $0 == "." ? "/" : $0 }
                 try L.load(data: data, name: "@\(filename).lua", mode: mode)
                 L.push(name)
                 try L.pcall(nargs: 1, nret: 1)
@@ -440,7 +440,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             data.append(0) // Must be null terminated for String(utf8String:)
             return data.withUnsafeBufferPointer { buf in
                 return buf.withMemoryRebound(to: CChar.self) { ccharbuf in
-                    return String(utf8String: ccharbuf.baseAddress!)
+                    return String(validatingUTF8: ccharbuf.baseAddress!)
                 }
             }
         } else if convert {

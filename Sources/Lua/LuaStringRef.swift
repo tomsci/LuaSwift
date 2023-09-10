@@ -1,8 +1,6 @@
 // Copyright (c) 2023 Tom Sutcliffe
 // See LICENSE file for license information.
 
-import Foundation
-
 public struct LuaStringRef {
     let L: LuaState!
     let index: CInt

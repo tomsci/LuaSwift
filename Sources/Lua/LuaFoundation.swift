@@ -78,6 +78,20 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Convert the value at the given stack index into a Swift `String`.
+    ///
+    /// If the value is is not a Lua string and `convert` is `false`, or if the string data cannot be converted to the
+    /// specified encoding, this returns `nil`. If `convert` is true, `nil` will only be returned if the string failed
+    /// to parse using `encoding`.
+    ///
+    /// See also ``tostring(_:encoding:convert:)-6oudd`` to use encodings other than `String.Encoding`.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Parameter encoding: The encoding to use to decode the string data, or `nil` to use the default encoding.
+    /// - Parameter convert: If true and the value at the given index is not a Lua string, it will be converted to a
+    ///   string (invoking `__tostring` metamethods if necessary) before being decoded. If a metamethod errors, returns
+    ///   `nil`.
+    /// - Returns: the value as a `String`, or `nil` if it could not be converted.
     func tostring(_ index: CInt, encoding: String.Encoding, convert: Bool = false) -> String? {
         return tostring(index, encoding: .stringEncoding(encoding), convert: convert)
     }
@@ -92,12 +106,18 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Get the default string encoding.
     ///
     /// This is the encoding which Lua strings are assumed to be in if an explicit encoding is not supplied when
-    /// converting strings to or from Lua, for example when calling `tostring()` or `push(<string>)`. By default, it is
+    /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-6oudd`` or ``push(string:)``. By default, it is
     /// assumed all Lua strings are (or should be) UTF-8.
     func getDefaultStringEncoding() -> ExtendedStringEncoding {
         return maybeGetState()?.defaultStringEncoding ?? .stringEncoding(.utf8)
     }
 
+    /// Push a string onto the stack, using the specified encoding.
+    ///
+    /// See also ``push(string:encoding:)-6qhde`` to use encodings other than `String.Encoding`.
+    ///
+    /// - Parameter string: The `String` to push.
+    /// - Parameter encoding: The encoding to use to encode the string data.
     func push(string: String, encoding: String.Encoding) {
         push(string: string, encoding: .stringEncoding(encoding))
     }
@@ -115,9 +135,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         push(data)
     }
 
-    /// Push any type conforming to `ContiguousBytes` on to the stack, as a string.
+    /// Push any type conforming to `ContiguousBytes` on to the stack, as a Lua `string`.
     ///
-    /// - Parameter bytes: the data to push
+    /// - Parameter bytes: the data to push.
     func push(bytes: ContiguousBytes) {
         bytes.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> Void in
             let chars = buf.bindMemory(to: CChar.self)

@@ -4,16 +4,18 @@
 import CLua
 
 /// A Swift type which holds a reference to a Lua value.
-/// 
+///
+/// `LuaValue` is an alternative object-oriented way of interacting with Lua values. `LuaValue` objects may be used
+/// and passed around without worrying about what state the Lua stack is in - there is a little more runtime overhead
+/// in using them, but it can make code simpler. They can represent any Lua value (include nil) and support array and
+/// dictionary subscript operations (providing the underlying Lua value does).
+///
 /// The Lua value will not be collected as long as the `LuaValue` remains valid. The `LuaValue` object can be pushed
 /// back on to the Lua stack, or converted back to a Swift value using one of the `to...()` functions, which behave
 /// the same as the similarly-named members of `LuaState` that take a stack index.
 ///
-/// Using `LuaValue` objects to represent Lua values has (marginally) more overhead than working directly with stack
-/// indexes.
-///
 /// `LuaValue` supports indexing the Lua value using `get()` or the subscript operator, assuming the Lua type
-/// supports indexing - if it doesn't, a `LuaValueError` will be thrown. Because the subscript operator cannot throw,
+/// supports indexing - if it doesn't, a ``LuaValueError`` will be thrown. Because the subscript operator cannot throw,
 /// attempting to use it on a nil value or one that does not support indexing will cause a `fatalError` - use `get()`
 /// instead (which can throw) if the value might not support indexing. The following are equivalent:
 ///
@@ -23,7 +25,7 @@ import CLua
 /// ```
 ///
 /// Assuming the Lua value is callable, it can be called using `pcall()` or using the @dynamicCallable syntax. If it is
-/// not callable, `LuaValueError.notCallable` will be thrown.
+/// not callable, ``LuaValueError/notCallable`` will be thrown.
 ///
 /// ```swift
 /// let printFn = L.globals["print"]
@@ -297,9 +299,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Parameter key: The key to use for indexing.
     /// - Returns: The value associated with `key` as a `LuaValue`.
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
-    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
-    /// - Throws: ``LuaCallError`` if an error is thrown during a metatable `__index` call.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
+    ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
+    ///           ``LuaCallError`` if an error is thrown during a metatable `__index` call.
     public func get(_ key: Any) throws -> LuaValue {
         try self.checkValid()
         push(state: L)
@@ -314,10 +316,10 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     /// Returns the length of a value, as per the [length operator](https://www.lua.org/manual/5.4/manual.html#3.4.7).
     ///
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
-    /// - Throws: `LuaValueError.noLength` if the Lua value does not support the length operator, or `__len` did not
-    ///   return an integer.
-    /// - Throws: ``LuaCallError`` if an error is thrown during a metatable `__len` call.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
+    ///           ``LuaValueError/noLength`` if the Lua value does not support the length operator, or `__len` did not
+    ///           return an integer.
+    ///           ``LuaCallError`` if an error is thrown during a metatable `__len` call.
    public var len: lua_Integer {
        get throws {
            try self.checkValid()
@@ -359,9 +361,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Parameter key: The key to use for indexing.
     /// - Parameter value: The value to set. Can be nil to remove `key` from the table.
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
-    /// - Throws: `LuaValueError.notNewIndexable` if the Lua value does not support indexing.
-    /// - Throws: ``LuaCallError`` if an error is thrown during a metatable `__newindex` call.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
+    ///           ``LuaValueError/notNewIndexable`` if the Lua value does not support indexing.
+    ///           ``LuaCallError`` if an error is thrown during a metatable `__newindex` call.
     public func set(_ key: Any, _ value: Any?) throws {
         try self.checkValid()
         push(state: L)

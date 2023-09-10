@@ -1,6 +1,7 @@
 // Copyright (c) 2023 Tom Sutcliffe
 // See LICENSE file for license information.
 
+/// Placeholder type used by ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)`` when `guessType` is `false`.
 public struct LuaTableRef {
     let L: LuaState!
     let index: CInt

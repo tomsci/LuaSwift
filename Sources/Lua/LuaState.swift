@@ -6,21 +6,6 @@ import Foundation
 #endif
 import CLua
 
-/// Provides swift wrappers for the underlying `lua_State` C APIs.
-///
-/// Due to `LuaState` being an `extension` to `UnsafeMutablePointer<lua_State>`
-/// it can be either constructed using the explicit constructor provided, or
-/// any C `lua_State` obtained from anywhere can be treated as a `LuaState`
-/// Swift object.
-///
-/// Usage
-/// =====
-///
-/// ```swift
-/// let state = LuaState(libraries: .all)
-/// state.push(1234)
-/// assert(state.toint(-1)! == 1234)
-/// ```
 public typealias LuaState = UnsafeMutablePointer<lua_State>
 
 public typealias lua_Integer = CLua.lua_Integer
@@ -139,11 +124,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Note that because `LuaState` is defined as `UnsafeMutablePointer<lua_State>`, the state is _not_ automatically
     /// destroyed when it goes out of scope. You must call `close()`.
     ///
-    ///     let state = LuaState(libraries: .all)
+    /// ```swift
+    /// let state = LuaState(libraries: .all)
     ///
-    ///     // is equivalent to:
-    ///     let state = luaL_newstate()
-    ///     luaL_openlibs(state)
+    /// // is equivalent to:
+    /// let state = luaL_newstate()
+    /// luaL_openlibs(state)
+    /// ```
     ///
     /// - Parameter libraries: Which of the standard libraries to open.
     init(libraries: Libraries) {
@@ -320,6 +307,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return typename(type: lua_type(self, index))
     }
 
+    /// See [lua_absindex](https://www.lua.org/manual/5.4/manual.html#lua_absindex).
     func absindex(_ index: CInt) -> CInt {
         return lua_absindex(self, index)
     }
@@ -338,6 +326,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// See [lua_pop](https://www.lua.org/manual/5.4/manual.html#lua_pop).
+    ///
+    /// - Precondition: There must be at least `nitems` on the stack.
     func pop(_ nitems: CInt = 1) {
         // For performance Lua doesn't check this itself, but it leads to such weird errors further down the line it's
         // worth trying to catch here.
@@ -494,7 +485,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// * `table` is converted to `Dictionary<AnyHashable, Any>` if there are any non-integer keys in the table,
     ///   otherwise to `Array<Any>`.
     ///
-    /// If `guessType` is `false`, the placeholder types `LuaStringRef` and `LuaTableRef` are used for `string` and
+    /// If `guessType` is `false`, the placeholder types ``LuaStringRef`` and ``LuaTableRef`` are used for `string` and
     /// `table` values respectively.
     ///
     /// Regardless of `guessType`, `LuaValue` may be used to represent values that cannot be expressed as Swift types.
@@ -630,6 +621,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return try? decoder.decode(T.self)
     }
 
+    /// Convert a value on the stack to a `Decodable` type inferred from the return type.
+    ///
+    /// If `T` is a composite struct or class type, the Lua representation must be a table with members corresponding
+    /// to the Swift member names. Userdata values, or tables containing userdatas, are not convertible using this
+    /// function - use `touserdata()` ot `tovalue()` instead.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
     func todecodable<T: Decodable>(_ index: Int32) -> T? {
         return todecodable(index, T.self)
     }
@@ -689,19 +688,21 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Return a for-iterator that iterates the array part of a table.
+    /// Return a for-iterator that iterates the array part of a table, using raw accesses.
     ///
     /// Inside the for loop, each element will on the top of the stack and can be accessed using stack index -1. Indexes
     /// are done raw, in other words the `__index` metafield is ignored if the table has one.
     ///
-    ///     // Assuming { 11, 22, 33 } is on the top of the stack
-    ///     for i in L.ipairs(-1) {
-    ///         print("Index \(i) is \(L.toint(-1)!)")
-    ///     }
-    ///     // Prints:
-    ///     // Index 1 is 11
-    ///     // Index 2 is 22
-    ///     // Index 3 is 33
+    /// ```swift
+    /// // Assuming { 11, 22, 33 } is on the top of the stack
+    /// for i in L.ipairs(-1) {
+    ///     print("Index \(i) is \(L.toint(-1)!)")
+    /// }
+    /// // Prints:
+    /// // Index 1 is 11
+    /// // Index 2 is 22
+    /// // Index 3 is 33
+    /// ```
     ///
     /// - Parameter index:Stack index of the table to iterate.
     /// - Parameter start: If set, start iteration at this index rather than the
@@ -799,7 +800,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Return a for-iterator that will iterate all the members of a table.
+    /// Return a for-iterator that will iterate all the members of a table, using raw accesses.
     ///
     /// The values in the table are iterated in an unspecified order. Each time
     /// through the for loop, the iterator returns the indexes of the key and
@@ -890,6 +891,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - push() functions
 
+    /// Push a nil value onto the stack.
     func pushnil() {
         lua_pushnil(self)
     }
@@ -901,6 +903,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_pushvalue(self, index)
     }
 
+    /// Push anything which conforms to ``Pushable`` onto the stack.
+    ///
+    /// Parameter value: Any Swift value which conforms to ``Pushable``.
     func push<T>(_ value: T?) where T: Pushable {
         if let value = value {
             value.push(state: self)
@@ -909,6 +914,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Push a String onto the stack, using the default string encoding.
+    ///
+    /// See ``getDefaultStringEncoding()``.
     func push(string: String) {
 #if LUASWIFT_NO_FOUNDATION
         let data = Array<UInt8>(string.utf8)
@@ -918,6 +926,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 #endif
     }
 
+    /// Push a String onto the stack, using UTF-8 string encoding.
+    ///
+    /// - Note: If `LUASWIFT_NO_FOUNDATION` is defined, this function behaves identically to ``push(string:)``.
+    ///
     func push(utf8String string: String) {
 #if LUASWIFT_NO_FOUNDATION
         push(string: string)
@@ -926,6 +938,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 #endif
     }
 
+    /// Push a byte array onto the stack, as a Lua `string`.
+    ///
+    /// - Parameter data: the data to push.
     func push(_ data: [UInt8]) {
         data.withUnsafeBytes { rawBuf in
             rawBuf.withMemoryRebound(to: CChar.self) { charBuf -> Void in
@@ -934,6 +949,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Push a `lua_CFunction` onto the stack.
     func push(_ fn: lua_CFunction) {
         lua_pushcfunction(self, fn)
     }
@@ -1181,10 +1197,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   to keep all returned values.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution
-    ///   of the function.
-    /// - Precondition: The top of the stack must contain a function and `nargs`
-    ///   arguments.
+    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function.
+    /// - Precondition: The top of the stack must contain a function and `nargs` arguments.
     func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
         let index: CInt
         if traceback {
@@ -1206,19 +1220,17 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Convenience zero-result wrapper around `pcall(nargs:nret:traceback)`
+    /// Convenience zero-result wrapper around ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)``.
     ///
     /// Make a protected call to a Lua function that must already be pushed
-    /// onto the stack. Each of `arguments` is pushed using `push(any:)`. The
+    /// onto the stack. Each of `arguments` is pushed using ``push(any:)``. The
     /// function is popped from the stack and any results are discarded.
     ///
     /// - Parameter arguments: Arguments to pass to the Lua function.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution
-    ///   of the function.
-    /// - Precondition: The value at the top of the stack must refer to a Lua
-    ///   function or callable.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Precondition: The value at the top of the stack must refer to a Lua function or callable.
     func pcall(_ arguments: Any?..., traceback: Bool = true) throws {
         try pcall(arguments: arguments, traceback: traceback)
     }
@@ -1230,12 +1242,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         try pcall(nargs: CInt(arguments.count), nret: 0, traceback: traceback)
     }
 
-    /// Convenience one-result wrapper around `pcall(nargs:nret:traceback)`
+    /// Convenience one-result wrapper around ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)``.
     ///
     /// Make a protected call to a Lua function that must already be pushed
-    /// onto the stack. Each of `arguments` is pushed using `push(any:)`. The
+    /// onto the stack. Each of `arguments` is pushed using ``push(any:)``. The
     /// function is popped from the stack. All results are popped from the stack
-    /// and the first one is converted to `T` using `tovalue<T>()`. `nil` is
+    /// and the first one is converted to `T` using ``tovalue(_:)``. `nil` is
     /// returned if the result could not be converted to `T`.
     ///
     /// - Parameter arguments: Arguments to pass to the Lua function.
@@ -1243,10 +1255,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   full stack trace.
     /// - Returns: The first result of the function, converted if possible to a
     ///   `T`.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution
-    ///   of the function.
-    /// - Precondition: The value at the top of the stack must refer to a Lua
-    ///   function or callable.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Precondition: The value at the top of the stack must refer to a Lua function or callable.
     func pcall<T>(_ arguments: Any?..., traceback: Bool = true) throws -> T? {
         return try pcall(arguments: arguments, traceback: traceback)
     }
@@ -1391,11 +1401,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return LuaType(rawValue: lua_rawget(self, index))!
     }
 
-    /// Convenience function which calls `rawget(_:)` using `key` as the key.
+    /// Convenience function which calls ``rawget(_:)`` using `key` as the key.
     ///
     /// - Precondition: The value at `index` must be a table.
     /// - Parameter index: The stack index of the table.
-    /// - Parameter key: The key to look up in the table.
+    /// - Parameter key: The key to use.
     /// - Returns: The type of the resulting value.
     @discardableResult
     func rawget<K: Pushable>(_ index: CInt, key: K) -> LuaType {
@@ -1404,6 +1414,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return rawget(absidx)
     }
 
+    /// Convenience function which calls ``rawget(_:)`` using `utf8Key` as the key.
+    ///
+    /// - Precondition: The value at `index` must be a table.
+    /// - Parameter index: The stack index of the table.
+    /// - Parameter utf8Key: The key to use, which will always be pushed using UTF-8 encoding.
+    /// - Returns: The type of the resulting value.
     @discardableResult
     func rawget(_ index: CInt, utf8Key key: String) -> LuaType {
         let absidx = absindex(index)
@@ -1411,7 +1427,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return rawget(absidx)
     }
 
-    /// Look up a value using `rawget` and convert it to `T` using the given accessor.
+    /// Look up a value using ``rawget(_:key:)`` and convert it to `T` using the given accessor.
     func rawget<K: Pushable, T>(_ index: CInt, key: K, _ accessor: (CInt) -> T?) -> T? {
         rawget(index, key: key)
         let result = accessor(-1)
@@ -1540,6 +1556,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         rawset(absidx)
     }
 
+    /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack.
+    ///
+    /// - Parameter key: The key to use, which will always be pushed using UTF-8 encoding.
+    /// - Parameter value: The value to set.
+    /// - Precondition: The value at `index` must be a table.
     func rawset<V: Pushable>(_ index: CInt, utf8Key key: String, value: V) {
         let absidx = absindex(index)
         push(utf8String: key)
@@ -1595,8 +1618,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - Misc functions
 
+    /// Pushes the global called `name` onto the stack.
+    ///
+    /// - Parameter name: The name of the global to push onto the stack. The global name is always assumed to be in
+    ///   UTF-8 encoding.
     @discardableResult
-    func getglobal(_ name: UnsafePointer<CChar>) -> LuaType {
+    func getglobal(_ name: String) -> LuaType {
         return LuaType(rawValue: lua_getglobal(self, name))!
     }
 
@@ -1917,7 +1944,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter data: The data to load.
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
-    /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
+    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
     func load(data: [UInt8], name: String?, mode: LoadMode = .text) throws {
         var err: CInt = 0
         data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
@@ -1938,7 +1965,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// On return, the function representing the file is left on the top of the stack.
     ///
     /// - Parameter string: The Lua script to load.
-    /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
+    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
     func load(string: String, name: String? = nil) throws {
         try load(data: Array<UInt8>(string.utf8), name: name, mode: .text)
     }

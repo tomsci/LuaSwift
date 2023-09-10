@@ -1,10 +1,8 @@
 // Copyright (c) 2023 Tom Sutcliffe
 // See LICENSE file for license information.
 
-import Foundation // For LocalizedError
-
 /// An `Error` type representing an error thrown by Lua code.
-public struct LuaCallError: Error, Equatable, CustomStringConvertible, LocalizedError {
+public struct LuaCallError: Error, Equatable, CustomStringConvertible {
     init(_ error: LuaValue) {
         self.error = error
         // Construct this now in case the Error is not examined until the after the LuaState has gone out of scope
@@ -23,9 +21,6 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Localized
 
     // Conformance to CustomStringConvertible
     public var description: String { return errorString }
-
-    // Conformance to LocalizedError
-    public var errorDescription: String? { return self.description }
 }
 
 /// Errors than can be thrown by `LuaState.load()`
@@ -36,14 +31,13 @@ public enum LuaLoadError: Error, Equatable {
     case parseError(String)
 }
 
-extension LuaLoadError: CustomStringConvertible, LocalizedError {
+extension LuaLoadError: CustomStringConvertible {
     public var description: String {
         switch self {
         case .fileNotFound: return "LuaLoadError.fileNotFound"
         case .parseError(let err): return "LuaLoadError.parseError(\(err))"
         }
     }
-    public var errorDescription: String? { return self.description }
 }
 
 /// Errors that can be thrown while using `LuaValue` (in addition to ``Lua/LuaCallError``).
@@ -62,7 +56,7 @@ public enum LuaValueError: Error, Equatable {
     case noLength
 }
 
-extension LuaValueError: CustomStringConvertible, LocalizedError {
+extension LuaValueError: CustomStringConvertible {
    public var description: String {
        switch self {
        case .nilValue: return "LuaValueError.nilValue"
@@ -73,5 +67,4 @@ extension LuaValueError: CustomStringConvertible, LocalizedError {
        case .noLength: return "LuaValueError.noLength"
        }
    }
-   public var errorDescription: String? { return self.description }
 }

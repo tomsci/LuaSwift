@@ -172,4 +172,16 @@ extension LuaValue {
     }
 }
 
+extension LuaCallError: LocalizedError {
+    public var errorDescription: String? { return self.description }
+}
+
+extension LuaLoadError: LocalizedError {
+    public var errorDescription: String? { return self.description }
+}
+
+extension LuaValueError: LocalizedError {
+   public var errorDescription: String? { return self.description }
+}
+
 #endif

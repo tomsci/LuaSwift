@@ -1727,7 +1727,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         } catch LuaLoadError.parseError(let str) {
             push(str)
         } catch {
+#if LUASWIFT_NO_FOUNDATION
+            push("Swift error: \(String(describing: error))")
+#else
             push("Swift error: \(error.localizedDescription)")
+#endif
         }
 
         // If we got here, we errored.

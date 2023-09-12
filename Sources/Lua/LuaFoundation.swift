@@ -87,7 +87,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// See also ``tostring(_:encoding:convert:)-6oudd`` to use encodings other than `String.Encoding`.
     ///
     /// - Parameter index: The stack index.
-    /// - Parameter encoding: The encoding to use to decode the string data, or `nil` to use the default encoding.
+    /// - Parameter encoding: The encoding to use to decode the string data.
     /// - Parameter convert: If true and the value at the given index is not a Lua string, it will be converted to a
     ///   string (invoking `__tostring` metamethods if necessary) before being decoded. If a metamethod errors, returns
     ///   `nil`.
@@ -98,7 +98,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Override the default string encoding.
     ///
-    /// See `getDefaultStringEncoding()`. If this function is not called, the default encoding is UTF-8.
+    /// See ``getDefaultStringEncoding()``. If this function is not called, the default encoding is UTF-8.
     func setDefaultStringEncoding(_ encoding: ExtendedStringEncoding) {
         getState().defaultStringEncoding = encoding
     }

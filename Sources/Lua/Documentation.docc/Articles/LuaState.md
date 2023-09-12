@@ -24,6 +24,8 @@ Note that `LuaState` pointers are _not_ reference counted, meaning the state is 
 - ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)``
 - ``Lua/Swift/UnsafeMutablePointer/addModules(_:mode:)``
 - ``Lua/Swift/UnsafeMutablePointer/setModules(_:mode:)``
+- ``Lua/Swift/UnsafeMutablePointer/getDefaultStringEncoding()``
+- ``Lua/Swift/UnsafeMutablePointer/setDefaultStringEncoding(_:)``
 
 ### Basic stack functionality
 

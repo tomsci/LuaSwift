@@ -326,8 +326,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// See [lua_pop](https://www.lua.org/manual/5.4/manual.html#lua_pop).
+    /// Pops `nitems` elements from the stack.
     ///
+    /// - Parameter nitems: The number of items to pop from the stack.
     /// - Precondition: There must be at least `nitems` on the stack.
     func pop(_ nitems: CInt = 1) {
         // For performance Lua doesn't check this itself, but it leads to such weird errors further down the line it's
@@ -393,7 +394,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Convert the value at the given stack index into raw bytes.
     ///
-    /// If the value is is not a Lua string this returns `nil`.
+    /// Does not include a null terminator. If the value is is not a Lua string this returns `nil`.
     ///
     /// - Parameter index: The stack index.
     /// - Returns: the value as a `UInt8` array, or `nil` if the value was not a Lua `string`.

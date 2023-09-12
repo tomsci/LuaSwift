@@ -5,6 +5,7 @@ import CLua
 
 /// Protocol adopted by all fundamental Swift types that can unambiguously be converted to basic Lua types.
 public protocol Pushable {
+    /// Push this Swift value onto the stack, as a Lua type.
     func push(state L: LuaState)
 }
 

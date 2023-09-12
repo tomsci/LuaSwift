@@ -25,7 +25,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
         }
     }
 
-    func checkType(_ swiftType: Any.Type, _ luaType: LuaType, index: Int32? = nil) throws {
+    func checkType(_ swiftType: Any.Type, _ luaType: LuaType, index: CInt? = nil) throws {
         let actualType = L.type(index ?? self.index) ?? .nilType // None shouldn't happen here, treat like nil
         if actualType != luaType {
             let description = "Expected to decode \(luaType) but found \(actualType) instead."
@@ -42,7 +42,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
         }
     }
 
-    func nestedDecoderForIndex(_ index: Int32, codingPath: [CodingKey]) -> LuaDecoder {
+    func nestedDecoderForIndex(_ index: CInt, codingPath: [CodingKey]) -> LuaDecoder {
         return LuaDecoder(state: L, index: index, codingPath: codingPath)
     }
 

@@ -44,6 +44,31 @@ g["baz"] = L.ref(any: "bat") // ok
 
 ```
 
+#### C API
+
+To access the underlying [Lua C API](https://www.lua.org/manual/5.4/manual.html#4.6) import `CLua`:
+
+```swift
+import CLua
+let L = luaL_newstate()
+lua_close(L)
+```
+
+The `Lua` and `CLua` APIs can be freely mixed, a `lua_State` from `CLua` can be used as if it were a `LuaState` from `Lua`, and vice versa:
+
+```swift
+import Lua
+import CLua
+
+let L = luaL_newstate()
+lua_getglobal(L, "print")
+// This L can be used as a LuaState:
+try L.pcall("Hello world")
+L.close()
+```
+
+This is generally only useful for complex stack manipulations for which there are no suitable higher-level functions declared by `Lua`.
+
 ### Thread safety
 
 As a result of `LuaState` being usable anywhere a C `lua_State` is, all the internal state needed by the `LuaState` (for example, tracking metatables and default string encodings) is stored inside the state itself (using the Lua registry), meaning each top-level `LuaState` is completely independent, just a normal C `lua_State` is.

@@ -10,6 +10,13 @@ public typealias LuaState = UnsafeMutablePointer<lua_State>
 
 public typealias lua_Integer = CLua.lua_Integer
 
+/// Special value for ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)`` to indicate
+/// that all results should be returned unadjusted.
+public let LUA_MULTRET: CInt = CLua.LUA_MULTRET
+
+/// Redeclaration of the underlying `lua_CFunction` type with easier-to-read types.
+public typealias lua_CFunction = @convention(c) (LuaState?) -> CInt
+
 fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
     return L.convertThrowToError {
         let pathRoot = L.tostringUtf8(lua_upvalueindex(1))!
@@ -122,7 +129,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Create a new `LuaState`.
     ///
     /// Note that because `LuaState` is defined as `UnsafeMutablePointer<lua_State>`, the state is _not_ automatically
-    /// destroyed when it goes out of scope. You must call `close()`.
+    /// destroyed when it goes out of scope. You must call ``close()``.
     ///
     /// ```swift
     /// let state = LuaState(libraries: .all)
@@ -141,7 +148,20 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Destroy and clean up the Lua state.
     ///
-    /// Must be the last function called on this `LuaState` pointer.
+    /// Must be the last function called on this `LuaState` pointer. For example:
+    ///
+    /// ```swift
+    /// class MyLuaWrapperClass {
+    ///     let L: LuaState
+    ///
+    ///     init() {
+    ///         L = LuaState(libraries: .all)
+    ///     }
+    ///     deinit {
+    ///         L.close()
+    ///     }
+    /// }
+    /// ```
     func close() {
         lua_close(self)
     }
@@ -629,7 +649,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: The stack index.
     /// - Parameter type: The `Decodable` type to convert to.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
-    func todecodable<T: Decodable>(_ index: Int32, _ type: T.Type) -> T? {
+    func todecodable<T: Decodable>(_ index: CInt, _ type: T.Type) -> T? {
         let top = gettop()
         defer {
             settop(top)
@@ -646,7 +666,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: The stack index.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
-    func todecodable<T: Decodable>(_ index: Int32) -> T? {
+    func todecodable<T: Decodable>(_ index: CInt) -> T? {
         return todecodable(index, T.self)
     }
 
@@ -1210,11 +1230,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// `nret` result values are then pushed to the stack.
     ///
     /// - Parameter nargs: The number of arguments to pass to the function.
-    /// - Parameter nret: The number of expected results. Can be `LUA_MULTRET`
+    /// - Parameter nret: The number of expected results. Can be ``LUA_MULTRET``
     ///   to keep all returned values.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
     /// - Precondition: The top of the stack must contain a function and `nargs` arguments.
     func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
         let index: CInt

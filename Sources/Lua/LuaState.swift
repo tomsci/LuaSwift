@@ -1084,7 +1084,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         if val == nil && !isnoneornil(index) {
             let t = typename(index: index)
             let err = "Type of argument \(index) (\(t)) does not match type required by Swift closure (\(T.self))"
-            throw LuaCallError(ref(any: err))
+            throw LuaCallError(err)
         } else {
             return val
         }
@@ -1231,9 +1231,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             lua_remove(self, index)
         }
         if err != LUA_OK {
-            let errRef = popref()
-            // print(errRef.tostring(convert: true)!)
-            throw LuaCallError(errRef)
+            throw LuaCallError.popFromStack(self)
         }
     }
 
@@ -1767,7 +1765,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         do {
             return try block()
         } catch let error as LuaCallError {
-            push(error.error)
+            push(error)
         } catch LuaLoadError.parseError(let str) {
             push(str)
         } catch {
@@ -1809,7 +1807,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// }
     /// ```
     func error(_ string: String) -> some Error {
-        return LuaCallError(ref(any: string))
+        return LuaCallError(string)
     }
 
     /// Convert a Lua value on the stack into a Swift object of type `LuaValue`. Does not pop the value from the stack.

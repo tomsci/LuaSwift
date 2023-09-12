@@ -362,10 +362,19 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return b != 0
     }
 
+    /// Return the value at the given index as an integer, if it is a number convertible to one.
+    ///
+    /// - Note: Strings are not automatically converted, unlike
+    ///   [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx).
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: The integer value, or `nil` if the value was not a number or not convertible to an integer.
     func tointeger(_ index: CInt) -> lua_Integer? {
-        let L = self
+        guard type(index) == .number else {
+            return nil
+        }
         var isnum: CInt = 0
-        let ret = lua_tointegerx(L, index, &isnum)
+        let ret = lua_tointegerx(self, index, &isnum)
         if isnum == 0 {
             return nil
         } else {
@@ -373,6 +382,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Return the value at the given index as an integer, if it is a number convertible to one.
+    ///
+    /// - Note: Strings are not automatically converted, unlike
+    ///   [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx).
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: The integer value, or `nil` if the value was not a number or not convertible to an integer.
     func toint(_ index: CInt) -> Int? {
         if let int = tointeger(index) {
             return Int(exactly: int)

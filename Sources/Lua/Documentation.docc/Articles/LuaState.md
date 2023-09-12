@@ -139,6 +139,7 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 ### State management
 
 - ``Lua/Swift/UnsafeMutablePointer/init(libraries:)``
+- ``Lua/Swift/UnsafeMutablePointer/openLibraries(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/close()``
 - ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)``
 - ``Lua/Swift/UnsafeMutablePointer/addModules(_:mode:)``
@@ -149,11 +150,14 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 ### Basic stack functionality
 
 - ``Lua/Swift/UnsafeMutablePointer/type(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/typename(type:)``
+- ``Lua/Swift/UnsafeMutablePointer/typename(index:)``
 - ``Lua/Swift/UnsafeMutablePointer/isnone(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/isnoneornil(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/pop(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/gettop()``
 - ``Lua/Swift/UnsafeMutablePointer/settop(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/absindex(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkstack(_:)``
 
 ### to...() functions
@@ -231,6 +235,14 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 - ``Lua/Swift/UnsafeMutablePointer/set(_:key:)``
 - ``Lua/Swift/UnsafeMutablePointer/set(_:key:value:)``
 
+### Convenience get plus to...() functions
+
+- ``Lua/Swift/UnsafeMutablePointer/toboolean(_:key:)``
+- ``Lua/Swift/UnsafeMutablePointer/toint(_:key:)``
+- ``Lua/Swift/UnsafeMutablePointer/tonumber(_:key:)``
+- ``Lua/Swift/UnsafeMutablePointer/todata(_:key:)``
+- ``Lua/Swift/UnsafeMutablePointer/tostring(_:key:convert:)``
+
 ### Loading code
 
 - ``Lua/Swift/UnsafeMutablePointer/load(file:displayPath:mode:)``
@@ -238,6 +250,12 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 - ``Lua/Swift/UnsafeMutablePointer/load(bytes:name:mode:)``
 - ``Lua/Swift/UnsafeMutablePointer/load(string:name:)``
 - ``Lua/Swift/UnsafeMutablePointer/dofile(_:mode:)``
+
+### Garbage collection
+
+- ``Lua/Swift/UnsafeMutablePointer/collectgarbage(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/collectorRunning()``
+- ``Lua/Swift/UnsafeMutablePointer/collectorCount()``
 
 ### Other
 

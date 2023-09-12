@@ -120,6 +120,7 @@ fileprivate var StateRegistryKey: Int = 0
 
 public extension UnsafeMutablePointer where Pointee == lua_State {
 
+    /// OptionSet representing the standard Lua libraries. 
     struct Libraries: OptionSet {
         public let rawValue: Int
 
@@ -137,7 +138,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         public static let utf8 = Libraries(rawValue: 128)
         public static let debug = Libraries(rawValue: 256)
 
+        /// The set of all standard Lua libraries.
         public static let all: Libraries = [.package, .coroutine, .table, .io, .os, .string, .math, .utf8, .debug]
+
+        /// The subset of libraries which do not permit undefined or sandbox-escaping behavior.
+        ///
+        /// Note that `package` is not a 'safe' library by this definition because it permits arbitrary DLLs to be
+        /// loaded. `package` is safe if ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)`` is called,
+        /// however.
         public static let safe: Libraries = [.coroutine, .table, .string, .math, .utf8]
     }
 
@@ -183,6 +191,16 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_close(self)
     }
 
+    /// Open some or all of the standard Lua libraries.
+    ///
+    /// Example:
+    /// ```swift
+    /// L.openLibraries(libraries: .all)
+    /// // is equivalent to:
+    /// luaL_openlibs(L)
+    /// ```
+    ///
+    /// - Parameter libraries: Which of the standard libraries to open.
     func openLibraries(_ libraries: Libraries) {
         if libraries.contains(.package) {
             requiref_unsafe(name: "package", function: luaopen_package)
@@ -298,9 +316,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         addModules(modules, mode: mode)
     }
 
-    enum WhatGarbage: CInt {
+    enum GcWhat: CInt {
+        /// When passed to ``Lua/Swift/UnsafeMutablePointer/collectgarbage(_:)``, stops the garbage collector.
         case stop = 0
+        /// When passed to ``Lua/Swift/UnsafeMutablePointer/collectgarbage(_:)``, restart the garbage collector.
         case restart = 1
+        /// When passed to ``Lua/Swift/UnsafeMutablePointer/collectgarbage(_:)``, performs a full garbage-collection cycle.
         case collect = 2
     }
 
@@ -310,10 +331,16 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         case isrunning = 9
     }
 
-    func collectgarbage(_ what: WhatGarbage = .collect) {
+    /// Call the garbage collector according to the `what` parameter.
+    ///
+    /// When called with no arguments, performs a full garbage-collection cycle.
+    func collectgarbage(_ what: GcWhat = .collect) {
         lua_gc0(self, what.rawValue)
     }
 
+    /// Returns true if the garbage collector is running.
+    ///
+    /// Equivalent to `lua_gc(L, LUA_GCISRUNNING)` in C.
     func collectorRunning() -> Bool {
         return lua_gc0(self, MoreGarbage.isrunning.rawValue) != 0
     }
@@ -689,22 +716,63 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - Convenience dict fns
 
+    /// Convenience function that gets a key from the table at `index` and returns it as an `Int`.
+    ///
+    /// This function may invoke metamethods, and will return `nil` if one errors.
+    ///
+    /// - Parameter index: The stack index of the table (or table-like object with a `__index` metafield).
+    /// - Parameter key: The key to look up.
+    /// - Returns: The value as an `Int`, or `nil` if the key was not found, the value was not an integer
+    ///   or if a metamethod errored.
     func toint(_ index: CInt, key: String) -> Int? {
         return get(index, key: key, self.toint)
     }
 
+    /// Convenience function that gets a key from the table at `index` and returns it as a `Double`.
+    ///
+    /// This function may invoke metamethods, and will return `nil` if one errors.
+    ///
+    /// - Parameter index: The stack index of the table (or table-like object with a `__index` metafield).
+    /// - Parameter key: The key to look up.
+    /// - Returns: The value as a `Double`, or `nil` if the key was not found, the value was not a number
+    ///   or if a metamethod errored.
     func tonumber(_ index: CInt, key: String) -> Double? {
         return get(index, key: key, self.tonumber)
     }
 
+    /// Convenience function that gets a key from the table at `index` and returns it as a `Bool`.
+    ///
+    /// This function may invoke metamethods, and will return `false` if one errors.
+    ///
+    /// - Parameter index: The stack index of the table (or table-like object with a `__index` metafield).
+    /// - Parameter key: The key to look up.
+    /// - Returns: The value as a `Bool`, or `false` if the key was not found, the value was a false value,
+    ///   or if a metamethod errored.
     func toboolean(_ index: CInt, key: String) -> Bool {
         return get(index, key: key, self.toboolean) ?? false
     }
 
+    /// Convenience function that gets a key from the table at `index` and returns it as a byte array.
+    ///
+    /// This function may invoke metamethods, and will return `nil` if one errors.
+    ///
+    /// - Parameter index: The stack index of the table (or table-like object with a `__index` metafield).
+    /// - Parameter key: The key to look up.
+    /// - Returns: The value as a byte array or `nil` if the key was not found, the value was not a string,
+    ///   or if a metamethod errored.
     func todata(_ index: CInt, key: String) -> [UInt8]? {
         return get(index, key: key, self.todata)
     }
 
+    /// Convenience function that gets a key from the table at `index` and returns it as a `String`.
+    ///
+    /// This function may invoke metamethods, and will return `nil` if one errors.
+    ///
+    /// - Parameter index: The stack index of the table (or table-like object with a `__index` metafield).
+    /// - Parameter key: The key to look up.
+    /// - Returns: The value as a `String`, or `nil` if: the key was not found; the value was not a string (and
+    ///   `convert` was false); the value could not be converted to a String using the default encoding; or if a
+    ///   metamethod errored.
     func tostring(_ index: CInt, key: String, convert: Bool = false) -> String? {
         return get(index, key: key, { tostring($0, convert: convert) })
     }
@@ -1011,8 +1079,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Pushes a zero-arguments closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call the `closure`, and convert any result to a Lua value using
-    /// `push(any:)`. If `closure` throws an error, it will be converted to a Lua error using
-    /// `convertThrowToError(:)`.
+    /// ``push(any:)``. If `closure` throws an error, it will be converted to a Lua error using
+    /// ``convertThrowToError(_:)``.
     ///
     /// If `closure` does not return a value, the Lua function will return `nil`.
     ///
@@ -1034,11 +1102,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Pushes a one-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using `push(any:)`. If arguments cannot be converted, a Lua error will be
-    /// thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in with
-    /// `nil`.
+    /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will
+    /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
+    /// with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using `convertThrowToError(:)`. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``convertThrowToError(_:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1049,7 +1117,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // ...
     /// })
     /// ```
-    /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
+    /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     func push<Arg1>(closure: @escaping (Arg1?) throws -> Any?) {
         push(ClosureWrapper({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
@@ -1061,11 +1129,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Pushes a two-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using `push(any:)`. If arguments cannot be converted, a Lua error will be
-    /// thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in with
-    /// `nil`.
+    /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will
+    /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
+    /// with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using `convertThrowToError(:)`. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``convertThrowToError(_:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1076,7 +1144,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // ...
     /// })
     /// ```
-    /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
+    /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     func push<Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Any?) {
         push(ClosureWrapper({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
@@ -1089,11 +1157,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Pushes a three-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using `push(any:)`. If arguments cannot be converted, a Lua error will be
-    /// thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in with
-    /// `nil`.
+    /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will
+    /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
+    /// with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using `convertThrowToError(:)`. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``convertThrowToError(_:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1104,7 +1172,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // ...
     /// })
     /// ```
-    /// - Note: Arguments to `closure` must all be optionals, of a type `tovalue()` can return.
+    /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     func push<Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Any?) {
         push(ClosureWrapper({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
@@ -1133,18 +1201,17 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// assigned to another variable of type `Any`, and when the Lua userdata is
     /// garbage collected, this variable goes out of scope.
     ///
-    /// To make the object usable from Lua, declare a metatable for the type of `val` using `registerMetatable()`. Note
-    /// that this function always uses the dynamic type of `val`, and not whatever `T` is, when calculating what
-    /// metatable to assign the object. Thus `push(userdata: foo)` and `push(userdata: foo as Any)` will behave
-    /// identically. Pushing a value of a type which has no metatable previously registered will generate a warning,
-    /// and the object will have no metamethods declared on it (except for `__gc` which is always defined in order that
-    /// Swift object lifetimes are preserved).
+    /// To make the object usable from Lua, declare a metatable for the type of `val` using
+    /// ``registerMetatable(for:functions:)``. Note that this function always uses the dynamic type of `val`, and not
+    /// whatever `T` is, when calculating what metatable to assign the object. Thus `push(userdata: foo)` and
+    /// `push(userdata: foo as Any)` will behave identically. Pushing a value of a type which has no metatable
+    /// previously registered will generate a warning, and the object will have no metamethods declared on it,
+    /// except for `__gc` which is always defined in order that Swift object lifetimes are preserved.
     ///
     /// - Parameter val: The value to push onto the Lua stack.
-    /// - Note: This function always pushes a `userdata` - if `val` represents
-    ///   any other type (for example, an integer) it will not be converted to
-    ///   that type in Lua. Use `push(any:)` instead to automatically convert
-    ///   types to their Lua native representation where possible.
+    /// - Note: This function always pushes a `userdata` - if `val` represents any other type (for example, an integer)
+    ///   it will not be converted to that type in Lua. Use ``push(any:)`` instead to automatically convert types to
+    ///   their Lua native representation where possible.
     func push<T>(userdata: T) {
         let anyval = userdata as Any
         let tname = getMetatableName(for: Swift.type(of: anyval))
@@ -1792,7 +1859,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Call `block` wrapped in a `do { ... } catch {}` and convert any Swift
     /// errors into a `lua_error()` call.
     ///
-    /// This function special-cases ``LuaCallError`` and `LuaLoadError.parseError` and passes through the original
+    /// This function special-cases ``LuaCallError`` and ``LuaLoadError/parseError(_:)`` and passes through the original
     /// underlying Lua error value unmodified. Otherwise `"Swift error: \(error.localizedDescription)"` is used.
     ///
     /// - Note: Is is important not to leave anything on the stack outside of `block` when calling this function,
@@ -1833,7 +1900,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         self.lua_error()
     }
 
-    /// Wrapper around `lua_error(lua_State *L)` which adds the noreturn `Never` annotation.
+    /// Wrapper around [`lua_error(lua_State *L)`](http://www.lua.org/manual/5.4/manual.html#lua_error) which adds the
+    /// noreturn `Never` annotation.
     func lua_error() -> Never {
         CLua.lua_error(self)
         fatalError() // Not reached
@@ -1856,6 +1924,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///     }
     /// }
     /// ```
+    ///
+    /// To raise a non-string error, push the required value on to the stack and call
+    /// `throw LuaCallError.popFromStack(L)`.
     func error(_ string: String) -> some Error {
         return LuaCallError(string)
     }

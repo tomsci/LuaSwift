@@ -2037,7 +2037,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     class _State {
 #if !LUASWIFT_NO_FOUNDATION
-        var defaultStringEncoding = ExtendedStringEncoding.stringEncoding(.utf8)
+        var defaultStringEncoding: LuaStringEncoding = .stringEncoding(.utf8)
 #endif
         var metatableDict = Dictionary<String, Array<Any.Type>>()
         var userdataMetatables = Set<UnsafeRawPointer>()

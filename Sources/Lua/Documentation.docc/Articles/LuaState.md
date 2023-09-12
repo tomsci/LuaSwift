@@ -165,7 +165,7 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 - ``Lua/Swift/UnsafeMutablePointer/todata(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tostringUtf8(_:convert:)``
 - ``Lua/Swift/UnsafeMutablePointer/tostring(_:encoding:convert:)-4dzgb``
-- ``Lua/Swift/UnsafeMutablePointer/tostring(_:encoding:convert:)-6oudd``
+- ``Lua/Swift/UnsafeMutablePointer/tostring(_:encoding:convert:)-9syls``
 - ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)``
 - ``Lua/Swift/UnsafeMutablePointer/touserdata(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``
@@ -180,7 +180,7 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 - ``Lua/Swift/UnsafeMutablePointer/push(string:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(utf8String:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:)-277x``
-- ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:)-6qhde``
+- ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:)-75xks``
 - ``Lua/Swift/UnsafeMutablePointer/push(_:)-3o5nr``
 - ``Lua/Swift/UnsafeMutablePointer/push(bytes:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(_:)-63v7u``

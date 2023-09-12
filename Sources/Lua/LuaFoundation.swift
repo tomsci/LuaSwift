@@ -6,14 +6,16 @@
 import Foundation
 import CLua
 
-// That this should be necessary is a sad commentary on how string encodings are handled in Swift...
-public enum ExtendedStringEncoding {
+/// Represents all the String encodings that this framework can convert strings to and from.
+///
+/// This enum exists because CoreFoundation contains many encodings not supported by `String.Encoding`.
+public enum LuaStringEncoding {
     case stringEncoding(String.Encoding)
     case cfStringEncoding(CFStringEncodings)
 }
 
 public extension String {
-    init?(data: Data, encoding: ExtendedStringEncoding) {
+    init?(data: Data, encoding: LuaStringEncoding) {
         switch encoding {
         case .stringEncoding(let enc):
             self.init(data: data, encoding: enc)
@@ -27,7 +29,7 @@ public extension String {
         }
     }
 
-    func data(using encoding: ExtendedStringEncoding) -> Data? {
+    func data(using encoding: LuaStringEncoding) -> Data? {
         switch encoding {
         case .stringEncoding(let enc):
             return self.data(using: enc)
@@ -52,7 +54,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   string (invoking `__tostring` metamethods if necessary) before being decoded. If a metamethod errors, returns
     ///   `nil`.
     /// - Returns: the value as a `String`, or `nil` if it could not be converted.
-    func tostring(_ index: CInt, encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
+    func tostring(_ index: CInt, encoding: LuaStringEncoding? = nil, convert: Bool = false) -> String? {
         let enc = encoding ?? getDefaultStringEncoding()
         if let data = todata(index) {
             return String(data: Data(data), encoding: enc)
@@ -84,7 +86,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// specified encoding, this returns `nil`. If `convert` is true, `nil` will only be returned if the string failed
     /// to parse using `encoding`.
     ///
-    /// See also ``tostring(_:encoding:convert:)-6oudd`` to use encodings other than `String.Encoding`.
+    /// See also ``tostring(_:encoding:convert:)-9syls`` to use encodings other than `String.Encoding`.
     ///
     /// - Parameter index: The stack index.
     /// - Parameter encoding: The encoding to use to decode the string data.
@@ -99,22 +101,22 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Override the default string encoding.
     ///
     /// See ``getDefaultStringEncoding()``. If this function is not called, the default encoding is UTF-8.
-    func setDefaultStringEncoding(_ encoding: ExtendedStringEncoding) {
+    func setDefaultStringEncoding(_ encoding: LuaStringEncoding) {
         getState().defaultStringEncoding = encoding
     }
 
     /// Get the default string encoding.
     ///
     /// This is the encoding which Lua strings are assumed to be in if an explicit encoding is not supplied when
-    /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-6oudd`` or ``push(string:)``. By default, it is
+    /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-9syls`` or ``push(string:)``. By default, it is
     /// assumed all Lua strings are (or should be) UTF-8.
-    func getDefaultStringEncoding() -> ExtendedStringEncoding {
+    func getDefaultStringEncoding() -> LuaStringEncoding {
         return maybeGetState()?.defaultStringEncoding ?? .stringEncoding(.utf8)
     }
 
     /// Push a string onto the stack, using the specified encoding.
     ///
-    /// See also ``push(string:encoding:)-6qhde`` to use encodings other than `String.Encoding`.
+    /// See also ``push(string:encoding:)-75xks`` to use encodings other than `String.Encoding`.
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
@@ -126,7 +128,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
-    func push(string: String, encoding: ExtendedStringEncoding) {
+    func push(string: String, encoding: LuaStringEncoding) {
         guard let data = string.data(using: encoding) else {
             assertionFailure("Cannot represent string in the given encoding?!")
             pushnil()
@@ -177,7 +179,7 @@ extension Data: Pushable {
 }
 
 extension LuaValue {
-    public func tostring(encoding: ExtendedStringEncoding? = nil, convert: Bool = false) -> String? {
+    public func tostring(encoding: LuaStringEncoding? = nil, convert: Bool = false) -> String? {
         push(state: L)
         let result = L.tostring(-1, encoding: encoding, convert: convert)
         L.pop()

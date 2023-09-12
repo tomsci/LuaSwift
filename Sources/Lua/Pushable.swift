@@ -33,16 +33,6 @@ extension Int64: Pushable {
     }
 }
 
-extension UInt64: Pushable {
-    public func push(state L: LuaState) {
-        if self < 0x8000000000000000 {
-            lua_pushinteger(L, lua_Integer(self))
-        } else {
-            lua_pushnumber(L, Double(self))
-        }
-    }
-}
-
 extension Double: Pushable {
     public func push(state L: LuaState) {
         lua_pushnumber(L, self)

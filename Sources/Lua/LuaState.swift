@@ -17,6 +17,23 @@ public let LUA_MULTRET: CInt = CLua.LUA_MULTRET
 /// Redeclaration of the underlying `lua_CFunction` type with easier-to-read types.
 public typealias lua_CFunction = @convention(c) (LuaState?) -> CInt
 
+/// The type of the `LUA_VERSION` constant.
+public struct LuaVer {
+    /// The Lua major version number (eg 5)
+    public let major: CInt
+    /// The Lua minor version number (eg 4)
+    public let minor: CInt
+    /// The Lua release number (eg 6, for 5.4.6)
+    public let release: CInt
+    /// The complete Lua version number as an int (eg 50406 for 5.4.6)
+    public let releaseNum: CInt
+}
+
+/// The version of Lua being used.
+public let LUA_VERSION = LuaVer(major: LUA_VERSION_MAJOR_N, minor: LUA_VERSION_MINOR_N,
+    release: LUA_VERSION_RELEASE_N,
+    releaseNum: ((LUA_VERSION_MAJOR_N * 100 + LUA_VERSION_MINOR_N) * 100 + LUA_VERSION_RELEASE_N))
+
 fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
     return L.convertThrowToError {
         let pathRoot = L.tostringUtf8(lua_upvalueindex(1))!

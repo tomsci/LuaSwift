@@ -1336,10 +1336,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Register a metatable for values of type `T`.
     ///
-    /// For when they are pushed using `push(userdata:)` or `push(any:)`. Note, attempting to register a metatable for
-    /// types that are bridged to Lua types (such as `Integer,` or `String`), will not work with values pushed with
-    /// `push(any:)` - if you really need to do that, they must always be pushed with `push(userdata:)` (at which point
-    /// they cannot be used as normal Lua numbers/strings/etc).
+    /// Register a metatable for values of type `T` for when they are pushed using ``push(userdata:)`` or 
+    /// ``push(any:)``. Note, attempting to register a metatable for types that are bridged to Lua types (such as
+    /// `Integer,` or `String`), will not work with values pushed with ``push(any:)`` - if you really need to do that,
+    /// they must always be pushed with ``push(userdata:)`` (at which point they cannot be used as normal Lua
+    /// numbers/strings/etc).
     ///
     /// Use `.function` to specify a `lua_CFunction` directly. You can use a Swift closure in lieu of a `lua_CFunction`
     /// pointer providing it does not capture any variables and has the right signature, for example
@@ -1350,23 +1351,31 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// For example, to make a type `Foo` callable:
     ///
-    ///     L.registerMetatable(for: Foo.self, functions: [
-    ///         "__call": .function { L in
-    ///            print("TODO call support")
-    ///            return 0
-    ///        }
-    ///     ])
+    /// ```swift
+    /// L.registerMetatable(for: Foo.self, functions: [
+    ///     "__call": .function { L in
+    ///        print("TODO call support")
+    ///        return 0
+    ///    }
+    /// ])
+    /// ```
     ///
     /// Do not specify a `_gc` in `functions`, this is created automatically. If `__index` is not specified, one is
     /// created which refers to the metatable, thus additional items in `functions` are accessible Lua-side:
     ///
-    ///     L.registerMetatable(for: Foo.self, functions: [
-    ///         "bar": .function { L in
-    ///             print("This is a call to bar()!")
-    ///             return 0
-    ///         }
-    ///     ])
-    ///     // Means you can do foo.bar()
+    /// ```swift
+    /// L.registerMetatable(for: Foo.self, functions: [
+    ///     "bar": .function { L in
+    ///         print("This is a call to bar()!")
+    ///         return 0
+    ///     }
+    /// ])
+    /// // Means you can do foo.bar()
+    /// ```
+    ///
+    /// Metatables are all stored in the Lua registry using the prefix `"SwiftType_"`, to avoid conflicting with any
+    /// other uses of [`luaL_newmetatable()`](http://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The exact
+    /// name used is an internal implementation detail.
     ///
     /// - Parameter type: Type to register.
     /// - Parameter functions: Map of functions.
@@ -1377,9 +1386,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
     }
 
-    /// Returns true if `registerMetatable()` has already been called for `T`.
+    /// Returns true if ``registerMetatable(for:functions:)`` has already been called for `T`.
     ///
-    /// Note, does not consider any metatable set with `registerDefaultMetatable()`.
+    /// Note, does not consider any metatable set with ``registerDefaultMetatable(functions:)-5ul4z``.
     func isMetatableRegistered<T>(for type: T.Type) -> Bool {
         let name = getMetatableName(for: type)
         let t = luaL_getmetatable(self, name)
@@ -1387,10 +1396,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         return t == LUA_TTABLE
     }
 
-    /// Register a metatable to be used for all values which have not had an
-    /// explicit call to `registerMetatable`.
+    /// Register a metatable to be used for all types which have not had an explicit call to
+    /// ``registerMetatable(for:functions:)``.
     ///
-    /// - Parameter functions: map of functions
+    /// If this function is not called, a warning will be printed the first time an unregistered type is pushed. A
+    /// minimal metatable will be generated in such cases, which supports garbage collection but otherwise exposes no
+    /// other functions.
+    ///
+    /// - Parameter functions: map of functions.
     func registerDefaultMetatable(functions: [String: MetafieldType]) {
         doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
@@ -1651,7 +1664,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Does not leave the module on the stack.
     ///
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
     func requiref(name: String, function: lua_CFunction, global: Bool = true) throws {
         push({ L in
             let name = lua_tostring(L, 1)
@@ -1668,9 +1681,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Load a function pushed by `closure` as if it were a Lua module.
     ///
-    /// This is similar to [`luaL_requiref()`](https://www.lua.org/manual/5.4/manual.html#luaL_requiref) but instead of
-    /// providing a `lua_CFunction` that when called forms the body of the module, pass in a `closure` which must push a
-    /// function on to the Lua stack. It is this resulting function which is called to create the module.
+    /// This is similar to ``requiref(name:function:global:)`` but instead of providing a `lua_CFunction` that when
+    /// called forms the body of the module, pass in a `closure` which must push a function on to the Lua stack. It is
+    /// this resulting function which is called to create the module.
     ///
     /// This allows code like:
     ///
@@ -1684,8 +1697,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter global: Whether or not to set _G[name].
     /// - Parameter closure: This closure is called to push the module function onto the stack. Note, it will not be
     ///   called if a module called `name` is already loaded.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of the function. Rethrows if `closure`
-    ///   throws.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the module function.
+    ///   Rethrows if `closure` throws.
     func requiref(name: String, global: Bool = true, closure: () throws -> Void) throws {
         // There's just no reasonable way to shoehorn this into calling luaL_requiref, we have to unroll it...
         let L = self

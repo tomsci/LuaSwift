@@ -6,14 +6,108 @@
 
 It can therefore be constructed either using the explicit constructor provided, or any C `lua_State` obtained from anywhere can be treated as a `LuaState` Swift object. By convention `LuaState`/`lua_State` variables are often called `L`, although that is not mandatory.
 
-```swift
-let L = LuaState(libraries: .all)
-L.push(1234)
-assert(L.toint(-1)! == 1234)
-L.close()
-```
+See the [Readme](https://github.com/tomsci/LuaSwift/blob/main/README.md#usage) for some example usage.
 
 Note that `LuaState` pointers are _not_ reference counted, meaning the state is not automatically destroyed when it goes out of scope. You must call ``Lua/Swift/UnsafeMutablePointer/close()``.
+
+### Using the LuaState API
+
+There are two different ways to use the `LuaState` API - the **stack-based** API which will be familiar to Lua C developers, just with stronger typing, and the **object-oriented** API using `LuaValue`, which behaves more naturally but has much more going on under the hood to make that work, and is also less flexible. The two styles, as well as the raw `CLua` API, can be freely mixed, so you can for example use the higher-level API for convenience where it works, and drop down to the stack-based or raw APIs where necessary.
+
+In both styles of API, the only call primitive that is exposed is `pcall()`. `lua_call()` is not safe to call from Swift (because it can error, bypassing Swift stack unwinding) and thus is not exposed. import `CLua` and call `lua_call()` directly if you really need to. `pcall()` converts Lua errors to Swift ones (of type ``LuaCallError``) and thus must always be called with `try`.
+
+#### Stack-based API
+
+As in the Lua C API, functions and values are pushed on to the stack with one of the [`push(...)`](#push()-functions) APIs, called using one of the [`pcall(...)`](#calling-into-lua) overloads, and results are read from the stack using one of the [`to...()`](#to…()-functions) APIs.
+
+#### Object-oriented API
+
+This API uses a single Swift type ``LuaValue`` to represent any Lua value (including `nil`). This type supports convenience call and subscript operators. A computed property ``Lua/Swift/UnsafeMutablePointer/globals`` allows a convenient way to access the global Lua environment. A ``LuaValueError`` is thrown if a `LuaValue` is accessed in a way which the underlying Lua value does not support - for example trying to call something which is not callable.
+
+```swift
+import Lua
+let L = LuaState(libaries: .all)
+let printfn = try L.globals["print"] // printfn is a LuaValue...
+try printfn("Hello world!") // ... which can be called
+
+try L.globals("wat?") // but this will error because the globals table is not callable.
+```
+
+`LuaValue` supports subscript assignment (again providing the underlying Lua value does), although due to limitations in Swift typing you can only do this with `LuaValue`s, to assign any value use `set()` or construct a `LuaValue` with `L.ref(any:)`:
+
+```swift
+let g = L.globals
+g.set("foo", "bar") // ok
+g["baz"] = g["foo"] // ok
+g["baz"] = "bat" // BAD: cannot do this
+g["baz"] = L.ref(any: "bat") // ok
+
+```
+
+### Thread safety
+
+As a result of `LuaState` being usable anywhere a C `lua_State` is, all the internal state needed by the `LuaState` (for example, tracking metatables and default string encodings) is stored inside the state itself (using the Lua registry), meaning each top-level `LuaState` is completely independent, just a normal C `lua_State` is.
+
+Therefore you can safely use different `LuaState` instances from different threads at the same time. More technically, all `LuaState` APIs are [_reentrant_ but _not_ thread-safe](https://doc.qt.io/qt-6/threads-reentrancy.html), in the same way that the Lua C API is.
+
+### Bridging Swift objects
+
+Swift structs and classes can be bridged into Lua in a type-safe and reference-counted manner, using Lua's `userdata` and metatable mechanisms. When the bridged Lua object is garbage collected by the Lua runtime, a reference to the Swift value is released.
+
+``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)`` is used to register a Lua metatable for a given Swift type. This defines which members the bridged object has and how to call them. A bridged type with no additional members defined will not be callable from Lua, but retains a reference to the Swift value until it is garbage collected.
+
+The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a "bar" closure which calls `Foo.bar()`. ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` is used to convert the Lua value back to a Swift `Foo` type. Note that by using the `.closure` type, "bar" is allowed to throw Swift errors which are converted to Lua errors. (If `.function` was used instead of `.closure`, the body of the function would have to include a call to ``Lua/Swift/UnsafeMutablePointer/convertThrowToError(_:)``.)
+
+```swift
+import Lua
+
+class Foo {
+    let baz: String
+    init(baz: String) {
+        self.baz = baz
+    }
+    func bar() {
+        print("Foo.bar() called, baz=\(baz)")
+    }
+}
+
+let L = LuaState(libraries: [])
+L.registerMetatable(for: Foo.self, functions: [
+    "bar": .closure { L in
+        // Recover the `Foo` instance from the first argument to the function
+        guard let foo: Foo = L.tovalue(1) else {
+            throw L.error("Bad argument #1 to bar()")
+        }
+        // Call the function
+        foo.bar()
+        // Tell Lua that this function returns zero results
+        return 0
+    }
+])
+```
+
+Then pass the `Foo` instance to Lua using ``Lua/Swift/UnsafeMutablePointer/push(userdata:)`` or ``Lua/Swift/UnsafeMutablePointer/push(any:)``:
+
+```swift
+let foo = Foo(baz: "my foo instance")
+L.push(userdata: foo)
+// Then pcall into Lua, etc
+```
+
+From Lua, the userdata object can be called as if it were a Lua object:
+
+```lua
+foo:bar()
+-- Prints "Foo.bar() called, baz=my foo instance"
+```
+
+### Converting types using Any
+
+Any Swift type can be converted to a Lua value by calling ``Lua/Swift/UnsafeMutablePointer/push(any:)`` (or any of the convenience functions which use it, such as `pcall(args...)` or ``Lua/Swift/UnsafeMutablePointer/ref(any:)``). Arrays and Dictionaries are converted to Lua tables; Strings are converted to Lua strings using the default string encoding (see ``Lua/Swift/UnsafeMutablePointer/setDefaultStringEncoding(_:)``); numbers, booleans, Data, and nil Optionals are converted to the applicable Lua type. Any other type is bridged as described in the previous section.
+
+Any Lua value can be converted back to a Swift value of type `T?` by calling ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``. `table`s and `string`s are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue<T>()` returns nil. If `T` is `Any` (ie the most relaxed type constrait), but there is no Swift type capable of representing the Lua value (for example, a closure) then a ``LuaValue`` instance is returned. Similarly if `T` is `Dictionary<AnyHashable, Any>` but the Lua table contains a key which when converted is not hashable in Swift, `LuaValue` will be used there as well.
+
+Any Lua value can be tracked as a Swift object, without converting back into a Swift type, by calling ``Lua/Swift/UnsafeMutablePointer/ref(index:)`` which returns a ``LuaValue`` object.
 
 ## Topics
 

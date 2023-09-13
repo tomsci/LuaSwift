@@ -257,7 +257,13 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 - ``Lua/Swift/UnsafeMutablePointer/collectorRunning()``
 - ``Lua/Swift/UnsafeMutablePointer/collectorCount()``
 
-### Other
+### Debugging
+
+- ``Lua/Swift/UnsafeMutablePointer/getStackInfo(level:what:)``
+- ``Lua/Swift/UnsafeMutablePointer/getTopFunctionInfo(what:)``
+- ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)``
+
+### Miscellaneous
 
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:function:global:)``
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)``

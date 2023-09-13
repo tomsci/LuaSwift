@@ -1121,4 +1121,42 @@ final class LuaTests: XCTestCase {
             }
         ])
     }
+
+    func test_getinfo() throws {
+        XCTAssertEqual(Set<LuaDebug.WhatInfo>.allHook, Set(LuaDebug.WhatInfo.allCases))
+
+        var info: LuaDebug! = nil
+        try L.load(string: """
+            fn = ...
+            function moo(arg, arg2, arg3)
+                fn()
+            end
+            moo()
+            """)
+        L.push(index: 1)
+        L.push(closure: {
+            let L = self.L!
+            info = L.getStackInfo(level: 1)
+            return 0
+        })
+        try L.pcall(nargs:1, nret: 0)
+        XCTAssertEqual(info.name, "moo")
+        XCTAssertEqual(info.namewhat, .global)
+        XCTAssertEqual(info.what, .lua)
+        XCTAssertEqual(info.currentline, 3)
+        XCTAssertEqual(info.linedefined, 2)
+        XCTAssertEqual(info.lastlinedefined, 4)
+        XCTAssertEqual(info.nups, 1)
+        XCTAssertEqual(info.nparams, 3)
+        XCTAssertEqual(info.isvararg, false)
+        XCTAssertEqual(info.function?.type, .function)
+        XCTAssertEqual(info.validlines, [3, 4])
+
+        // This is getting info for the fn returned by load(file:)
+        let fninfo = L.getTopFunctionInfo()
+        XCTAssertEqual(fninfo.what, .main)
+        XCTAssertNil(fninfo.name) // a main fn won't have a name
+        XCTAssertEqual(fninfo.namewhat, .other)
+        XCTAssertNil(fninfo.currentline)
+    }
 }

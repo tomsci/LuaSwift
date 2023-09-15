@@ -860,7 +860,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter start: If set, start iteration at this index rather than the
     ///   beginning of the array.
     /// - Parameter block: The code to execute.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution a `__index` metafield or if the value
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
     ///   does not support indexing.
     func for_ipairs(_ index: CInt, start: lua_Integer? = nil, _ block: (lua_Integer) throws -> Bool) throws {
         let absidx = absindex(index)
@@ -1003,7 +1003,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter block: The code to execute.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the execution of an iterator function or a `__pairs`
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of an iterator function or a `__pairs`
     ///   metafield, or if the value at `index` does not support indexing.
     func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Bool) throws {
         push(index: index) // The value being iterated
@@ -2106,7 +2106,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         try load(data: Array<UInt8>(string.utf8), name: name, mode: .text)
     }
 
-    /// Load a Lua chunk from file with `load(file:mode:)` and execute it.
+    /// Load a Lua chunk from file with ``load(file:displayPath:mode:)`` and execute it.
     ///
     /// Any values returned from the file are left on the top of the stack.
     ///

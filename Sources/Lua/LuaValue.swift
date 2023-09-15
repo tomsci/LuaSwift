@@ -7,25 +7,26 @@ import CLua
 ///
 /// `LuaValue` is an alternative object-oriented way of interacting with Lua values. `LuaValue` objects may be used
 /// and passed around without worrying about what state the Lua stack is in - there is a little more runtime overhead
-/// in using them, but it can make code simpler. They can represent any Lua value (include nil) and support array and
-/// dictionary subscript operations (providing the underlying Lua value does).
+/// in using them, but it can make code simpler. They can represent any Lua value (including `nil`) and support array
+/// and dictionary subscript operations (providing the underlying Lua value does).
 ///
-/// The Lua value will not be collected as long as the `LuaValue` remains valid. The `LuaValue` object can be pushed
-/// back on to the Lua stack, or converted back to a Swift value using one of the `to...()` functions, which behave
-/// the same as the similarly-named members of `LuaState` that take a stack index.
+/// The Lua value will not be collected as long as the `LuaValue` remains valid. Internally, `LuaValue` uses
+/// [`luaL_ref()`](http://www.lua.org/manual/5.4/manual.html#luaL_ref) to maintain a reference to the value. The
+/// `LuaValue` object can be pushed back on to the Lua stack, or converted back to a Swift value using one of the
+/// `to...()` functions, which behave the same as the similarly-named members of `LuaState` that take a stack index.
 ///
 /// `LuaValue` supports indexing the Lua value using `get()` or the subscript operator, assuming the Lua type
 /// supports indexing - if it doesn't, a ``LuaValueError`` will be thrown. Because the subscript operator cannot throw,
 /// attempting to use it on a nil value or one that does not support indexing will cause a `fatalError` - use `get()`
-/// instead (which can throw) if the value might not support indexing. The following are equivalent:
+/// instead (which can throw) if the value might not support indexing or might error. The following are equivalent:
 ///
 /// ```swift
 /// try! L.globals.get("print")
 /// L.globals["print"] // equivalent
 /// ```
 ///
-/// Assuming the Lua value is callable, it can be called using `pcall()` or using the @dynamicCallable syntax. If it is
-/// not callable, ``LuaValueError/notCallable`` will be thrown.
+/// Assuming the Lua value is callable, it can be called using `pcall()` or using the `@dynamicCallable` syntax. If it 
+/// is not callable, ``LuaValueError/notCallable`` will be thrown.
 ///
 /// ```swift
 /// let printFn = L.globals["print"]
@@ -42,7 +43,8 @@ import CLua
 /// ```
 ///
 /// `LuaValue` objects are only valid as long as the `LuaState` is. Calling any of its functions after the
-/// `LuaState` has been closed will cause a crash.
+/// `LuaState` has been closed will cause a crash. It is safe to allow `LuaValue` objects to `deinit` after the
+/// `LuaState` has been closed, however.
 @dynamicCallable
 public class LuaValue: Equatable, Hashable, Pushable {
     var L: LuaState!

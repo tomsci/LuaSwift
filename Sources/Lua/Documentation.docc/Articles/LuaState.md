@@ -6,7 +6,7 @@
 
 It can therefore be constructed either using the explicit constructor provided, or any C `lua_State` obtained from anywhere can be treated as a `LuaState` Swift object. By convention `LuaState`/`lua_State` variables are often called `L`, although that is not mandatory.
 
-See the [Readme](https://github.com/tomsci/LuaSwift/blob/main/README.md#usage) for some example usage.
+See the [Readme](https://github.com/tomsci/LuaSwift/blob/main/README.md#usage) for some example usage. See <https://www.lua.org/manual/5.4/manual.html> for documentation of the underlying Lua C APIs.
 
 Note that `LuaState` pointers are _not_ reference counted, meaning the state is not automatically destroyed when it goes out of scope. You must call ``Lua/Swift/UnsafeMutablePointer/close()``.
 

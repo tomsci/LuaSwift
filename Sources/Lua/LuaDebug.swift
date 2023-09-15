@@ -195,6 +195,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Get debug information about the function on the top of the stack.
+    ///
+    /// Pops the function from the stack.
+    ///
+    /// - Parameter what: What information to retrieve.
+    /// - Returns: a struct containing the requested information.
     public func getTopFunctionInfo(what: Set<LuaDebug.WhatInfo> = .allNonCall) -> LuaDebug {
         precondition(gettop() > 0 && type(-1) == .function, "Must be a function on top of the stack")
         var ar = lua_Debug()
@@ -207,6 +212,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter ar: must be a valid activation record that was filled by a previous call to
     ///   `lua_getstack` or given as argument to a hook.
     /// - Parameter what: What information to retrieve.
+    /// - Returns: a struct containing the requested information.
     public func getInfo(_ ar: inout lua_Debug, what: Set<LuaDebug.WhatInfo>) -> LuaDebug {
         lua_getinfo(self, what.rawValue, &ar)
         return LuaDebug(from: ar, fields: what, state: self)

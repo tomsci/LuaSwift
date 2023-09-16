@@ -3,7 +3,10 @@
 
 import CLua
 
-/// Protocol adopted by all fundamental Swift types that can unambiguously be converted to basic Lua types.
+/// Protocol adopted by any Swift type that can unambiguously be converted to a basic Lua type.
+///
+/// Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be
+/// represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either.
 public protocol Pushable {
     /// Push this Swift value onto the stack, as a Lua type.
     func push(state L: LuaState)
@@ -62,6 +65,14 @@ extension Dictionary: Pushable where Key: Pushable, Value: Pushable {
             L.push(k)
             L.push(v)
             lua_settable(L, -3)
+        }
+    }
+}
+
+extension UnsafeRawBufferPointer: Pushable {
+    public func push(state L: LuaState) {
+        self.withMemoryRebound(to: CChar.self) { charBuf -> Void in
+            lua_pushlstring(L, charBuf.baseAddress, charBuf.count)
         }
     }
 }

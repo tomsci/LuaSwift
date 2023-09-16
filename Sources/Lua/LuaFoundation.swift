@@ -141,9 +141,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter bytes: the data to push.
     func push(bytes: ContiguousBytes) {
-        bytes.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> Void in
-            let chars = buf.bindMemory(to: CChar.self)
-            lua_pushlstring(self, chars.baseAddress, chars.count)
+        bytes.withUnsafeBytes { buf in
+            push(buf)
         }
     }
 
@@ -155,19 +154,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter bytes: The data to load.
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
-    /// - Throws: `LuaLoadError.parseError` if the data cannot be parsed.
+    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
     func load(bytes: ContiguousBytes, name: String?, mode: LoadMode = .text) throws {
-        var err: CInt = 0
-        bytes.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
-            let chars = ptr.bindMemory(to: CChar.self)
-            err = luaL_loadbufferx(self, chars.baseAddress, chars.count, name, mode.rawValue)
-        }
-        if err == LUA_ERRSYNTAX {
-            let errStr = tostring(-1)!
-            pop()
-            throw LuaLoadError.parseError(errStr)
-        } else if err != LUA_OK {
-            fatalError("Unexpected error from luaL_loadbufferx")
+        try bytes.withUnsafeBytes { buf in
+            try load(buffer: buf, name: name, mode: mode)
         }
     }
 }
@@ -175,6 +165,20 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 extension Data: Pushable {
     public func push(state L: LuaState) {
         L.push(bytes: self)
+    }
+}
+
+extension NSNumber: Pushable {
+    public func push(state L: LuaState) {
+        if let int = self as? Int {
+            L.push(int)
+        } else {
+            // Conversion to Double cannot fail
+            // Curiously the Swift compiler knows enough to know this won't fail and tells us off for using the `!`
+            // in a scenario when it won't fail, but helpfully doesn't provide us with a mechanism to actually get
+            // a non-optional Double. The double-parenthesis tells it we know what we're doing.
+            L.push((self as! Double))
+        }
     }
 }
 

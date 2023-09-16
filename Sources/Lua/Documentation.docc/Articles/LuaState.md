@@ -247,6 +247,7 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 
 - ``Lua/Swift/UnsafeMutablePointer/load(file:displayPath:mode:)``
 - ``Lua/Swift/UnsafeMutablePointer/load(data:name:mode:)``
+- ``Lua/Swift/UnsafeMutablePointer/load(buffer:name:mode:)``
 - ``Lua/Swift/UnsafeMutablePointer/load(bytes:name:mode:)``
 - ``Lua/Swift/UnsafeMutablePointer/load(string:name:)``
 - ``Lua/Swift/UnsafeMutablePointer/dofile(_:mode:)``

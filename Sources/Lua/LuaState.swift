@@ -1065,9 +1065,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter data: the data to push.
     func push(_ data: [UInt8]) {
         data.withUnsafeBytes { rawBuf in
-            rawBuf.withMemoryRebound(to: CChar.self) { charBuf -> Void in
-                lua_pushlstring(self, charBuf.baseAddress, charBuf.count)
-            }
+            push(rawBuf)
         }
     }
 
@@ -1239,17 +1237,21 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Convert any Swift value to a Lua value and push on to the stack.
     ///
-    /// If `value` refers to a type that can be natively represented in Lua, such as `String`, `Array`, `Dictionary`
-    /// etc, then the value is converted to the native type (ie an `Int` is converted to a `number`). Array and
-    /// Dictionary members are recursively converted using `push(any:)`. `Void` (ie the empty tuple) is pushed as `nil`.
+    /// To convert the value, the following mechanisms are tried in order:
     ///
-    /// Note, due to limitations in Swift type inference only zero-argument closures that return `Void` or `Any?` can be
-    /// pushed as Lua functions (using `push(closure:)`). `lua_CFunction` is pushed directly as a function. Any other
-    /// closure will be pushed as a `userdata`.
+    /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
+    /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(state:)`` is used.
+    /// * If `value` is an `NSNumber`, if it is convertible to `Int` it is pushed as such, otherwise as a `Double`.
+    /// * If `value` is `[UInt8]`, ``push(_:)-3o5nr`` is used.
+    /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:)`` is used.
+    /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, `push(any:)` is called recursively to push
+    ///   its elements.
+    /// * If `value` is a `lua_CFunction`, ``push(_:)-63v7u`` is used.
+    /// * If `value` is a zero-argument closure that returns `Void` or `Any?`, it is pushed using `push(closure:)`.
+    ///   Due to limitations in Swift type inference, any other closure type will be pushed as a `userdata`.
+    /// * Any other type is pushed as a `userdata` using ``push(userdata:)``.
     ///
-    /// Any other type is pushed as a `userdata` using `push(userdata:)`.
-    ///
-    /// - Parameter value: The value to push, or nil (which is pushed as the Lua `nil` value).
+    /// - Parameter value: The value to push
     func push(any value: Any?) {
         guard let value else {
             pushnil()
@@ -1262,19 +1264,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         switch value {
         case let pushable as Pushable:
             push(pushable)
-        case let str as String: // HACK for _NSCFString not being Pushable??
+        // I don't have strong enough confidence that I understand how bridged strings (CFStringRef, _NSCFString,
+        // NSTaggedString, __StringStorage, who knows how many others) behave to declare Pushable conformance that would
+        // definitely work for all string types - this however should cover all possibilities.
+        case let str as String:
             push(str)
 #if !LUASWIFT_NO_FOUNDATION
-        case let num as NSNumber: // Ditto for _NSCFNumber
-            if let int = num as? Int {
-                push(int)
-            } else {
-                // Conversion to Double cannot fail
-                // Curiously the Swift compiler knows enough to know this won't fail and tells us off for using the `!`
-                // in a scenario when it won't fail, but helpfully doesn't provide us with a mechanism to actually get
-                // a non-optional Double. The double-parenthesis tells it we know what we're doing.
-                push((num as! Double))
-            }
         case let data as ContiguousBytes:
             push(bytes: data)
 #endif
@@ -2056,8 +2051,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         var ospath = Array<UInt8>(path.utf8)
         ospath.append(0) // Zero-terminate the path
         ospath.withUnsafeBytes { ptr in
-            let cpath = ptr.bindMemory(to: CChar.self)
-            err = luaL_loadfilexx(self, cpath.baseAddress!, displayPath ?? path, mode.rawValue)
+            ptr.withMemoryRebound(to: CChar.self) { cpath in
+                err = luaL_loadfilexx(self, cpath.baseAddress, displayPath ?? path, mode.rawValue)
+            }
         }
 #else
         err = luaL_loadfilexx(self, FileManager.default.fileSystemRepresentation(withPath: path), displayPath ?? path, mode.rawValue)
@@ -2082,9 +2078,22 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
     /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
     func load(data: [UInt8], name: String?, mode: LoadMode = .text) throws {
+        try data.withUnsafeBytes { buf in
+            try load(buffer: buf, name: name, mode: mode)
+        }
+    }
+
+    /// Load a Lua chunk from memory, without executing it.
+    ///
+    /// On return, the function representing the file is left on the top of the stack.
+    ///
+    /// - Parameter buffer: The data to load.
+    /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
+    /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
+    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
+    func load(buffer: UnsafeRawBufferPointer, name: String?, mode: LoadMode = .text) throws {
         var err: CInt = 0
-        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
-            let chars = ptr.bindMemory(to: CChar.self)
+        buffer.withMemoryRebound(to: CChar.self) { chars in
             err = luaL_loadbufferx(self, chars.baseAddress, chars.count, name, mode.rawValue)
         }
         if err == LUA_ERRSYNTAX {

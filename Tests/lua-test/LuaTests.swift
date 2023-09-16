@@ -1159,4 +1159,47 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(fninfo.namewhat, .other)
         XCTAssertNil(fninfo.currentline)
     }
+
+#if !LUASWIFT_NO_FOUNDATION
+    func test_push_NSNumber() {
+        let n: NSNumber = 1234
+        L.push(n) // 1 - using NSNumber's Pushable
+        L.push(any: n) // 2 - NSNumber as Any
+
+        var i: Double = 1234.5678
+        let cfn: CFNumber = CFNumberCreate(nil, .doubleType, &i)
+        // CF bridging is _weird_: I cannot write L.push(cfn) ie CFNumber does not directly conform to Pushable, but
+        // the conversion to Pushable will always succeed, presumably because NSNumber is Pushable?
+        let cfn_pushable = cfn as? Pushable
+        XCTAssertNotNil(cfn_pushable)
+        L.push(cfn as NSNumber) // 3 - CFNumber as NSNumber (Pushable)
+        L.push(cfn_pushable!) // 4 - CFNumber as Pushable
+        L.push(any: cfn) // 5 - CFNumber as Any
+
+        XCTAssertEqual(L.toint(1), 1234)
+        XCTAssertEqual(L.toint(2), 1234)
+        XCTAssertEqual(L.tonumber(3), 1234.5678)
+        XCTAssertEqual(L.tonumber(4), 1234.5678)
+        XCTAssertEqual(L.tonumber(5), 1234.5678)
+    }
+
+    func test_push_NSString() {
+        let ns = "hello" as NSString // This ends up as NSTaggedPointerString
+        // print(type(of: ns))
+        L.push(any: ns) // 1
+
+        let s = CFStringCreateWithCString(nil, "hello", UInt32(CFStringEncodings.dosLatin1.rawValue))! // CFStringRef
+        // print(type(of: s))
+        L.push(any: s) // 2
+
+        let ns2 = String(repeating: "hello", count: 100) as NSString // __StringStorage
+        // print(type(of: ns2))
+        L.push(any: ns2) // 3
+
+        XCTAssertEqual(L.tostring(1), "hello")
+        XCTAssertEqual(L.tostring(2), "hello")
+        XCTAssertEqual(L.tostring(3), ns2 as String)
+    }
+
+#endif
 }

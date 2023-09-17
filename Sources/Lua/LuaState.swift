@@ -1395,7 +1395,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     // MARK: - Registering metatables
 
     private func getMetatableName(for type: Any.Type) -> String {
-        let prefix = "SwiftType_" + String(describing: type)
+        let prefix = "LuaSwift_Type_" + String(describing: type)
         let state = getState()
         if state.metatableDict[prefix] == nil {
             state.metatableDict[prefix] = []
@@ -1438,7 +1438,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         rawset(-2, utf8Key: "__gc")
     }
 
-    private static let DefaultMetatableName = "SwiftType_Any"
+    private static let DefaultMetatableName = "LuaSwift_Default"
 
     /// Register a metatable for values of type `T`.
     ///
@@ -1453,7 +1453,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// `.function { (L: LuaState!) -> CInt in ... }`.
     ///
     /// Use `.closure { L in ... }` to specify an arbitrary Swift closure, which is both allowed to capture things, and
-    /// allowed to throw (it is called as if wrapped by `convertThrowToError()`).
+    /// allowed to throw (it is called as if wrapped by ``convertThrowToError(_:)``).
     ///
     /// For example, to make a type `Foo` callable:
     ///
@@ -1479,7 +1479,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// // Means you can do foo.bar()
     /// ```
     ///
-    /// Metatables are all stored in the Lua registry using the prefix `"SwiftType_"`, to avoid conflicting with any
+    /// All metatables are stored in the Lua registry using the prefix `"LuaSwift_"`, to avoid conflicting with any
     /// other uses of [`luaL_newmetatable()`](http://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The exact
     /// name used is an internal implementation detail.
     ///
@@ -2161,7 +2161,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let state = _State()
         // Register a metatable for this type with a fixed name to avoid infinite recursion of getMetatableName
         // trying to call getState()
-        let mtName = "LuaState._State"
+        let mtName = "LuaSwift_State"
         doRegisterMetatable(typeName: mtName, functions: [:])
         state.userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable

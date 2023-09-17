@@ -134,6 +134,16 @@ Any Lua value can be converted back to a Swift value of type `T?` by calling ``L
 
 Any Lua value can be tracked as a Swift object, without converting back into a Swift type, by calling ``Lua/Swift/UnsafeMutablePointer/ref(index:)`` which returns a ``LuaValue`` object.
 
+### Interop with other uses of the C Lua API
+
+The intent is for LuaSwift to be as flexible as possible with regard to what the client code might want to do with the `lua_State`. That said, there are a couple of assumptions that must hold true for LuaSwift to function correctly.
+
+* The [registry table](https://www.lua.org/manual/5.4/manual.html#4.3) must not be manipulated in any way that violates the assumptions of [`luaL_ref`](https://www.lua.org/manual/5.4/manual.html#luaL_ref) or [`luaL_newmetatable`](https://www.lua.org/manual/5.4/manual.html#luaL_newmetatable).
+
+* LuaSwift may set registry table entries using keys that are private `lua_CFunction` pointers or strings with prefix `"LuaSwift_"`. Clients must not interfere with such entries. LuaSwift also uses `luaL_ref` internally.
+
+* To use ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)``, the `package` library must be imported and `package.searchers` must be set to its default value.
+
 ## Topics
 
 ### State management

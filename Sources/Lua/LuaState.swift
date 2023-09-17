@@ -2077,7 +2077,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
     /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
-    func load(data: [UInt8], name: String?, mode: LoadMode = .text) throws {
+    func load(data: [UInt8], name: String?, mode: LoadMode) throws {
         try data.withUnsafeBytes { buf in
             try load(buffer: buf, name: name, mode: mode)
         }
@@ -2091,7 +2091,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
     /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
-    func load(buffer: UnsafeRawBufferPointer, name: String?, mode: LoadMode = .text) throws {
+    func load(buffer: UnsafeRawBufferPointer, name: String?, mode: LoadMode) throws {
         var err: CInt = 0
         buffer.withMemoryRebound(to: CChar.self) { chars in
             err = luaL_loadbufferx(self, chars.baseAddress, chars.count, name, mode.rawValue)

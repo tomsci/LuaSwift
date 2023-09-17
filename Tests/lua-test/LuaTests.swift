@@ -918,7 +918,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tostring(-1), "hello world")
 
         let asArray: [UInt8] = "return 'hello world'".map { $0.asciiValue! }
-        try L.load(data: asArray, name: "Hello")
+        try L.load(data: asArray, name: "Hello", mode: .text)
         try L.pcall(nargs: 0, nret: 1)
         XCTAssertEqual(L.tostring(-1), "hello world")
 

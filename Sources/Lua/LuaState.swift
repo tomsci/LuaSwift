@@ -71,6 +71,13 @@ fileprivate func tracebackFn(_ L: LuaState!) -> CInt {
     return 1
 }
 
+// Because getting a raw pointer to a var to use with lua_rawsetp(L, LUA_REGISTRYINDEX) is so awkward in Swift, we use a
+// function instead as the registry key we stash the State in, because we _can_ reliably generate file-unique
+// lua_CFunctions.
+fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
+    return 0
+}
+
 /// A class which wraps a Swift closure of type `LuaState -> CInt` and can be pushed as a Lua function.
 ///
 /// Normally you would call one of the `L.push(closure:)` overloads rather than using this class directly. It should
@@ -2158,8 +2165,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         doRegisterMetatable(typeName: mtName, functions: [:])
         state.userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
+        push(stateLookupKey)
         pushuserdata(state, metatableName: mtName)
-        lua_rawsetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
+        rawset(LUA_REGISTRYINDEX)
 
         // While we're here, register ClosureWrapper
         // Are we doing too much non-deferred initialization in getState() now?
@@ -2169,7 +2177,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     func maybeGetState() -> _State? {
-        lua_rawgetp(self, LUA_REGISTRYINDEX, &StateRegistryKey)
+        push(stateLookupKey)
+        rawget(LUA_REGISTRYINDEX)
         var result: _State? = nil
         // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
         // safe because we know the value of StateRegistryKey does not need checking.

@@ -10,12 +10,12 @@ fileprivate func dummyFn(_ L: LuaState!) -> CInt {
 }
 
 class DeinitChecker {
-    let deinitPtr: UnsafeMutablePointer<Int>
-    init(deinitPtr: UnsafeMutablePointer<Int>) {
-        self.deinitPtr = deinitPtr
+    let deinitFn: () -> Void
+    init(_ fn: @escaping () -> Void) {
+        self.deinitFn = fn
     }
     deinit {
-        deinitPtr.pointee = deinitPtr.pointee + 1
+        deinitFn()
     }
 }
 
@@ -493,7 +493,7 @@ final class LuaTests: XCTestCase {
     // Tests that objects deinit correctly when pushed with toany and GC'd by Lua
     func test_pushuserdata_instance() {
         var deinited = 0
-        var val: DeinitChecker? = DeinitChecker(deinitPtr: &deinited)
+        var val: DeinitChecker? = DeinitChecker { deinited += 1 }
         XCTAssertEqual(deinited, 0)
 
         L.registerMetatable(for: DeinitChecker.self, functions: [:])
@@ -779,7 +779,7 @@ final class LuaTests: XCTestCase {
 
         // Check it can correctly keep hold of a ref to a Swift object
         var deinited = 0
-        var obj: DeinitChecker? = DeinitChecker(deinitPtr: &deinited)
+        var obj: DeinitChecker? = DeinitChecker { deinited += 1 }
         L.registerMetatable(for: DeinitChecker.self, functions: [:])
         ref = L.ref(any: obj!)
 
@@ -800,6 +800,7 @@ final class LuaTests: XCTestCase {
         var ref: LuaValue? = L.ref(any: "hello")
         XCTAssertEqual(ref!.type, .string) // shut up compiler complaining about unused ref
         L.close()
+        XCTAssertNil(ref!.internal_get_L())
         // The act of nilling this will cause a crash if the close didn't nil ref.L
         ref = nil
 

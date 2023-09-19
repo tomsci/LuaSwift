@@ -59,12 +59,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         if let data = todata(index) {
             return String(data: Data(data), encoding: enc)
         } else if convert {
-            push({ L in
-                var len: Int = 0
-                let ptr = luaL_tolstring(L, 1, &len)
-                lua_pushlstring(L, ptr, len)
-                return 1
-            })
+            push(function: luaswift_tostring)
             push(index: index)
             do {
                 try pcall(nargs: 1, nret: 1)

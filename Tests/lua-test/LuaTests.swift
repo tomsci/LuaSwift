@@ -76,7 +76,7 @@ final class LuaTests: XCTestCase {
         L.push("hello") // 3
         L.push(123.456) // 4
         L.pushnil() // 5
-        L.push(dummyFn) // 6
+        L.push(function: dummyFn) // 6
         XCTAssertEqual(L.toint(1), 1234)
         XCTAssertEqual(L.toint(2), nil)
         XCTAssertEqual(L.toint(3), nil)
@@ -91,7 +91,7 @@ final class LuaTests: XCTestCase {
         L.push("hello") // 3
         L.push(123.456) // 4
         L.pushnil() // 5
-        L.push(dummyFn) // 6
+        L.push(function: dummyFn) // 6
         XCTAssertEqual(L.tonumber(1), 1234)
         XCTAssertEqual(L.tonumber(2), nil)
         XCTAssertEqual(L.tonumber(3), nil)
@@ -105,7 +105,7 @@ final class LuaTests: XCTestCase {
         L.push(true) // 2
         L.push(false) // 3
         L.pushnil() // 4
-        L.push(dummyFn) // 5
+        L.push(function: dummyFn) // 5
         XCTAssertEqual(L.toboolean(1), true)
         XCTAssertEqual(L.toboolean(2), true)
         XCTAssertEqual(L.toboolean(3), false)
@@ -717,7 +717,7 @@ final class LuaTests: XCTestCase {
         // Test that more argument overloads of push(closure:) can be implemented if required by code not in the Lua
         // package.
         func push<Arg1, Arg2, Arg3, Arg4>(closure: @escaping (Arg1?, Arg2?, Arg3?, Arg4?) throws -> Any?) {
-            L.push(ClosureWrapper({ L in
+            L.push(LuaClosureWrapper({ L in
                 let arg1: Arg1? = try L.checkClosureArgument(index: 1)
                 let arg2: Arg2? = try L.checkClosureArgument(index: 2)
                 let arg3: Arg3? = try L.checkClosureArgument(index: 3)
@@ -1203,4 +1203,23 @@ final class LuaTests: XCTestCase {
     }
 
 #endif
+
+    func test_LuaClosure_upvalues() throws {
+        var called = false
+        L.push({ L in
+            called = true
+            return 0
+        })
+        try L.pcall()
+        XCTAssertEqual(called, true)
+
+        L.push(1234) // upvalue
+        L.push({ L in
+            let idx = lua_upvalueindex(LuaClosureWrapper.NumInternalUpvalues + 1)
+            L.push(index: idx)
+            return 1
+        }, numUpvalues: 1)
+        let ret: Int? = try L.pcall()
+        XCTAssertEqual(ret, 1234)
+    }
 }

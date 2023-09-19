@@ -159,4 +159,10 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename,
                                              const char *displayname,
                                              const char *mode);
 
+int luaswift_callclosurewrapper(lua_State *L);
+int luaswift_gettable(lua_State *L);
+int luaswift_settable(lua_State *L);
+int luaswift_tostring(lua_State *L);
+int luaswift_requiref(lua_State *L);
+
 #endif /* clua_bridge_h */

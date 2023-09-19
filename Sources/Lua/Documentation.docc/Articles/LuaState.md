@@ -81,7 +81,7 @@ Swift structs and classes can be bridged into Lua in a type-safe and reference-c
 
 ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)`` is used to register a Lua metatable for a given Swift type. This defines which members the bridged object has and how to call them. A bridged type with no additional members defined will not be callable from Lua, but retains a reference to the Swift value until it is garbage collected.
 
-The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a "bar" closure which calls `Foo.bar()`. ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` is used to convert the Lua value back to a Swift `Foo` type. Note that by using the `.closure` type, "bar" is allowed to throw Swift errors which are converted to Lua errors. (If `.function` was used instead of `.closure`, the body of the function would have to include a call to ``Lua/Swift/UnsafeMutablePointer/convertThrowToError(_:)``.)
+The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a "bar" closure which calls `Foo.bar()`. ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` is used to convert the Lua value back to a Swift `Foo` type. Note that by using the `.closure` type, "bar" is allowed to throw Swift errors which are converted to Lua errors. (If `.function` was used instead of `.closure`, throwing errors would not be permitted, see the discussion on ``LuaClosure``.)
 
 ```swift
 import Lua
@@ -197,7 +197,9 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 - ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:)-75xks``
 - ``Lua/Swift/UnsafeMutablePointer/push(_:)-3o5nr``
 - ``Lua/Swift/UnsafeMutablePointer/push(bytes:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(_:)-63v7u``
+- ``Lua/Swift/UnsafeMutablePointer/push(function:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(error:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(closure:)-80bt5``
 - ``Lua/Swift/UnsafeMutablePointer/push(closure:)-22ess``
 - ``Lua/Swift/UnsafeMutablePointer/push(closure:)-4rotd``
@@ -279,8 +281,6 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:function:global:)``
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)``
 - ``Lua/Swift/UnsafeMutablePointer/setfuncs(_:nup:)``
-- ``Lua/Swift/UnsafeMutablePointer/convertThrowToError(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/lua_error()``
 - ``Lua/Swift/UnsafeMutablePointer/error(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/ref(index:)``
 - ``Lua/Swift/UnsafeMutablePointer/ref(any:)``

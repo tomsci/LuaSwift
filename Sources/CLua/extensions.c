@@ -101,3 +101,40 @@ LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename,
   lua_remove(L, fnameindex);
   return status;
 }
+
+// The next few functions exist because it is not safe to call lua_error() from a Swift function
+
+int luaswift_callclosurewrapper(lua_State *L) {
+    lua_CFunction f = lua_tocfunction(L, lua_upvalueindex(1));
+    int ret = f(L);
+    if (ret == -2) {
+        return lua_error(L);
+    } else {
+        return ret;
+    }
+}
+
+int luaswift_gettable(lua_State *L) {
+    lua_gettable(L, 1);
+    return 1;
+}
+
+int luaswift_settable(lua_State *L) {
+    lua_settable(L, 1);
+    return 0;
+}
+
+int luaswift_tostring(lua_State *L) {
+    size_t len = 0;
+    const char *ptr = luaL_tolstring(L, 1, &len);
+    lua_pushlstring(L, ptr, len);
+    return 1;
+}
+
+int luaswift_requiref(lua_State *L) {
+    const char *name = lua_tostring(L, 1);
+    lua_CFunction fn = lua_tocfunction(L, 2);
+    int global = lua_toboolean(L, 3);
+    luaL_requiref(L, name, fn, global);
+    return 0;
+}

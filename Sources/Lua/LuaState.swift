@@ -8,6 +8,8 @@ import CLua
 
 public typealias LuaState = UnsafeMutablePointer<lua_State>
 
+public typealias LuaClosure = (LuaState) throws -> CInt
+
 public typealias lua_Integer = CLua.lua_Integer
 
 /// Special value for ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)`` to indicate
@@ -34,30 +36,6 @@ public let LUA_VERSION = LuaVer(major: LUA_VERSION_MAJOR_N, minor: LUA_VERSION_M
     release: LUA_VERSION_RELEASE_N,
     releaseNum: ((LUA_VERSION_MAJOR_N * 100 + LUA_VERSION_MINOR_N) * 100 + LUA_VERSION_RELEASE_N))
 
-fileprivate func moduleSearcher(_ L: LuaState!) -> CInt {
-    return L.convertThrowToError {
-        let pathRoot = L.tostringUtf8(lua_upvalueindex(1))!
-        let displayPrefix = L.tostringUtf8(lua_upvalueindex(2))!
-        guard let module = L.tostringUtf8(1) else {
-            L.pushnil()
-            return 1
-        }
-
-        let parts = module.split(separator: ".", omittingEmptySubsequences: false)
-        let relPath = parts.joined(separator: "/") + ".lua"
-        let path = pathRoot + "/" + relPath
-        let displayPath = displayPrefix == "" ? relPath : displayPrefix + "/" + relPath
-
-        do {
-            try L.load(file: path, displayPath: displayPath, mode: .text)
-            return 1
-        } catch LuaLoadError.fileNotFound {
-            L.push("no file '\(displayPath)'")
-            return 1
-        } // Otherwise throw
-    }
-}
-
 fileprivate func gcUserdata(_ L: LuaState!) -> CInt {
     let rawptr = lua_touserdata(L, 1)!
     let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
@@ -78,36 +56,6 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
     return 0
 }
 
-/// A class which wraps a Swift closure of type `LuaState -> CInt` and can be pushed as a Lua function.
-///
-/// Normally you would call one of the `L.push(closure:)` overloads rather than using this class directly. It should
-/// only ever be pushed onto the Lua stack using the `Pushable` overload, eg `L.push(closureWrapper)` (or
-/// `closureWrapper.push(L)`) and not with `push(userdata:)` - it will not be callable when pushed as a `userdata`.
-public class ClosureWrapper: Pushable {
-    var closure: Optional<(LuaState) throws -> CInt>
-
-    public init(_ closure: @escaping (LuaState) throws -> CInt) {
-        self.closure = closure
-    }
-
-    private static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
-        return L.convertThrowToError {
-            // In case closure errors, make sure not to increment ref count of ClosureWrapper. We know the instance
-            // will remain retained because of the upvalue, so this is safe.
-            let wrapper: Unmanaged<ClosureWrapper> = .passUnretained(L.tovalue(lua_upvalueindex(1))!)
-            guard let closure = wrapper.takeUnretainedValue().closure else {
-                fatalError("Attempt to call a ClosureWrapper after it has been explicitly nilled")
-            }
-            return try closure(L)
-        }
-    }
-
-    public func push(state L: LuaState) {
-        L.push(userdata: self)
-        lua_pushcclosure(L, Self.callClosure, 1)
-    }
-}
-
 /// A Swift enum of the Lua types.
 public enum LuaType : CInt {
     // Annoyingly can't use LUA_TNIL etc here because the bridge exposes them as `var LUA_TNIL: CInt { get }`
@@ -122,8 +70,6 @@ public enum LuaType : CInt {
     case userdata = 7 // LUA_TUSERDATA
     case thread = 8 // LUA_TTHREAD
 }
-
-fileprivate var StateRegistryKey: Int = 0
 
 public extension UnsafeMutablePointer where Pointee == lua_State {
 
@@ -267,10 +213,29 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         L.rawset(-2, utf8Key: "path")
 
         L.rawget(-1, utf8Key: "searchers")
-        if let path {
-            L.push(utf8String: path)
-            L.push(utf8String: displayPath ?? path)
-            lua_pushcclosure(L, moduleSearcher, 2) // pops path, displayPath
+        if path != nil {
+            let searcher: LuaClosure = { L in
+                let pathRoot = path!
+                let displayPrefix = displayPath ?? pathRoot
+                guard let module = L.tostringUtf8(1) else {
+                    L.pushnil()
+                    return 1
+                }
+
+                let parts = module.split(separator: ".", omittingEmptySubsequences: false)
+                let relPath = parts.joined(separator: "/") + ".lua"
+                let path = pathRoot + "/" + relPath
+                let displayPath = displayPrefix == "" ? relPath : displayPrefix + "/" + relPath
+
+                do {
+                    try L.load(file: path, displayPath: displayPath, mode: .text)
+                    return 1
+                } catch LuaLoadError.fileNotFound {
+                    L.push("no file '\(displayPath)'")
+                    return 1
+                } // Otherwise throw
+            }
+            L.push(searcher)
         } else {
             pushnil()
         }
@@ -291,13 +256,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func addModules(_ modules: [String: [UInt8]], mode: LoadMode = .binary) {
         luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE)
         for (name, data) in modules {
-            push(ClosureWrapper({ L in
+            push({ L in
                 let filename = name.map { $0 == "." ? "/" : $0 }
                 try L.load(data: data, name: "@\(filename).lua", mode: mode)
                 L.push(name)
                 try L.pcall(nargs: 1, nret: 1)
                 return 1
-            }))
+            })
             lua_setfield(self, -2, name)
         }
         pop() // preload table
@@ -523,12 +488,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 }
             }
         } else if convert {
-            push({ L in
-                var len: Int = 0
-                let ptr = luaL_tolstring(L, 1, &len)
-                lua_pushlstring(L, ptr, len)
-                return 1
-            })
+            push(function: luaswift_tostring)
             push(index: index)
             do {
                 try pcall(nargs: 1, nret: 1)
@@ -872,7 +832,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     func for_ipairs(_ index: CInt, start: lua_Integer? = nil, _ block: (lua_Integer) throws -> Bool) throws {
         let absidx = absindex(index)
         try withoutActuallyEscaping(block) { escapingBlock in
-            let wrapper = ClosureWrapper({ L in
+            let wrapper = LuaClosureWrapper({ L in
                 var i = start ?? 1
                 while true {
                     L.settop(1)
@@ -892,7 +852,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             // Must ensure closure does not actually escape, since we cannot rely on garbage collection of the upvalue
             // of the closure, explicitly nil it in the ClosureWrapper instead
             defer {
-                wrapper.closure = nil
+                wrapper._closure = nil
             }
 
             push(wrapper)
@@ -973,7 +933,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         if luaL_getmetafield(L, -1, "__pairs") == LUA_TNIL {
             let isTable = L.type(-1) == .table
             // Use next, value, nil
-            L.push({ (L: LuaState!) in
+            L.push(function: { (L: LuaState!) in
                 if lua_next(L, 1) == 0 {
                     return 0
                 } else {
@@ -1077,15 +1037,28 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Push a `lua_CFunction` onto the stack.
-    func push(_ fn: lua_CFunction) {
-        lua_pushcfunction(self, fn)
+    func push(function: lua_CFunction) {
+        lua_pushcfunction(self, function)
+    }
+
+    /// Push a closure of type ``LuaClosure`` onto the stack as a Lua function.
+    ///
+    /// See ``LuaClosure`` for a discussion of how LuaClosures behave.
+    ///
+    /// `closure` may use upvalues in the same was as
+    /// [`lua_pushcclosure`](https://www.lua.org/manual/5.4/manual.html#lua_pushcclosure) with one exception: They start
+    /// at index 1 plus ``LuaClosureWrapper/NumInternalUpvalues``, rather than `1`, due to the housekeeping required to
+    /// perform the Lua-Swift bridging. Normally however, you would use Swift captures rather than Lua upvalues to
+    /// access variables from within `closure` and thus `numUpvalues` would normally be omitted or `0`.
+    func push(_ closure: @escaping LuaClosure, numUpvalues: CInt = 0) {
+        LuaClosureWrapper(closure).push(state: self, numUpvalues: numUpvalues)
     }
 
     /// Pushes a zero-arguments closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call the `closure`, and convert any result to a Lua value using
     /// ``push(any:)``. If `closure` throws an error, it will be converted to a Lua error using
-    /// ``convertThrowToError(_:)``.
+    /// ``push(error:)``.
     ///
     /// If `closure` does not return a value, the Lua function will return `nil`.
     ///
@@ -1098,10 +1071,10 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// })
     /// ```
     func push(closure: @escaping () throws -> Any?) {
-        push(ClosureWrapper({ L in
+        push({ L in
             L.push(any: try closure())
             return 1
-        }))
+        })
     }
 
     /// Pushes a one-argument closure on to the stack as a Lua function.
@@ -1111,7 +1084,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
     /// with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``convertThrowToError(_:)``. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1124,11 +1097,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     func push<Arg1>(closure: @escaping (Arg1?) throws -> Any?) {
-        push(ClosureWrapper({ L in
+        push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             L.push(any: try closure(arg1))
             return 1
-        }))
+        })
     }
 
     /// Pushes a two-argument closure on to the stack as a Lua function.
@@ -1138,7 +1111,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
     /// with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``convertThrowToError(_:)``. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1151,12 +1124,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     func push<Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Any?) {
-        push(ClosureWrapper({ L in
+        push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
             L.push(any: try closure(arg1, arg2))
             return 1
-        }))
+        })
     }
 
     /// Pushes a three-argument closure on to the stack as a Lua function.
@@ -1166,7 +1139,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
     /// with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``convertThrowToError(_:)``. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1179,13 +1152,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     func push<Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Any?) {
-        push(ClosureWrapper({ L in
+        push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
             let arg3: Arg3? = try L.checkClosureArgument(index: 3)
             L.push(any: try closure(arg1, arg2, arg3))
             return 1
-        }))
+        })
     }
 
     /// Helper function used by implementations of `push(closure:)`.
@@ -1253,7 +1226,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:)`` is used.
     /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, `push(any:)` is called recursively to push
     ///   its elements.
-    /// * If `value` is a `lua_CFunction`, ``push(_:)-63v7u`` is used.
+    /// * If `value` is a `lua_CFunction`, ``push(function:)`` is used.
+    /// * If `value` is a `LuaClosure`, ``push(_:numUpvalues:)`` is used (with `numUpvalues=0`).
     /// * If `value` is a zero-argument closure that returns `Void` or `Any?`, it is pushed using `push(closure:)`.
     ///   Due to limitations in Swift type inference, any other closure type will be pushed as a `userdata`.
     /// * Any other type is pushed as a `userdata` using ``push(userdata:)``.
@@ -1296,13 +1270,35 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
                 lua_settable(self, -3)
             }
         case let function as lua_CFunction:
-            push(function)
+            push(function: function)
+        case let closure as LuaClosure:
+            push(closure)
         case let closure as () throws -> ():
             push(closure: closure)
         case let closure as () throws -> (Any?):
             push(closure: closure)
         default:
             push(userdata: value)
+        }
+    }
+
+    /// Push a Swift Error onto the Lua stack.
+    ///
+    /// This function special-cases ``LuaCallError``, ``LuaLoadError/parseError(_:)`` and errors returned by
+    /// ``error(_:)``, and pushes the original underlying Lua error value unmodified. Otherwise the string
+    /// `"Swift error: \(error.localizedDescription)"` is used.
+    func push(error: Error) {
+        switch error {
+        case let err as LuaCallError:
+            push(err)
+        case LuaLoadError.parseError(let str):
+            push(str)
+        default:
+#if LUASWIFT_NO_FOUNDATION
+            push("Swift error: \(String(describing: error))")
+#else
+            push("Swift error: \(error.localizedDescription)")
+#endif
         }
     }
 
@@ -1410,7 +1406,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
     enum MetafieldType {
         case function(lua_CFunction)
-        case closure((LuaState) throws -> CInt)
+        case closure(LuaClosure)
     }
 
     private func doRegisterMetatable(typeName: String, functions: [String: MetafieldType]) {
@@ -1422,9 +1418,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         for (name, function) in functions {
             switch function {
             case let .function(cfunction):
-                push(cfunction)
+                push(function: cfunction)
             case let .closure(closure):
-                push(ClosureWrapper(closure))
+                push(LuaClosureWrapper(closure))
             }
             rawset(-2, utf8Key: name)
         }
@@ -1434,7 +1430,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             rawset(-2, utf8Key: "__index")
         }
 
-        push(gcUserdata)
+        push(function: gcUserdata)
         rawset(-2, utf8Key: "__gc")
     }
 
@@ -1449,11 +1445,11 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// numbers/strings/etc).
     ///
     /// Use `.function` to specify a `lua_CFunction` directly. You can use a Swift closure in lieu of a `lua_CFunction`
-    /// pointer providing it does not capture any variables and has the right signature, for example
-    /// `.function { (L: LuaState!) -> CInt in ... }`.
+    /// pointer providing it does not capture any variables, does not throw or error, and has the right signature, for
+    /// example `.function { (L: LuaState!) -> CInt in ... }`.
     ///
-    /// Use `.closure { L in ... }` to specify an arbitrary Swift closure, which is both allowed to capture things, and
-    /// allowed to throw (it is called as if wrapped by ``convertThrowToError(_:)``).
+    /// Use `.closure { L in ... }` to specify an arbitrary Swift closure (of type ``LuaClosure``), which is both
+    /// allowed to capture things, and allowed to throw.
     ///
     /// For example, to make a type `Foo` callable:
     ///
@@ -1466,7 +1462,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// ])
     /// ```
     ///
-    /// Do not specify a `_gc` in `functions`, this is created automatically. If `__index` is not specified, one is
+    /// Do not specify a `__gc` in `functions`, this is created automatically. If `__index` is not specified, one is
     /// created which refers to the metatable, thus additional items in `functions` are accessible Lua-side:
     ///
     /// ```swift
@@ -1579,10 +1575,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     @discardableResult
     func get(_ index: CInt) throws -> LuaType {
         let absidx = absindex(index)
-        push({ L in
-            lua_gettable(L, 1)
-            return 1
-        })
+        push(function: luaswift_gettable)
         lua_insert(self, -2) // Move the fn below key
         push(index: absidx)
         lua_insert(self, -2) // move tbl below key
@@ -1712,10 +1705,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
     func set(_ index: CInt) throws {
         let absidx = absindex(index)
-        push({ L in
-            lua_settable(L, 1)
-            return 0
-        })
+        push(function: luaswift_settable)
         lua_insert(self, -3) // Move the fn below key and val
         push(index: absidx)
         lua_insert(self, -3) // move tbl below key and val
@@ -1772,15 +1762,9 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
     func requiref(name: String, function: lua_CFunction, global: Bool = true) throws {
-        push({ L in
-            let name = lua_tostring(L, 1)
-            let fn = lua_tocfunction(L, 2)
-            let global = lua_toboolean(L, 3)
-            luaL_requiref(L, name, fn, global)
-            return 0
-        })
+        push(function: luaswift_requiref)
         push(utf8String: name)
-        push(function)
+        push(function: function)
         push(global)
         try pcall(nargs: 3, nret: 0)
     }
@@ -1858,72 +1842,19 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Call `block` wrapped in a `do { ... } catch {}` and convert any Swift
-    /// errors into a `lua_error()` call.
-    ///
-    /// This function special-cases ``LuaCallError`` and ``LuaLoadError/parseError(_:)`` and passes through the original
-    /// underlying Lua error value unmodified. Otherwise `"Swift error: \(error.localizedDescription)"` is used.
-    ///
-    /// - Note: Is is important not to leave anything on the stack outside of `block` when calling this function,
-    ///  because Lua errors do not unwind the stack. Therefore the normal way to use this function is to make it the
-    ///  only call in a `lua_CFunction`:
-    ///
-    /// ```swift
-    ///     func myNativeFn(_ L: LuaState!) -> CInt {
-    ///         return L.convertThrowToError {
-    ///             // Things that can throw
-    ///             // ...
-    ///         }
-    ///     }
-    /// ```
-    ///
-    /// - Returns: The result of `block` if there was no error. On error,
-    ///   converts the error to a string then calls `lua_error()` (and therefore
-    ///   does not return).
-    func convertThrowToError(_ block: () throws -> CInt) -> CInt {
-        do {
-            return try block()
-        } catch let error as LuaCallError {
-            push(error)
-        } catch LuaLoadError.parseError(let str) {
-            push(str)
-        } catch {
-#if LUASWIFT_NO_FOUNDATION
-            push("Swift error: \(String(describing: error))")
-#else
-            push("Swift error: \(error.localizedDescription)")
-#endif
-        }
-
-        // If we got here, we errored.
-
-        // Be careful not to leave a String (or anything else) in the stack frame here, because it won't get cleaned up,
-        // hence why we push the string in the catch block above.
-        self.lua_error()
-    }
-
-    /// Wrapper around [`lua_error(lua_State *L)`](http://www.lua.org/manual/5.4/manual.html#lua_error) which adds the
-    /// noreturn `Never` annotation.
-    func lua_error() -> Never {
-        CLua.lua_error(self)
-        fatalError() // Not reached
-    }
-
     /// Returns an `Error` wrapping the given string.
     ///
-    /// Which when caught by `convertThrowToError` will be converted back to a Lua error with exactly the given string
+    /// Which when pushed by ``push(error:)`` will be converted back to a Lua error with exactly the given string
     /// contents.
     ///
-    /// This is useful in combination with `convertThrowToError` inside a `lua_CFunction` to safely throw a Lua error.
+    /// This is useful inside a ``LuaClosure`` to safely throw a Lua error.
     ///
     /// Example:
     ///
     /// ```swift
-    /// func myluafn(_ L: LuaState!) -> CInt {
-    ///     return L.convertThrowToError {
-    ///         // ...
-    ///         throw L.error("Something error-worthy happened")
-    ///     }
+    /// func myluafn(L: LuaState) throws -> CInt {
+    ///     // ...
+    ///     throw L.error("Something error-worthy happened")
     /// }
     /// ```
     ///
@@ -2165,19 +2096,19 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         doRegisterMetatable(typeName: mtName, functions: [:])
         state.userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
-        push(stateLookupKey)
+        push(function: stateLookupKey)
         pushuserdata(state, metatableName: mtName)
         rawset(LUA_REGISTRYINDEX)
 
         // While we're here, register ClosureWrapper
         // Are we doing too much non-deferred initialization in getState() now?
-        registerMetatable(for: ClosureWrapper.self, functions: [:])
+        registerMetatable(for: LuaClosureWrapper.self, functions: [:])
 
         return state
     }
 
     func maybeGetState() -> _State? {
-        push(stateLookupKey)
+        push(function: stateLookupKey)
         rawget(LUA_REGISTRYINDEX)
         var result: _State? = nil
         // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
@@ -2197,7 +2128,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     // Top of stack must have iterfn, state, initval
     func do_for_pairs(_ block: (CInt, CInt) throws -> Bool) throws {
         try withoutActuallyEscaping(block) { escapingBlock in
-            let wrapper = ClosureWrapper({ L in
+            let wrapper = LuaClosureWrapper({ L in
                 // IMPORTANT: this closure uses unprotected lua_calls that may error. Therefore it must NOT put
                 // any non-trivial type onto the stack or rely on any Swift stack cleanup happening such as
                 // defer {...}.
@@ -2229,7 +2160,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             // Must ensure closure does not actually escape, since we cannot rely on prompt garbage collection of the
             // upvalue, explicitly nil it in the ClosureWrapper instead.
             defer {
-                wrapper.closure = nil
+                wrapper._closure = nil
             }
             push(wrapper)
             lua_insert(self, -4) // Push wrapper below iterfn, state, initval

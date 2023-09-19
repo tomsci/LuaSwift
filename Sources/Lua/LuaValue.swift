@@ -370,10 +370,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         try self.checkValid()
         push(state: L)
         try Self.checkTopIsNewIndexable(L)
-        L.push({ L in
-            lua_settable(L, 1)
-            return 0
-        })
+        L.push(function: luaswift_settable)
         lua_insert(L, -2) // Move the fn below self
         L.push(any: key)
         L.push(any: value)

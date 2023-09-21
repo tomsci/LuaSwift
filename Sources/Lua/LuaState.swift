@@ -60,7 +60,7 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
 public enum LuaType : CInt {
     // Annoyingly can't use LUA_TNIL etc here because the bridge exposes them as `var LUA_TNIL: CInt { get }`
     // which is not acceptable for an enum (which requires the rawValue to be a literal)
-    case nilType = 0 // LUA_TNIL
+    case `nil` = 0 // LUA_TNIL
     case boolean = 1 // LUA_TBOOLEAN
     case lightuserdata = 2 // LUA_TLIGHTUSERDATA
     case number = 3 // LUA_TNUMBER
@@ -356,7 +356,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// See [lua_isnoneornil](https://www.lua.org/manual/5.4/manual.html#lua_isnoneornil).
     func isnoneornil(_ index: CInt) -> Bool {
         if let t = type(index) {
-            return t == .nilType
+            return t == .nil
         } else {
             return true // ie is none
         }
@@ -547,7 +547,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             return nil
         }
         switch (t) {
-        case .nilType:
+        case .nil:
             return nil
         case .boolean:
             return toboolean(index)
@@ -1879,7 +1879,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         let type = type(-1)!
         let ref = luaL_ref(self, LUA_REGISTRYINDEX)
         let result = LuaValue(L: self, ref: ref, type: type)
-        if type != .nilType {
+        if type != .nil {
             getState().luaValues[ref] = UnownedLuaValue(val: result)
         }
         return result

@@ -62,7 +62,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     /// Create a LuaValue with a nil value.
     public static func nilValue(_ L: LuaState) -> LuaValue {
-        return LuaValue(L: L, ref: LUA_REFNIL, type: .nilType)
+        return LuaValue(L: L, ref: LUA_REFNIL, type: .nil)
     }
 
     deinit {
@@ -290,7 +290,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     /// Returns true if the instance represents a valid non-`nil` Lua value.
     public func valid() -> Bool {
-        return self.type != .nilType
+        return self.type != .nil
     }
 
     /// Returns the value for the given key, assuming the Lua value associated with `self` supports indexing.
@@ -412,7 +412,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         public func next() -> (lua_Integer, LuaValue)? {
             i = i + 1
             let val = value[i]
-            if val.type != .nilType {
+            if val.type != .nil {
                 return (i, val)
             } else {
                 return nil
@@ -477,7 +477,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
             }
             let val = L.popref()
             k = L.popref()
-            if k.type != .nilType {
+            if k.type != .nil {
                 return (k, val)
             } else {
                 return nil

@@ -26,7 +26,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
     }
 
     func checkType(_ swiftType: Any.Type, _ luaType: LuaType, index: CInt? = nil) throws {
-        let actualType = L.type(index ?? self.index) ?? .nilType // None shouldn't happen here, treat like nil
+        let actualType = L.type(index ?? self.index) ?? .nil // None shouldn't happen here, treat like nil
         if actualType != luaType {
             let description = "Expected to decode \(luaType) but found \(actualType) instead."
             throw DecodingError.typeMismatch(swiftType, DecodingError.Context(codingPath: self.codingPath, debugDescription: description))
@@ -67,7 +67,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
     // SingleValueDecodingContainer
 
     func decodeNil() -> Bool {
-        return L.type(index) == .nilType
+        return L.type(index) == .nil
     }
 
     func decode(_ type: Bool.Type) throws -> Bool {
@@ -228,7 +228,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
             let t = try? decoder.L.get(decoder.index)
             if let t {
                 decoder.L.pop() // the result
-                return t != .nilType
+                return t != .nil
             } else {
                 // if it errored, safe to say it doesn't exist...
                 return false

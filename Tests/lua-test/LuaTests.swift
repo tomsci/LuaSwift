@@ -39,7 +39,7 @@ final class LuaTests: XCTestCase {
         let unsafeLibs = ["os", "io", "package", "debug"]
         for lib in unsafeLibs {
             let t = L.getglobal(lib)
-            XCTAssertEqual(t, .nilType)
+            XCTAssertEqual(t, .nil)
             L.pop()
         }
         XCTAssertEqual(L.gettop(), 0)
@@ -772,10 +772,10 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.gettop(), 0)
 
         ref = .nilValue(L)
-        XCTAssertEqual(ref.type, .nilType)
+        XCTAssertEqual(ref.type, .nil)
 
         ref = L.ref(any: nil)
-        XCTAssertEqual(ref.type, .nilType)
+        XCTAssertEqual(ref.type, .nil)
 
         // Check it can correctly keep hold of a ref to a Swift object
         var deinited = 0
@@ -880,7 +880,7 @@ final class LuaTests: XCTestCase {
     func test_nil() throws {
         XCTAssertEqual(L.type(1), nil)
         L.pushnil()
-        XCTAssertEqual(L.type(1), .nilType)
+        XCTAssertEqual(L.type(1), .nil)
         L.pop()
         XCTAssertEqual(L.type(1), nil)
 

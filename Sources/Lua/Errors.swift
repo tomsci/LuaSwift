@@ -54,6 +54,8 @@ public enum LuaLoadError: Error, Equatable {
     /// An error indicating that the specified file could not be found or opened.
     case fileNotFound
     /// An error indicating that invalid Lua syntax was encountered during parsing.
+    ///
+    /// The associated value is the error string returned from the Lua compiler.
     case parseError(String)
 }
 

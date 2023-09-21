@@ -19,7 +19,7 @@ public let LUA_MULTRET: CInt = CLua.LUA_MULTRET
 /// Redeclaration of the underlying `lua_CFunction` type with easier-to-read types.
 public typealias lua_CFunction = @convention(c) (LuaState?) -> CInt
 
-/// The type of the `LUA_VERSION` constant.
+/// The type of the ``LUA_VERSION`` constant.
 public struct LuaVer {
     /// The Lua major version number (eg 5)
     public let major: CInt
@@ -1037,6 +1037,12 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Push a `lua_CFunction` onto the stack.
+    ///
+    /// Functions or closures implemented in Swift that conform to `(LuaState?) -> CInt` may be pushed using this API
+    /// only if they:
+    ///
+    /// * Do not throw Swift or Lua errors
+    /// * Do not capture any variables
     func push(function: lua_CFunction) {
         lua_pushcfunction(self, function)
     }
@@ -1067,7 +1073,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///     print("I am callable from Lua!")
     /// })
     /// L.push(closure: {
-    ///     return "I am callable and return a result")
+    ///     return "I am callable and return a result"
     /// })
     /// ```
     func push(closure: @escaping () throws -> Any?) {
@@ -1571,7 +1577,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: The stack index of the table.
     /// - Returns: The type of the resulting value.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_gettable`.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_gettable`.
     @discardableResult
     func get(_ index: CInt) throws -> LuaType {
         let absidx = absindex(index)
@@ -1590,7 +1596,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to look up in the table.
     /// - Returns: The type of the resulting value.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_gettable`.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_gettable`.
     @discardableResult
     func get<K: Pushable>(_ index: CInt, key: K) throws -> LuaType {
         let absidx = absindex(index)
@@ -1702,7 +1708,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Where `tbl` is the table at `index` on the stack, `val` is the value on the top of the stack, and `key` is the
     /// value just below the top.
     ///
-    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
     func set(_ index: CInt) throws {
         let absidx = absindex(index)
         push(function: luaswift_settable)
@@ -1717,7 +1723,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Where `tbl` is the table at `index` on the stack and `val` is the value on the top of the stack
     ///
     /// - Parameter key: The key to use.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
     func set<K: Pushable>(_ index: CInt, key: K) throws {
         let absidx = absindex(index)
         // val on top of stack
@@ -1732,7 +1738,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter key: The key to use.
     /// - Parameter value: The value to set.
-    /// - Throws: `LuaCallError` if a Lua error is raised during the call to `lua_settable`.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
     func set<K: Pushable, V: Pushable>(_ index: CInt, key: K, value: V) throws {
         let absidx = absindex(index)
         push(key)

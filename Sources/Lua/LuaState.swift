@@ -391,6 +391,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Create a new table on top of the stack.
+    ///
+    /// - Parameter narr: If specified, preallocate space in the table for this many array elements.
+    /// - Parameter nrec: If specified, preallocate space in the table for this many non-array elements.
+    func newtable(narr: CInt = 0, nrec: CInt = 0) {
+        lua_createtable(self, narr, nrec)
+    }
+
     // MARK: - to...() functions
 
     func toboolean(_ index: CInt) -> Bool {

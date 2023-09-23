@@ -475,7 +475,22 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(val, foundVal)
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
 
+    func test_LuaValue_metatable() {
+        XCTAssertNil(LuaValue().metatable)
+
+        let t = LuaValue.newtable(L)
+        XCTAssertNil(t.metatable)
+
+        let mt = LuaValue.newtable(L)
+        try! mt.set("foo", "bar")
+        mt["__index"] = mt
+
+        XCTAssertEqual(t["foo"].tostring(), nil)
+        t.metatable = mt
+        XCTAssertEqual(t["foo"].tostring(), "bar")
+        XCTAssertEqual(t.metatable?.type, .table)
     }
 
     func test_pushuserdata() {

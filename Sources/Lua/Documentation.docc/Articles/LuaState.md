@@ -169,6 +169,7 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 - ``Lua/Swift/UnsafeMutablePointer/settop(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/absindex(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkstack(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/newtable(narr:nrec:)``
 
 ### to...() functions
 

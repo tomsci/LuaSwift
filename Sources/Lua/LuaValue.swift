@@ -87,6 +87,12 @@ public class LuaValue: Equatable, Hashable, Pushable {
         ref.hash(into: &hasher)
     }
 
+    /// Convenience API to create a LuaValue referencing a new empty table.
+    public static func newtable(_ L: LuaState) -> LuaValue {
+        L.newtable()
+        return L.popref()
+    }
+
     /// Pushes the value this `LuaValue` represents onto the Lua stack of `L`.
     ///
     /// - Note: `L` must be related to the `LuaState` used to construct the object.
@@ -436,6 +442,45 @@ public class LuaValue: Equatable, Hashable, Pushable {
             } catch {
                 // Ignore
             }
+        }
+    }
+
+    /// Get or set the value's metatable.
+    ///
+    /// Only tables and userdata values can have (per-value) metatables. It is an error to try to set the metatable of
+    /// any other type of value (if you really need to do this, call `lua_setmetatable` directly).
+    ///
+    /// The result of getting a value's metatable will always be either a `LuaValue` of type `.table`, or `nil`.
+    /// Setting a metatable to `LuaValue()` is equivalent to setting it to `nil`.
+    public var metatable: LuaValue? {
+        get {
+            if type == .nil {
+                return nil
+            }
+            L.push(self)
+            defer {
+                L.pop()
+            }
+            if lua_getmetatable(L, -1) == 1 {
+                return L.popref()
+            } else {
+                return nil
+            }
+        }
+        set {
+            precondition(type == .table || type == .userdata)
+            precondition(newValue == nil || newValue!.type == .nil || newValue!.type == .table,
+                         "metatable must be a table or nil")
+            L.push(self)
+            defer {
+                L.pop()
+            }
+            if let newValue {
+                L.push(newValue)
+            } else {
+                L.pushnil()
+            }
+            lua_setmetatable(L, -2)
         }
     }
 

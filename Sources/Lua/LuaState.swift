@@ -1987,8 +1987,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter file: Path to a Lua text or binary file.
     /// - Parameter displayPath: If set, use this instead of `file` in Lua stacktraces.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
-    /// - Throws: `LuaLoadError.fileNotFound` if `file` cannot be opened. `LuaLoadError.parseError` if the file cannot
-    ///   be parsed.
+    /// - Throws: ``LuaLoadError/fileNotFound`` if `file` cannot be opened. ``LuaLoadError/parseError(_:)`` if the file
+    ///   cannot be parsed.
     func load(file path: String, displayPath: String? = nil, mode: LoadMode = .text) throws {
         var err: CInt = 0
 #if LUASWIFT_NO_FOUNDATION

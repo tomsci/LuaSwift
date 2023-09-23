@@ -223,7 +223,7 @@ final class LuaTests: XCTestCase {
                 XCTFail("Shouldn't get here!")
             }
         }
-        XCTAssertThrowsError(try bad_ipairs(.nilValue(L)), "", { err in
+        XCTAssertThrowsError(try bad_ipairs(LuaValue()), "", { err in
             XCTAssertEqual(err as? LuaValueError, .nilValue)
         })
         XCTAssertThrowsError(try bad_ipairs(L.ref(any: 123)), "", { err in
@@ -238,7 +238,7 @@ final class LuaTests: XCTestCase {
                 return false
             }
         }
-        XCTAssertThrowsError(try bad_ipairs(.nilValue(L)), "", { err in
+        XCTAssertThrowsError(try bad_ipairs(LuaValue()), "", { err in
             XCTAssertEqual(err as? LuaValueError, .nilValue)
         })
         XCTAssertThrowsError(try bad_ipairs(L.ref(any: 123)), "", { err in
@@ -377,6 +377,20 @@ final class LuaTests: XCTestCase {
             return true
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
+    func test_LuaValue_pairs_errors() throws {
+        let bad_pairs: (LuaValue) throws -> Void = { val in
+            for (_, _) in try val.pairs() {
+                XCTFail("Shouldn't get here!")
+            }
+        }
+        XCTAssertThrowsError(try bad_pairs(LuaValue()), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .nilValue)
+        })
+        XCTAssertThrowsError(try bad_pairs(L.ref(any: 123)), "", { err in
+            XCTAssertEqual(err as? LuaValueError, .notIterable)
+        })
     }
 
     func test_LuaValue_pairs_raw() throws {
@@ -771,7 +785,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(ref.tostring(), "hello")
         XCTAssertEqual(L.gettop(), 0)
 
-        ref = .nilValue(L)
+        ref = LuaValue()
         XCTAssertEqual(ref.type, .nil)
 
         ref = L.ref(any: nil)

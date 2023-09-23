@@ -1878,11 +1878,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         push(index: index)
         let type = type(-1)!
         let ref = luaL_ref(self, LUA_REGISTRYINDEX)
-        let result = LuaValue(L: self, ref: ref, type: type)
-        if type != .nil {
+        if ref == LUA_REFNIL {
+            return LuaValue()
+        } else {
+            let result = LuaValue(L: self, ref: ref, type: type)
             getState().luaValues[ref] = UnownedLuaValue(val: result)
+            return result
         }
-        return result
     }
 
     /// Convert any Swift value to a `LuaValue`.

@@ -15,7 +15,7 @@ import CLua
 /// `LuaValue` object can be pushed back on to the Lua stack, or converted back to a Swift value using one of the
 /// `to...()` functions, which behave the same as the similarly-named members of `LuaState` that take a stack index.
 ///
-/// `LuaValue` supports indexing the Lua value using `get()` or the subscript operator, assuming the Lua type
+/// `LuaValue` supports indexing the Lua value using ``get(_:)`` or the subscript operator, assuming the Lua type
 /// supports indexing - if it doesn't, a ``LuaValueError`` will be thrown. Because the subscript operator cannot throw,
 /// attempting to use it on a nil value or one that does not support indexing will cause a `fatalError` - use `get()`
 /// instead (which can throw) if the value might not support indexing or might error. The following are equivalent:
@@ -60,9 +60,11 @@ public class LuaValue: Equatable, Hashable, Pushable {
         self.ref = ref
     }
 
-    /// Create a LuaValue with a nil value.
-    public static func nilValue(_ L: LuaState) -> LuaValue {
-        return LuaValue(L: L, ref: LUA_REFNIL, type: .nil)
+    /// Construct a `LuaValue` representing `nil`.
+    public init() {
+        self.L = nil
+        self.type = .nil
+        self.ref = LUA_REFNIL
     }
 
     deinit {
@@ -89,13 +91,20 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Note: `L` must be related to the `LuaState` used to construct the object.
     public func push(state L: LuaState) {
-        precondition(self.L != nil, "LuaValue used after LuaState has been deinited!")
-        lua_rawgeti(L, LUA_REGISTRYINDEX, lua_Integer(self.ref))
+        if ref == LUA_REFNIL {
+            L.pushnil()
+        } else {
+            precondition(self.L != nil, "LuaValue used after LuaState has been deinited!")
+            lua_rawgeti(L, LUA_REGISTRYINDEX, lua_Integer(self.ref))
+        }
     }
 
     // MARK: - to...() functions
 
     public func toboolean() -> Bool {
+        if type == .nil {
+            return false
+        }
         push(state: L)
         let result = L.toboolean(-1)
         L.pop()
@@ -103,6 +112,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tointeger() -> lua_Integer? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.tointeger(-1)
         L.pop()
@@ -110,6 +122,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func toint() -> Int? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.toint(-1)
         L.pop()
@@ -117,6 +132,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tonumber() -> Double? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.tonumber(-1)
         L.pop()
@@ -124,6 +142,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func todata() -> [UInt8]? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.todata(-1)
         L.pop()
@@ -131,6 +152,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tostring(convert: Bool = false) -> String? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.tostring(-1, convert: convert)
         L.pop()
@@ -138,6 +162,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func toany(guessType: Bool = true) -> Any? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.toany(-1, guessType: guessType)
         L.pop()
@@ -145,6 +172,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tovalue<T>() -> T? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result: T? = L.tovalue(-1)
         L.pop()
@@ -152,6 +182,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func touserdata<T>() -> T? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result: T? = L.touserdata(-1)
         L.pop()
@@ -166,6 +199,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
     func todecodable<T: Decodable>() -> T? {
+        if type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.todecodable(-1, T.self)
         L.pop()
@@ -181,6 +217,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter type: The `Decodable` type to convert to.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
     func todecodable<T: Decodable>(_ type: T.Type) -> T? {
+        if self.type == .nil {
+            return nil
+        }
         push(state: L)
         let result = L.todecodable(-1, type)
         L.pop()
@@ -271,7 +310,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     // On error, pops stack top
-    private static func checkTopIsIndexable(_ L: LuaState!) throws {
+    private static func checkTopIsIndexable(_ L: LuaState) throws {
         // Tables are always indexable, we don't actually need to check how
         if L.type(-1) != .table {
             let indexMetafieldType = luaL_getmetafield(L, -1, "__index")
@@ -338,7 +377,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
    }
 
     // On error, pops stack top
-    private static func checkTopIsNewIndexable(_ L: LuaState!) throws {
+    private static func checkTopIsNewIndexable(_ L: LuaState) throws {
         // Tables are always newindexable, we don't actually need to check how
         if L.type(-1) != .table {
             let newIndexMetafieldType = luaL_getmetafield(L, -1, "__newindex")
@@ -389,7 +428,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// ```
     public subscript(key: Any) -> LuaValue {
         get {
-            return (try? get(key)) ?? .nilValue(L)
+            return (try? get(key)) ?? LuaValue()
         }
         set(newValue) {
             do {
@@ -507,6 +546,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// - Throws: `LuaValueError.notIterable` if the Lua value is not a table and does not have a `__pairs` metafield.
     /// - Throws: ``LuaCallError`` if an error is thrown during a `__pairs` call.
     public func pairs() throws -> some Sequence<(LuaValue, LuaValue)> {
+        try checkValid()
         return try PairsIterator(self)
     }
 

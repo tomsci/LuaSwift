@@ -499,7 +499,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             push(function: luaswift_tostring)
             push(index: index)
             do {
-                try pcall(nargs: 1, nret: 1)
+                try pcall(nargs: 1, nret: 1, traceback: false)
             } catch {
                 return nil
             }
@@ -865,7 +865,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
 
             push(wrapper)
             push(index: absidx) // The value being iterated is the first (and only arg) to wrapper above
-            try pcall(nargs: 1, nret: 0)
+            try pcall(nargs: 1, nret: 0, traceback: false)
         }
     }
 
@@ -953,7 +953,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
             return isTable
         } else {
             lua_insert(L, -2) // Push __pairs below value
-            try L.pcall(nargs: 1, nret: 3)
+            try L.pcall(nargs: 1, nret: 3, traceback: false)
             return true
         }
     }
@@ -1593,7 +1593,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_insert(self, -2) // Move the fn below key
         push(index: absidx)
         lua_insert(self, -2) // move tbl below key
-        try pcall(nargs: 2, nret: 1)
+        try pcall(nargs: 2, nret: 1, traceback: false)
         return type(-1)!
     }
 
@@ -1723,7 +1723,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         lua_insert(self, -3) // Move the fn below key and val
         push(index: absidx)
         lua_insert(self, -3) // move tbl below key and val
-        try pcall(nargs: 3, nret: 0)
+        try pcall(nargs: 3, nret: 0, traceback: false)
     }
 
     /// Performs `tbl[key] = val`. May invoke metamethods.

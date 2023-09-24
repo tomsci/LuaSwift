@@ -415,11 +415,10 @@ public class LuaValue: Equatable, Hashable, Pushable {
         try self.checkValid()
         push(state: L)
         try Self.checkTopIsNewIndexable(L)
-        L.push(function: luaswift_settable)
-        lua_insert(L, -2) // Move the fn below self
         L.push(any: key)
         L.push(any: value)
-        try L.pcall(nargs: 3, nret: 0)
+        try L.set(-3)
+
     }
 
     /// Non-throwing convenience function, otherwise identical to ``get(_:)`` or ``set(_:_:)``.
@@ -554,7 +553,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
             L.push(state)
             L.push(k)
             do {
-                try iterFn.pcall(nargs: 2, nret: 2)
+                try iterFn.pcall(nargs: 2, nret: 2, traceback: false)
             } catch {
                 // print warning?
                 return nil

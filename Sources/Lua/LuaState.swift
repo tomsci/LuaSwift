@@ -1874,7 +1874,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// To raise a non-string error, push the required value on to the stack and call
     /// `throw LuaCallError.popFromStack(L)`.
-    func error(_ string: String) -> some Error {
+    func error(_ string: String) -> LuaCallError {
         return LuaCallError(string)
     }
 

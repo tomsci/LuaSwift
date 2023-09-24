@@ -201,7 +201,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// If `T` is a composite struct or class type, the Lua representation must be a table with members corresponding
     /// to the Swift member names. Userdata values, or tables containing userdatas, are not convertible using this
-    /// function - use `touserdata()` ot `tovalue()` instead.
+    /// function - use ``touserdata()`` or ``tovalue()`` instead.
     ///
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
     func todecodable<T: Decodable>() -> T? {
@@ -522,8 +522,8 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// ```
     ///
     /// - Parameter start: If set, start iteration at this index rather than the beginning of the array.
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is `nil`.
-    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
+    ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
     public func ipairs(start: lua_Integer? = nil) throws -> some Sequence<(lua_Integer, LuaValue)> {
         try checkValid()
         push(state: L)
@@ -587,9 +587,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// // a 1
     /// ```
     ///
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
-    /// - Throws: `LuaValueError.notIterable` if the Lua value is not a table and does not have a `__pairs` metafield.
-    /// - Throws: ``LuaCallError`` if an error is thrown during a `__pairs` call.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
+    ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
+    ///           ``LuaCallError`` if an error is thrown during a `__pairs` call.
     public func pairs() throws -> some Sequence<(LuaValue, LuaValue)> {
         try checkValid()
         return try PairsIterator(self)
@@ -614,9 +614,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// ```
     ///
     /// - Parameter start: If set, start iteration at this index rather than the beginning of the array.
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is `nil`.
-    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
-    /// - Throws: ``LuaCallError`` if an error is thrown during an `__index` call.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
+    ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
+    ///           ``LuaCallError`` if an error is thrown during an `__index` call.
     public func for_ipairs(start: lua_Integer? = nil, block: (lua_Integer, LuaValue) throws -> Bool) throws {
         try checkValid()
         push(state: L)
@@ -645,9 +645,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter block: The code to execute.
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is nil.
-    /// - Throws: `LuaValueError.notIterable` if the Lua value is not a table and does not have a `__pairs` metafield.
-    /// - Throws: ``LuaCallError`` if an error is thrown during a `__pairs` or iterator call.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
+    ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
+    ///           ``LuaCallError`` if an error is thrown during a `__pairs` or iterator call.
     public func for_pairs(block: (LuaValue, LuaValue) throws -> Bool) throws {
         try checkValid()
         push(state: L)
@@ -666,9 +666,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     /// Convenience function to iterate the value as an array using `for_ipairs()`.
     ///
-    /// - Throws: `LuaValueError.nilValue` if the Lua value associated with `self` is `nil`.
-    /// - Throws: `LuaValueError.notIndexable` if the Lua value does not support indexing.
-    /// - Throws: ``LuaCallError`` if an error is thrown during an `__index` call.
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
+    ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
+    ///           ``LuaCallError`` if an error is thrown during an `__index` call.
     public func forEach(_ block: (LuaValue) throws -> Void) throws {
         try for_ipairs() { _, value in
             try block(value)

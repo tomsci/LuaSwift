@@ -327,8 +327,8 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Get the type of the value at the given index.
     ///
     /// - Parameter index: The stack index.
-    /// - Returns: the type of the value in the given valid index, or `nil` for a non-valid but acceptable index
-    /// (`nil` is the equivalent of `LUA_TNONE`).
+    /// - Returns: The type of the value at the given valid index, or `nil` for a non-valid but acceptable index.
+    ///   `nil` is the equivalent of `LUA_TNONE`, whereas ``LuaType/nil`` is the equivalent of `LUA_TNIL`.
     func type(_ index: CInt) -> LuaType? {
         let t = lua_type(self, index)
         assert(t >= LUA_TNONE && t <= LUA_TTHREAD)
@@ -1977,7 +1977,13 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Compare two values for raw equality, ie without invoking `__eq` metamethods.
+    ///
     /// See [lua_rawequal](https://www.lua.org/manual/5.4/manual.html#lua_rawequal).
+    ///
+    /// - Parameter index1: Index of the first value to compare.
+    /// - Parameter index2: Index of the second value to compare.
+    /// - Returns: true if the two values are equal according to the definition of raw equality.
     func rawequal(_ index1: CInt, _ index2: CInt) -> Bool {
         return lua_rawequal(self, index1, index2) != 0
     }

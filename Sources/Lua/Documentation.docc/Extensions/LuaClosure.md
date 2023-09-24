@@ -23,6 +23,19 @@ lua_pushcfunction(L, myErroringFn);
 The equivalent in Swift using a `LuaClosure` would be:
 
 ```swift
+func myErroringFn(L: LuaState) throws -> CInt {
+    if /*doom*/ {
+        throw L.error("Something bad happened")
+    }
+    return 0
+}
+// ...
+L.push(myErroringFn)
+```
+
+or
+
+```swift
 L.push({ L in
     if /*doom*/ {
         throw L.error("Something bad happened")

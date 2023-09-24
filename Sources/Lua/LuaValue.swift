@@ -101,6 +101,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
             L.pushnil()
         } else {
             precondition(self.L != nil, "LuaValue used after LuaState has been deinited!")
+            precondition(self.L.getMainThread() == L.getMainThread(), "Cannot push a LuaValue onto an unrelated state")
             lua_rawgeti(L, LUA_REGISTRYINDEX, lua_Integer(self.ref))
         }
     }
@@ -309,7 +310,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     // MARK: - Get/Set
 
-    func checkValid() throws {
+    private func checkValid() throws {
         if !valid() {
             throw LuaValueError.nilValue
         }
@@ -680,6 +681,49 @@ public class LuaValue: Equatable, Hashable, Pushable {
             try block(key, value)
             return true
         }
+    }
+
+    // MARK: - Comparisons
+
+    /// Compare two values for raw equality, ie without invoking `__eq` metamethods.
+    ///
+    /// See [lua_rawequal](https://www.lua.org/manual/5.4/manual.html#lua_rawequal).
+    ///
+    /// - Parameter other: The value to compare against.
+    /// - Returns: true if the two values are equal according to the definition of raw equality.
+    public func rawequal(_ other: LuaValue) -> Bool {
+        precondition(L.getMainThread() == other.L.getMainThread(), "Cannot compare LuaValues from different LuaStates")
+        L.push(self)
+        L.push(other)
+        defer {
+            L.pop(2)
+        }
+        return L.rawequal(-2, -1)
+    }
+
+    /// Compare two values for equality. May invoke `__eq` metamethods.
+    ///
+    /// - Parameter other: The value to compare against.
+    /// - Returns: true if the two values are equal.
+    /// - Throws: ``LuaCallError`` if an `__eq` metamethod errored.
+    public func equal(_ other: LuaValue) throws -> Bool {
+        return try compare(other, .eq)
+    }
+
+    /// Compare two values using the given comparison operator. May invoke metamethods.
+    ///
+    /// - Parameter other: The value to compare against.
+    /// - Parameter op: The comparison operator to perform.
+    /// - Returns: true if the comparison is satisfied.
+    /// - Throws: ``LuaCallError`` if a metamethod errored.
+    public func compare(_ other: LuaValue, _ op: LuaState.ComparisonOp) throws -> Bool {
+        precondition(L.getMainThread() == other.L.getMainThread(), "Cannot compare LuaValues from different LuaStates")
+        L.push(self)
+        L.push(other)
+        defer {
+            L.pop(2)
+        }
+        return try L.compare(-2, -1, op)
     }
 
 }

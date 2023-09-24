@@ -138,3 +138,9 @@ int luaswift_requiref(lua_State *L) {
     luaL_requiref(L, name, fn, global);
     return 0;
 }
+
+int luaswift_compare(lua_State *L) {
+    int result = lua_compare(L, 1, 2, (int)lua_tointeger(L, 3));
+    lua_pushinteger(L, result);
+    return 1;
+}

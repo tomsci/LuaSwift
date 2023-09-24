@@ -256,6 +256,12 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 - ``Lua/Swift/UnsafeMutablePointer/todata(_:key:)``
 - ``Lua/Swift/UnsafeMutablePointer/tostring(_:key:convert:)``
 
+### Comparison functions
+
+- ``Lua/Swift/UnsafeMutablePointer/rawequal(_:_:)``
+- ``Lua/Swift/UnsafeMutablePointer/equal(_:_:)``
+- ``Lua/Swift/UnsafeMutablePointer/compare(_:_:_:)``
+
 ### Loading code
 
 - ``Lua/Swift/UnsafeMutablePointer/load(file:displayPath:mode:)``
@@ -287,6 +293,6 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 - ``Lua/Swift/UnsafeMutablePointer/ref(any:)``
 - ``Lua/Swift/UnsafeMutablePointer/popref()``
 - ``Lua/Swift/UnsafeMutablePointer/globals``
+- ``Lua/Swift/UnsafeMutablePointer/getMainThread()``
 - ``Lua/Swift/UnsafeMutablePointer/rawlen(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/len(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/rawequal(_:_:)``

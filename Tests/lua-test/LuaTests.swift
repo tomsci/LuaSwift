@@ -1251,4 +1251,32 @@ final class LuaTests: XCTestCase {
         let ret: Int? = try L.pcall()
         XCTAssertEqual(ret, 1234)
     }
+
+    func test_compare() throws {
+        L.push(123)
+        L.push(123)
+        L.push(124)
+        L.push("123")
+        XCTAssertTrue(L.rawequal(1, 2))
+        XCTAssertFalse(L.rawequal(2, 3))
+        XCTAssertFalse(L.rawequal(2, 4))
+
+        XCTAssertTrue(try L.equal(1, 2))
+        XCTAssertFalse(try L.equal(1, 3))
+        XCTAssertFalse(try L.equal(1, 4))
+
+        XCTAssertFalse(try L.compare(1, 2, .lt))
+        XCTAssertTrue(try L.compare(1, 2, .le))
+        XCTAssertTrue(try L.compare(1, 3, .lt))
+
+        let one = L.ref(any: 1)
+        let otherone = L.ref(any: 1)
+        let two = L.ref(any: 2)
+        XCTAssertTrue(one.rawequal(otherone))
+        XCTAssertFalse(one.rawequal(two))
+        XCTAssertTrue(try one.equal(otherone))
+        XCTAssertFalse(try one.equal(two))
+        XCTAssertTrue(try one.compare(two, .lt)) // ie one < two
+        XCTAssertFalse(try two.compare(one, .lt)) // ie two < one
+    }
 }

@@ -1181,7 +1181,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         if val == nil && !isnoneornil(index) {
             let t = typename(index: index)
             let err = "Type of argument \(index) (\(t)) does not match type required by Swift closure (\(T.self))"
-            throw LuaCallError(err)
+            throw error(err)
         } else {
             return val
         }
@@ -1336,7 +1336,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
         let index: CInt
         if traceback {
             index = gettop() - nargs
-            lua_pushcfunction(self, tracebackFn)
+            push(function: tracebackFn)
             lua_insert(self, index) // Move traceback before nargs and fn
         } else {
             index = 0
@@ -1986,6 +1986,55 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Returns: true if the two values are equal according to the definition of raw equality.
     func rawequal(_ index1: CInt, _ index2: CInt) -> Bool {
         return lua_rawequal(self, index1, index2) != 0
+    }
+
+    /// Compare two values for equality. May invoke `__eq` metamethods.
+    ///
+    /// - Parameter index1: Index of the first value to compare.
+    /// - Parameter index2: Index of the second value to compare.
+    /// - Returns: true if the two values are equal.
+    /// - Throws: ``LuaCallError`` if an `__eq` metamethod errored.
+    func equal(_ index1: CInt, _ index2: CInt) throws -> Bool {
+        return try compare(index1, index2, .eq)
+    }
+
+    /// The type of comparison to perform in ``compare(_:_:_:)``.
+    enum ComparisonOp : Int {
+        /// Compare for equality (`==`)
+        case eq = 0 // LUA_OPEQ
+        /// Compare less than (`<`)
+        case lt = 1 // LUA_OPLT
+        /// Compare less than or equal (`<=`)
+        case le = 2 // LUA_OPLE
+    }
+
+    /// Compare two values using the given comparison operator. May invoke metamethods.
+    ///
+    /// - Parameter index1: Index of the first value to compare.
+    /// - Parameter index2: Index of the second value to compare.
+    /// - Parameter op: The comparison operator to perform.
+    /// - Returns: true if the comparison is satisfied.
+    /// - Throws: ``LuaCallError`` if a metamethod errored.
+    func compare(_ index1: CInt, _ index2: CInt, _ op: ComparisonOp) throws -> Bool {
+        let i1 = absindex(index1)
+        let i2 = absindex(index2)
+        push(function: luaswift_compare)
+        push(index: i1)
+        push(index: i2)
+        push(op.rawValue)
+        try pcall(nargs: 3, nret: 1, traceback: false)
+        return toint(-1) != 0
+    }
+
+    /// Get the main thread for this state.
+    ///
+    /// Unless coroutines are being used, this will be the same as `self`.
+    func getMainThread() -> LuaState {
+        rawget(LUA_REGISTRYINDEX, key: LUA_RIDX_MAINTHREAD)
+        defer {
+            pop()
+        }
+        return lua_tothread(self, -1)!
     }
 
     // MARK: - Loading code

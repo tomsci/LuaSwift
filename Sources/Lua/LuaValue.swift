@@ -204,7 +204,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// function - use ``touserdata()`` or ``tovalue()`` instead.
     ///
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
-    func todecodable<T: Decodable>() -> T? {
+    public func todecodable<T: Decodable>() -> T? {
         if type == .nil {
             return nil
         }
@@ -222,7 +222,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Parameter type: The `Decodable` type to convert to.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
-    func todecodable<T: Decodable>(_ type: T.Type) -> T? {
+    public func todecodable<T: Decodable>(_ type: T.Type) -> T? {
         if self.type == .nil {
             return nil
         }

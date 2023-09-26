@@ -41,7 +41,7 @@ public extension String {
     }
 }
 
-public extension UnsafeMutablePointer where Pointee == lua_State {
+extension UnsafeMutablePointer where Pointee == lua_State {
     /// Convert the value at the given stack index into a Swift `String`.
     ///
     /// If the value is is not a Lua string and `convert` is `false`, or if the string data cannot be converted to the
@@ -54,7 +54,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   string (invoking `__tostring` metamethods if necessary) before being decoded. If a metamethod errors, returns
     ///   `nil`.
     /// - Returns: the value as a `String`, or `nil` if it could not be converted.
-    func tostring(_ index: CInt, encoding: LuaStringEncoding? = nil, convert: Bool = false) -> String? {
+    public func tostring(_ index: CInt, encoding: LuaStringEncoding? = nil, convert: Bool = false) -> String? {
         let enc = encoding ?? getDefaultStringEncoding()
         if let data = todata(index) {
             return String(data: Data(data), encoding: enc)
@@ -89,14 +89,14 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///   string (invoking `__tostring` metamethods if necessary) before being decoded. If a metamethod errors, returns
     ///   `nil`.
     /// - Returns: the value as a `String`, or `nil` if it could not be converted.
-    func tostring(_ index: CInt, encoding: String.Encoding, convert: Bool = false) -> String? {
+    public func tostring(_ index: CInt, encoding: String.Encoding, convert: Bool = false) -> String? {
         return tostring(index, encoding: .stringEncoding(encoding), convert: convert)
     }
 
     /// Override the default string encoding.
     ///
     /// See ``getDefaultStringEncoding()``. If this function is not called, the default encoding is UTF-8.
-    func setDefaultStringEncoding(_ encoding: LuaStringEncoding) {
+    public func setDefaultStringEncoding(_ encoding: LuaStringEncoding) {
         getState().defaultStringEncoding = encoding
     }
 
@@ -105,7 +105,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// This is the encoding which Lua strings are assumed to be in if an explicit encoding is not supplied when
     /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-9syls`` or ``push(string:)``. By default, it is
     /// assumed all Lua strings are (or should be) UTF-8.
-    func getDefaultStringEncoding() -> LuaStringEncoding {
+    public func getDefaultStringEncoding() -> LuaStringEncoding {
         return maybeGetState()?.defaultStringEncoding ?? .stringEncoding(.utf8)
     }
 
@@ -115,7 +115,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
-    func push(string: String, encoding: String.Encoding) {
+    public func push(string: String, encoding: String.Encoding) {
         push(string: string, encoding: .stringEncoding(encoding))
     }
 
@@ -123,7 +123,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
-    func push(string: String, encoding: LuaStringEncoding) {
+    public func push(string: String, encoding: LuaStringEncoding) {
         guard let data = string.data(using: encoding) else {
             assertionFailure("Cannot represent string in the given encoding?!")
             pushnil()
@@ -135,7 +135,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// Push any type conforming to `ContiguousBytes` on to the stack, as a Lua `string`.
     ///
     /// - Parameter bytes: the data to push.
-    func push(bytes: ContiguousBytes) {
+    public func push(bytes: ContiguousBytes) {
         bytes.withUnsafeBytes { buf in
             push(buf)
         }
@@ -150,7 +150,7 @@ public extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
     /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
-    func load(bytes: ContiguousBytes, name: String?, mode: LoadMode) throws {
+    public func load(bytes: ContiguousBytes, name: String?, mode: LoadMode) throws {
         try bytes.withUnsafeBytes { buf in
             try load(buffer: buf, name: name, mode: mode)
         }

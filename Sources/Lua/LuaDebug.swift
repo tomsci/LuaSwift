@@ -36,7 +36,8 @@ public struct LuaDebug {
         /// Sets ``LuaDebug/istailcall``.
         case istailcall = "t"
 
-        /// Sets ``LuaDebug/ftransfer`` and ``LuaDebug/ntransfer``.
+        /// Sets ``LuaDebug/ftransfer`` and ``LuaDebug/ntransfer``
+        /// - Note: will be ignored unless Lua 5.4 is being used.
         case transfers = "r"
     }
 
@@ -82,7 +83,11 @@ public struct LuaDebug {
 
         if fields.contains(.source) {
             what = .init(rawValue: String(cString: ar.what).lowercased())
-            var sourceArray = Array<CChar>(UnsafeBufferPointer(start: ar.source, count: ar.srclen))
+            var srclen: Int = 0
+            withUnsafePointer(to: ar) { ptr in
+                srclen = luaswift_lua_Debug_srclen(ptr)
+            }
+            var sourceArray = Array<CChar>(UnsafeBufferPointer(start: ar.source, count: srclen))
             sourceArray.append(0) // Ensure it's null terminated
             source = String(validatingUTF8: sourceArray)
             linedefined = ar.linedefined
@@ -125,9 +130,13 @@ public struct LuaDebug {
             istailcall = nil
         }
 
-        if fields.contains(.transfers) {
-            ftransfer = Int(ar.ftransfer)
-            ntransfer = Int(ar.ntransfer)
+        if fields.contains(.transfers) && LUA_VERSION.is54orLater() {
+            (ftransfer, ntransfer) = withUnsafePointer(to: ar) { ptr in
+                var ftransfer: CUnsignedShort = 0
+                var ntransfer: CUnsignedShort = 0
+                luaswift_lua_Debug_gettransfers(ptr, &ftransfer, &ntransfer)
+                return (Int(ftransfer), Int(ntransfer))
+            }
         } else {
             ftransfer = nil
             ntransfer = nil

@@ -99,22 +99,28 @@ static inline const char* lua_tostring(lua_State* L, int index) {
     return lua_tolstring(L, index, NULL);
 }
 
+#ifdef lua_insert
 #undef lua_insert
 static inline void lua_insert(lua_State* L, int index) {
     lua_rotate(L, index, 1);
 }
+#endif
 
+#ifdef lua_remove
 #undef lua_remove
 static inline void lua_remove(lua_State* L, int index) {
     lua_rotate(L, index, -1);
     lua_pop(L, 1);
 }
+#endif
 
+#ifdef lua_replace
 #undef lua_replace
 static inline void lua_replace(lua_State* L, int index) {
     lua_copy(L, -1, index);
     lua_pop(L, 1);
 }
+#endif
 
 #undef luaL_typename
 static inline const char* luaL_typename(lua_State* L, int index) {
@@ -134,30 +140,43 @@ static inline int luaL_getmetatable(lua_State* L, const char* name) {
     return lua_getfield(L, LUA_REGISTRYINDEX, name);
 }
 
+#ifdef lua_getextraspace
 #undef lua_getextraspace
 static inline void* lua_getextraspace(lua_State* L) {
     return ((void *)((char *)(L) - LUA_EXTRASPACE));
 }
+#endif
 
-int lua_gc0(lua_State* L, int what) {
-    return lua_gc(L, what);
+#ifdef lua_newuserdata
+#undef lua_newuserdata
+static inline void* lua_newuserdata(lua_State* L, size_t sz) {
+    return lua_newuserdatauv(L, sz, 1);
+}
+#endif
+
+static inline int luaswift_gc0(lua_State* L, int what) {
+    return lua_gc(L, what, 0);
 }
 
-int lua_gc1(lua_State* L, int what, int arg1) {
+static inline int luaswift_gc1(lua_State* L, int what, int arg1) {
     return lua_gc(L, what, arg1);
 }
 
-int lua_gc2(lua_State* L, int what, int arg1, int arg2) {
+#if LUA_VERSION_NUM >= 504
+
+static inline int luaswift_gc2(lua_State* L, int what, int arg1, int arg2) {
     return lua_gc(L, what, arg1, arg2);
 }
 
-int lua_gc3(lua_State* L, int what, int arg1, int arg2, int arg3) {
+static inline int luaswift_gc3(lua_State* L, int what, int arg1, int arg2, int arg3) {
     return lua_gc(L, what, arg1, arg2, arg3);
 }
 
-LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename,
-                                             const char *displayname,
-                                             const char *mode);
+#endif
+
+int luaswift_loadfile(lua_State *L, const char *filename,
+                      const char *displayname,
+                      const char *mode);
 
 int luaswift_callclosurewrapper(lua_State *L);
 int luaswift_gettable(lua_State *L);
@@ -165,5 +184,19 @@ int luaswift_settable(lua_State *L);
 int luaswift_tostring(lua_State *L);
 int luaswift_requiref(lua_State *L);
 int luaswift_compare(lua_State *L);
+void* luaswift_newuserdata(lua_State* L, size_t sz);
+
+size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
+void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);
+
+#if LUA_VERSION_NUM >= 504
+#define LUASWIFT_LUA_VERSION_MAJOR LUA_VERSION_MAJOR_N
+#define LUASWIFT_LUA_VERSION_MINOR LUA_VERSION_MINOR_N
+#define LUASWIFT_LUA_VERSION_RELEASE LUA_VERSION_RELEASE_N
+#else
+#define LUASWIFT_LUA_VERSION_MAJOR LUA_VERSION_MAJOR
+#define LUASWIFT_LUA_VERSION_MINOR LUA_VERSION_MINOR
+#define LUASWIFT_LUA_VERSION_RELEASE LUA_VERSION_RELEASE
+#endif
 
 #endif /* clua_bridge_h */

@@ -28,13 +28,33 @@ public struct LuaVer {
     /// The Lua release number (eg 6, for 5.4.6)
     public let release: CInt
     /// The complete Lua version number as an int (eg 50406 for 5.4.6)
-    public let releaseNum: CInt
+    public var releaseNum: CInt {
+        return (major * 100 + minor) * 100 + release
+    }
+
+    public func is54orLater() -> Bool {
+        return major >= 5 && minor >= 4
+    }
+
+    // 5.4 constructor
+    init(major: CInt, minor: CInt, release: CInt) {
+        self.major = major
+        self.minor = minor
+        self.release = release
+    }
+
+    // 5.3 and earlier constructor
+    init(major: String, minor: String, release: String) {
+        self.major = CInt(major)!
+        self.minor = CInt(minor)!
+        self.release = CInt(release)!
+    }
+
 }
 
 /// The version of Lua being used.
-public let LUA_VERSION = LuaVer(major: LUA_VERSION_MAJOR_N, minor: LUA_VERSION_MINOR_N,
-    release: LUA_VERSION_RELEASE_N,
-    releaseNum: ((LUA_VERSION_MAJOR_N * 100 + LUA_VERSION_MINOR_N) * 100 + LUA_VERSION_RELEASE_N))
+public let LUA_VERSION = LuaVer(major: LUASWIFT_LUA_VERSION_MAJOR, minor: LUASWIFT_LUA_VERSION_MINOR,
+    release: LUASWIFT_LUA_VERSION_RELEASE)
 
 fileprivate func gcUserdata(_ L: LuaState!) -> CInt {
     let rawptr = lua_touserdata(L, 1)!
@@ -307,19 +327,19 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// When called with no arguments, performs a full garbage-collection cycle.
     public func collectgarbage(_ what: GcWhat = .collect) {
-        lua_gc0(self, what.rawValue)
+        luaswift_gc0(self, what.rawValue)
     }
 
     /// Returns true if the garbage collector is running.
     ///
     /// Equivalent to `lua_gc(L, LUA_GCISRUNNING)` in C.
     public func collectorRunning() -> Bool {
-        return lua_gc0(self, MoreGarbage.isrunning.rawValue) != 0
+        return luaswift_gc0(self, MoreGarbage.isrunning.rawValue) != 0
     }
 
     /// Returns the total amount of memory in bytes that the Lua state is using.
     public func collectorCount() -> Int {
-        return Int(lua_gc0(self, MoreGarbage.count.rawValue)) * 1024 + Int(lua_gc0(self, MoreGarbage.countb.rawValue))
+        return Int(luaswift_gc0(self, MoreGarbage.count.rawValue)) * 1024 + Int(luaswift_gc0(self, MoreGarbage.countb.rawValue))
     }
 
     class _State {
@@ -1304,7 +1324,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     private func pushuserdata(_ val: Any, metatableName: String) {
-        let udata = lua_newuserdatauv(self, MemoryLayout<Any>.size, 0)!
+        let udata = luaswift_newuserdata(self, MemoryLayout<Any>.size)!
         let udataPtr = udata.bindMemory(to: Any.self, capacity: 1)
         udataPtr.initialize(to: val)
 
@@ -2159,11 +2179,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         ospath.append(0) // Zero-terminate the path
         ospath.withUnsafeBytes { ptr in
             ptr.withMemoryRebound(to: CChar.self) { cpath in
-                err = luaL_loadfilexx(self, cpath.baseAddress, displayPath ?? path, mode.rawValue)
+                err = luaswift_loadfile(self, cpath.baseAddress, displayPath ?? path, mode.rawValue)
             }
         }
 #else
-        err = luaL_loadfilexx(self, FileManager.default.fileSystemRepresentation(withPath: path), displayPath ?? path, mode.rawValue)
+        err = luaswift_loadfile(self, FileManager.default.fileSystemRepresentation(withPath: path), displayPath ?? path, mode.rawValue)
 #endif
         if err == LUA_ERRFILE {
             throw LuaLoadError.fileNotFound
@@ -2172,7 +2192,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             pop()
             throw LuaLoadError.parseError(errStr)
         } else if err != LUA_OK {
-            fatalError("Unexpected error from luaL_loadfilex")
+            fatalError("Unexpected error from luaswift_loadfile")
         }
     }
 

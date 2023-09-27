@@ -144,6 +144,12 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 
 * To use ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)``, the `package` library must be imported and `package.searchers` must be set to its default value.
 
+### Support for different Lua versions
+
+LuaSwift by default includes Lua 5.4. The codebase will also work with Lua 5.3, but to do that you need to fork the repository and check out a 5.3-based branch of the submodule `Sources/CLua/lua`.
+
+Versions older than 5.3 are sufficiently different in their API that it's not straightforward to support.
+
 ## Topics
 
 ### State management

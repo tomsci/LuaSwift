@@ -62,9 +62,9 @@ static int skipcomment (FILE *f, int *cp) {
 }
 
 // Adds displayname argument
-LUALIB_API int luaL_loadfilexx(lua_State *L, const char *filename,
-                                             const char *displayname,
-                                             const char *mode) {
+int luaswift_loadfile(lua_State *L, const char *filename,
+                      const char *displayname,
+                      const char *mode) {
   LoadF lf;
   int status, readstatus;
   int c;
@@ -143,4 +143,31 @@ int luaswift_compare(lua_State *L) {
     int result = lua_compare(L, 1, 2, (int)lua_tointeger(L, 3));
     lua_pushinteger(L, result);
     return 1;
+}
+
+// Create userdata with as few user values as possible on this version of Lua
+void* luaswift_newuserdata(lua_State* L, size_t sz) {
+#if LUA_VERSION_NUM >= 504
+    return lua_newuserdatauv(L, sz, 0);
+#else
+    return lua_newuserdata(L, sz);
+#endif
+}
+
+size_t luaswift_lua_Debug_srclen(const lua_Debug* d) {
+#if LUA_VERSION_NUM >= 504
+    return d->srclen;
+#else
+    return strlen(d->source);
+#endif
+}
+
+void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer) {
+#if LUA_VERSION_NUM >= 504
+    *ftransfer = d->ftransfer;
+    *ntransfer = d->ntransfer;
+#else
+    *ftransfer = 0;
+    *ntransfer = 0;
+#endif
 }

@@ -788,7 +788,7 @@ final class LuaTests: XCTestCase {
     func testForeignUserdata() {
         // Tests that a userdata not set via pushuserdata (and thus, doesn't necessarily contain an `Any`) does not
         // crash or return anything if you attempt to access it via touserdata().
-        let _ = lua_newuserdatauv(L, MemoryLayout<Any>.size, 0)
+        let _ = lua_newuserdata(L, MemoryLayout<Any>.size)
         let bad: Any? = L.touserdata(-1)
         XCTAssertNil(bad)
     }
@@ -862,7 +862,7 @@ final class LuaTests: XCTestCase {
         // Now make ref the __index of another userdata
         // This didn't work with the original implementation of checkIndexable()
 
-        lua_newuserdatauv(L, 4, 0) // will become udref
+        lua_newuserdata(L, 4) // will become udref
         lua_newtable(L) // udref's metatable
         L.rawset(-1, key: "__index", value: ref)
         lua_setmetatable(L, -2) // pops metatable

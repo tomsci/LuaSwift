@@ -1106,6 +1106,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         lua_pushnil(self)
     }
 
+    /// Push the **fail** value onto the stack.
+    ///
+    /// Currently (in Lua 5.4) this function behaves identically to `pushnil()`.
+    public func pushfail() {
+        pushnil()
+    }
+
     /// Pushes a copy of the element at the given index onto the top of the stack.
     ///
     /// - Parameter index: Stack index of the value to copy.

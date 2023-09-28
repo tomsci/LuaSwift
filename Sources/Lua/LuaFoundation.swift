@@ -158,13 +158,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 }
 
 extension Data: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         L.push(bytes: self)
     }
 }
 
 extension NSNumber: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         if let int = self as? Int {
             L.push(int)
         } else {
@@ -179,14 +179,14 @@ extension NSNumber: Pushable {
 
 extension LuaValue {
     public func tostring(encoding: LuaStringEncoding? = nil, convert: Bool = false) -> String? {
-        push(state: L)
+        push(onto: L)
         let result = L.tostring(-1, encoding: encoding, convert: convert)
         L.pop()
         return result
     }
 
     public func tostring(encoding: String.Encoding, convert: Bool = false) -> String? {
-        push(state: L)
+        push(onto: L)
         let result = L.tostring(-1,  encoding: encoding, convert: convert)
         L.pop()
         return result

@@ -1118,7 +1118,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Parameter value: Any Swift value which conforms to ``Pushable``.
     public func push<T>(_ value: T?) where T: Pushable {
         if let value = value {
-            value.push(state: self)
+            value.push(onto: self)
         } else {
             self.pushnil()
         }
@@ -1178,7 +1178,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// perform the Lua-Swift bridging. Normally however, you would use Swift captures rather than Lua upvalues to
     /// access variables from within `closure` and thus `numUpvalues` would normally be omitted or `0`.
     public func push(_ closure: @escaping LuaClosure, numUpvalues: CInt = 0) {
-        LuaClosureWrapper(closure).push(state: self, numUpvalues: numUpvalues)
+        LuaClosureWrapper(closure).push(onto: self, numUpvalues: numUpvalues)
     }
 
     /// Pushes a zero-arguments closure on to the stack as a Lua function.
@@ -1347,7 +1347,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// To convert the value, the following mechanisms are tried in order:
     ///
     /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
-    /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(state:)`` is used.
+    /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
     /// * If `value` is an `NSNumber`, if it is convertible to `Int` it is pushed as such, otherwise as a `Double`.
     /// * If `value` is `[UInt8]`, ``push(_:)-3o5nr`` is used.
     /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:)`` is used.

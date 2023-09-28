@@ -9,57 +9,57 @@ import CLua
 /// represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either.
 public protocol Pushable {
     /// Push this Swift value onto the stack, as a Lua type.
-    func push(state L: LuaState)
+    func push(onto state: LuaState)
 }
 
 extension Bool: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         lua_pushboolean(L, self ? 1 : 0)
     }
 }
 
 extension Int: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         lua_pushinteger(L, lua_Integer(self))
     }
 }
 
 extension CInt: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         lua_pushinteger(L, lua_Integer(self))
     }
 }
 
 extension Int64: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         lua_pushinteger(L, self)
     }
 }
 
 extension Double: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         lua_pushnumber(L, self)
     }
 }
 
 extension String: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         L.push(string: self)
     }
 }
 
 extension Array: Pushable where Element: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         lua_createtable(L, CInt(self.count), 0)
         for (i, val) in self.enumerated() {
-            val.push(state: L)
+            val.push(onto: L)
             lua_rawseti(L, -2, lua_Integer(i + 1))
         }
     }
 }
 
 extension Dictionary: Pushable where Key: Pushable, Value: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         lua_createtable(L, 0, CInt(self.count))
         for (k, v) in self {
             L.push(k)
@@ -70,7 +70,7 @@ extension Dictionary: Pushable where Key: Pushable, Value: Pushable {
 }
 
 extension UnsafeRawBufferPointer: Pushable {
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         self.withMemoryRebound(to: CChar.self) { charBuf -> Void in
             lua_pushlstring(L, charBuf.baseAddress, charBuf.count)
         }

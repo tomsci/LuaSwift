@@ -11,8 +11,8 @@ import CLua
 /// track a `LuaClosure` as a ``Pushable`` object.
 ///
 /// Do not use `push(userdata:)` to push a `LuaClosureWrapper` - it will not be callable. Use
-/// ``Lua/Swift/UnsafeMutablePointer/push(_:)-5b22c``, ``push(state:)`` or
-/// ``push(state:numUpvalues:)`` instead.
+/// ``Lua/Swift/UnsafeMutablePointer/push(_:)-5b22c``, ``push(onto:)`` or
+/// ``push(onto:numUpvalues:)`` instead.
 public class LuaClosureWrapper: Pushable {
 
     /// The number of internal upvalues used when pushing a ``LuaClosure``.
@@ -58,11 +58,11 @@ public class LuaClosureWrapper: Pushable {
         }
     }
 
-    public func push(state L: LuaState) {
-        push(state: L, numUpvalues: 0)
+    public func push(onto L: LuaState) {
+        push(onto: L, numUpvalues: 0)
     }
 
-    public func push(state L: LuaState, numUpvalues: CInt) {
+    public func push(onto L: LuaState, numUpvalues: CInt) {
         L.push(function: Self.callClosure)
         L.push(userdata: self)
         // Move these below numUpvalues

@@ -28,7 +28,7 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable 
         }
     }
 
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         if let errorValue {
             L.push(errorValue)
         } else {

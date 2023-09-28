@@ -96,7 +96,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// Pushes the value this `LuaValue` represents onto the Lua stack of `L`.
     ///
     /// - Note: `L` must be related to the `LuaState` used to construct the object.
-    public func push(state L: LuaState) {
+    public func push(onto L: LuaState) {
         if ref == LUA_REFNIL {
             L.pushnil()
         } else {
@@ -112,7 +112,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return false
         }
-        push(state: L)
+        push(onto: L)
         let result = L.toboolean(-1)
         L.pop()
         return result
@@ -122,7 +122,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.tointeger(-1)
         L.pop()
         return result
@@ -132,7 +132,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.toint(-1)
         L.pop()
         return result
@@ -142,7 +142,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.tonumber(-1)
         L.pop()
         return result
@@ -152,7 +152,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.todata(-1)
         L.pop()
         return result
@@ -162,7 +162,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.tostring(-1, convert: convert)
         L.pop()
         return result
@@ -172,7 +172,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.toany(-1, guessType: guessType)
         L.pop()
         return result
@@ -182,7 +182,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result: T? = L.tovalue(-1)
         L.pop()
         return result
@@ -192,7 +192,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result: T? = L.touserdata(-1)
         L.pop()
         return result
@@ -209,7 +209,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.todecodable(-1, T.self)
         L.pop()
         return result
@@ -227,7 +227,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         if self.type == .nil {
             return nil
         }
-        push(state: L)
+        push(onto: L)
         let result = L.todecodable(-1, type)
         L.pop()
         return result
@@ -237,7 +237,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     private func pushAndCheckCallable() throws {
         try checkValid()
-        push(state: L)
+        push(onto: L)
         try Self.checkTopIsCallable(L)
     }
 
@@ -352,7 +352,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///           ``LuaCallError`` if an error is thrown during a metatable `__index` call.
     public func get(_ key: Any) throws -> LuaValue {
         try self.checkValid()
-        push(state: L)
+        push(onto: L)
         try Self.checkTopIsIndexable(L)
         defer {
             L.pop()
@@ -371,7 +371,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
    public var len: lua_Integer {
        get throws {
            try self.checkValid()
-           push(state: L)
+           push(onto: L)
            defer {
                L.pop()
            }
@@ -414,7 +414,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///           ``LuaCallError`` if an error is thrown during a metatable `__newindex` call.
     public func set(_ key: Any, _ value: Any?) throws {
         try self.checkValid()
-        push(state: L)
+        push(onto: L)
         try Self.checkTopIsNewIndexable(L)
         L.push(any: key)
         L.push(any: value)
@@ -526,7 +526,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
     public func ipairs(start: lua_Integer? = nil) throws -> some Sequence<(lua_Integer, LuaValue)> {
         try checkValid()
-        push(state: L)
+        push(onto: L)
         try Self.checkTopIsIndexable(L)
         L.pop()
         return IPairsIterator(self, start: start)
@@ -538,7 +538,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         var k: LuaValue
         init(_ value: LuaValue) throws {
             let L = value.L!
-            value.push(state: L)
+            value.push(onto: L)
             let isIterable = try L.pushPairsParameters()
             if !isIterable {
                 L.pop(3)
@@ -619,7 +619,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///           ``LuaCallError`` if an error is thrown during an `__index` call.
     public func for_ipairs(start: lua_Integer? = nil, block: (lua_Integer, LuaValue) throws -> Bool) throws {
         try checkValid()
-        push(state: L)
+        push(onto: L)
         try Self.checkTopIsIndexable(L)
         defer {
             L.pop()
@@ -650,7 +650,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///           ``LuaCallError`` if an error is thrown during a `__pairs` or iterator call.
     public func for_pairs(block: (LuaValue, LuaValue) throws -> Bool) throws {
         try checkValid()
-        push(state: L)
+        push(onto: L)
         let iterable = try L.pushPairsParameters() // pops self, pushes iterfn, state, initval
         if !iterable {
             L.pop(3) // iterfn, state, initval

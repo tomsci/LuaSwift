@@ -317,7 +317,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case collect = 2
     }
 
-    private enum MoreGarbage: CInt {
+    enum MoreGarbage: CInt {
         case count = 3
         case countb = 4
         case isrunning = 9

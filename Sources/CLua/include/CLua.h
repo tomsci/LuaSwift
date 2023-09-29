@@ -135,6 +135,16 @@ static inline int lua_upvalueindex(int i) {
 #undef LUA_REGISTRYINDEX
 static const int LUA_REGISTRYINDEX = -LUAI_MAXSTACK - 1000;
 
+// Early Lua 5.3 versions didn't define this, even though it is used in the same way.
+#ifndef LUA_PRELOAD_TABLE
+#define LUA_PRELOAD_TABLE "_PRELOAD"
+#endif
+
+// Ditto
+#ifndef LUA_LOADED_TABLE
+#define LUA_LOADED_TABLE "_LOADED"
+#endif
+
 #undef luaL_getmetatable
 static inline int luaL_getmetatable(lua_State* L, const char* name) {
     return lua_getfield(L, LUA_REGISTRYINDEX, name);
@@ -189,11 +199,12 @@ void* luaswift_newuserdata(lua_State* L, size_t sz);
 size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
 void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);
 
-#if LUA_VERSION_NUM >= 504
+#ifdef LUA_VERSION_MAJOR_N
 #define LUASWIFT_LUA_VERSION_MAJOR LUA_VERSION_MAJOR_N
 #define LUASWIFT_LUA_VERSION_MINOR LUA_VERSION_MINOR_N
 #define LUASWIFT_LUA_VERSION_RELEASE LUA_VERSION_RELEASE_N
 #else
+// Fall back to using the string definitions and let the LuaVersion constructor parse them
 #define LUASWIFT_LUA_VERSION_MAJOR LUA_VERSION_MAJOR
 #define LUASWIFT_LUA_VERSION_MINOR LUA_VERSION_MINOR
 #define LUASWIFT_LUA_VERSION_RELEASE LUA_VERSION_RELEASE

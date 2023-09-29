@@ -34,6 +34,27 @@ final class LuaTests: XCTestCase {
         L = nil
     }
 
+    func test_constants() {
+        // Since we redefine a bunch of enums to work around limitations of the bridge we really should check they have
+        // the same values
+        XCTAssertEqual(LuaType.nil.rawValue, LUA_TNIL)
+        XCTAssertEqual(LuaType.boolean.rawValue, LUA_TBOOLEAN)
+        XCTAssertEqual(LuaType.lightuserdata.rawValue, LUA_TLIGHTUSERDATA)
+        XCTAssertEqual(LuaType.number.rawValue, LUA_TNUMBER)
+        XCTAssertEqual(LuaType.string.rawValue, LUA_TSTRING)
+        XCTAssertEqual(LuaType.table.rawValue, LUA_TTABLE)
+        XCTAssertEqual(LuaType.function.rawValue, LUA_TFUNCTION)
+        XCTAssertEqual(LuaType.userdata.rawValue, LUA_TUSERDATA)
+        XCTAssertEqual(LuaType.thread.rawValue, LUA_TTHREAD)
+
+        XCTAssertEqual(LuaState.GcWhat.stop.rawValue, LUA_GCSTOP)
+        XCTAssertEqual(LuaState.GcWhat.restart.rawValue, LUA_GCRESTART)
+        XCTAssertEqual(LuaState.GcWhat.collect.rawValue, LUA_GCCOLLECT)
+        XCTAssertEqual(LuaState.internal_MoreGarbage.count.rawValue, LUA_GCCOUNT)
+        XCTAssertEqual(LuaState.internal_MoreGarbage.countb.rawValue, LUA_GCCOUNTB)
+        XCTAssertEqual(LuaState.internal_MoreGarbage.isrunning.rawValue, LUA_GCISRUNNING)
+    }
+
     func testSafeLibraries() {
         L.openLibraries(.safe)
         let unsafeLibs = ["os", "io", "package", "debug"]

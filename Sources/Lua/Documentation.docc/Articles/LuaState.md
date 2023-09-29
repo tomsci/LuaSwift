@@ -20,6 +20,14 @@ In both styles of API, the only call primitive that is exposed is `pcall()`. `lu
 
 As in the Lua C API, functions and values are pushed on to the stack with one of the [`push(...)`](#push()-functions) APIs, called using one of the [`pcall(...)`](#calling-into-lua) overloads, and results are read from the stack using one of the [`to...()`](#to…()-functions) APIs.
 
+```swift
+import Lua
+let L = LuaState(libaries: .all)
+L.getglobal("print")
+L.push("Hello world!")
+try! L.pcall(nargs: 1, nret: 0)
+```
+
 #### Object-oriented API
 
 This API uses a single Swift type ``LuaValue`` to represent any Lua value (including `nil`). This type supports convenience call and subscript operators. A computed property ``Lua/Swift/UnsafeMutablePointer/globals`` allows a convenient way to access the global Lua environment. A ``LuaValueError`` is thrown if a `LuaValue` is accessed in a way which the underlying Lua value does not support - for example trying to call something which is not callable.
@@ -51,6 +59,7 @@ To access the underlying [Lua C API](https://www.lua.org/manual/5.4/manual.html#
 ```swift
 import CLua
 let L = luaL_newstate()
+// ...
 lua_close(L)
 ```
 
@@ -67,7 +76,7 @@ try L.pcall("Hello world")
 L.close()
 ```
 
-This is generally only useful for complex stack manipulations for which there are no suitable higher-level functions declared by `Lua`.
+Using `CLua` directly is generally only useful for complex stack manipulations for which there are no suitable higher-level functions declared by `Lua`.
 
 ### Thread safety
 
@@ -166,7 +175,6 @@ Versions older than 5.3 are sufficiently different in their API that it's not st
 ### Basic stack functionality
 
 - ``Lua/Swift/UnsafeMutablePointer/type(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/typename(type:)``
 - ``Lua/Swift/UnsafeMutablePointer/typename(index:)``
 - ``Lua/Swift/UnsafeMutablePointer/isnone(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/isnoneornil(_:)``

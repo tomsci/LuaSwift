@@ -77,7 +77,7 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
 }
 
 /// A Swift enum of the Lua types.
-public enum LuaType : CInt {
+public enum LuaType : CInt, CaseIterable {
     // Annoyingly can't use LUA_TNIL etc here because the bridge exposes them as `var LUA_TNIL: CInt { get }`
     // which is not acceptable for an enum (which requires the rawValue to be a literal)
     case `nil` = 0 // LUA_TNIL
@@ -89,6 +89,33 @@ public enum LuaType : CInt {
     case function = 6 // LUA_TFUNCTION
     case userdata = 7 // LUA_TUSERDATA
     case thread = 8 // LUA_TTHREAD
+}
+
+extension LuaType {
+    /// Returns the type as a String.
+    ///
+    /// In the same format as used by [`type()`](https://www.lua.org/manual/5.4/manual.html#pdf-type) and
+    /// [`lua_typename()`](https://www.lua.org/manual/5.4/manual.html#lua_typename).
+    public func tostring() -> String {
+        switch self {
+        case .nil: return "nil"
+        case .boolean: return "boolean"
+        case .lightuserdata: return "userdata"
+        case .number: return "number"
+        case .string: return "string"
+        case .table: return "table"
+        case .function: return "function"
+        case .userdata: return "userdata"
+        case .thread: return "thread"
+        }
+    }
+
+    /// Returns the type as a String.
+    ///
+    /// As per ``tostring()``, but including handling `nil` (ie `LUA_TNONE`).
+    public static func tostring(_ type: LuaType?) -> String {
+        return type?.tostring() ?? "no value"
+    }
 }
 
 extension UnsafeMutablePointer where Pointee == lua_State {
@@ -212,7 +239,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// `<path>/foo/bar.lua`.
     ///
     /// - Parameter path: The root directory containing .lua files. Specify `nil` to disable all module loading (except
-    ///   for any preloads configured with `addModules()`).
+    ///   for any preloads configured with ``addModules(_:mode:)``.
     /// - Parameter displayPath: What to display in stacktraces instead of showing the full `path`. The default `""`
     ///   means stacktraces will contain just the Lua module names. Pass in `path` or `nil` to show the unmodified real
     ///   path.
@@ -271,7 +298,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Such that they can loaded by `require(name)`. The modules are not loaded until `require` is called.
     ///
-    /// - Parameter modules: A dictionary of module names to data suitable to be passed to `load(data:)`.
+    /// See <doc:EmbedLua> for one way to produce a suitable `modules` value.
+    ///
+    /// - Parameter modules: A dictionary of module names to data suitable to be passed to ``load(data:name:mode:)``.
     /// - Parameter mode: The `LoadMode` to be used when loading any of the modules in `modules`.
     public func addModules(_ modules: [String: [UInt8]], mode: LoadMode = .binary) {
         luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE)
@@ -295,7 +324,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// previously in the preload table are removed. Note this will have no effect on modules that have already been
     /// loaded.
     ///
-    /// - Parameter modules: A dictionary of module names to data suitable to be passed to `load(data:)`.
+    /// See <doc:EmbedLua> for one way to produce a suitable `modules` value.
+    ///
+    /// - Parameter modules: A dictionary of module names to data suitable to be passed to ``load(data:name:mode:)``.
     /// - Parameter mode: The `LoadMode` to be used when loading any of the modules in `modules`.
     public func setModules(_ modules: [String: [UInt8]], mode: LoadMode = .binary) {
         luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE)
@@ -396,8 +427,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Get the type of the value at the given index.
     ///
-    /// - Parameter index: The stack index.
-    /// - Returns: The type of the value at the given valid index, or `nil` for a non-valid but acceptable index.
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: The type of the value at `index`, or `nil` for a non-valid but acceptable index.
     ///   `nil` is the equivalent of `LUA_TNONE`, whereas ``LuaType/nil`` is the equivalent of `LUA_TNIL`.
     public func type(_ index: CInt) -> LuaType? {
         let t = lua_type(self, index)
@@ -405,12 +436,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return LuaType(rawValue: t)
     }
 
-    public func typename(type: CInt) -> String {
-        return String(cString: lua_typename(self, type))
-    }
-
+    /// Get the type of the value at the given stack index, as a String.
+    ///
+    ///This is primarily a convenience for:
+    /// ```swift
+    /// LuaType.tostring(L.type(index: index))
+    /// ```
+    ///
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: The type of the value at `index` as a String, as per
+    ///   [`lua_typename()`](https://www.lua.org/manual/5.4/manual.html#lua_typename).
     public func typename(index: CInt) -> String {
-        return typename(type: lua_type(self, index))
+        return String(cString: luaL_typename(self, index))
     }
 
     /// See [lua_absindex](https://www.lua.org/manual/5.4/manual.html#lua_absindex).
@@ -1351,7 +1388,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Convert any Swift value to a Lua value and push on to the stack.
     ///
-    /// To convert the value, the following mechanisms are tried in order:
+    /// To convert the value, the following logic is applied:
     ///
     /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
@@ -1363,7 +1400,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` is a `lua_CFunction`, ``push(function:)`` is used.
     /// * If `value` is a `LuaClosure`, ``push(_:numUpvalues:)`` is used (with `numUpvalues=0`).
     /// * If `value` is a zero-argument closure that returns `Void` or `Any?`, it is pushed using `push(closure:)`.
-    ///   Due to limitations in Swift type inference, any other closure type will be pushed as a `userdata`.
+    ///   Due to limitations in Swift type inference, these are the only closure types that are handled in this way.
     /// * Any other type is pushed as a `userdata` using ``push(userdata:)``.
     ///
     /// - Parameter value: The value to push
@@ -2047,15 +2084,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Returns a `LuaValue` representing the global environment.
     ///
-    /// Equivalent to (but more efficient than):
+    /// Equivalent to (but slightly more efficient than):
     ///
-    ///     L.pushGlobals()
-    ///     let globals = L.ref(-1)
-    ///     L.pop()
+    /// ```swift
+    /// L.pushGlobals()
+    /// let globals = L.popref()
+    /// ```
     ///
     /// For example:
     ///
-    ///     try L.globals["print"].pcall("Hello world!")
+    /// ```swift
+    /// try L.globals["print"].pcall("Hello world!")
+    /// ```
     public var globals: LuaValue {
         // Note, LUA_RIDX_GLOBALS doesn't need to be freed so doesn't need to be added to luaValues
         return LuaValue(L: self, ref: LUA_RIDX_GLOBALS, type: .table)

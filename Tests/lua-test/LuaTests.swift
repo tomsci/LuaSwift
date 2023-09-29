@@ -53,6 +53,11 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(LuaState.internal_MoreGarbage.count.rawValue, LUA_GCCOUNT)
         XCTAssertEqual(LuaState.internal_MoreGarbage.countb.rawValue, LUA_GCCOUNTB)
         XCTAssertEqual(LuaState.internal_MoreGarbage.isrunning.rawValue, LUA_GCISRUNNING)
+
+        for t in LuaType.allCases {
+            XCTAssertEqual(t.tostring(), String(cString: lua_typename(L, t.rawValue)))
+        }
+        XCTAssertEqual(LuaType.tostring(nil), String(cString: lua_typename(L, LUA_TNONE)))
     }
 
     func testSafeLibraries() {

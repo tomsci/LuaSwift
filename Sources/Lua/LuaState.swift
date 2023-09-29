@@ -1661,7 +1661,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Returns true if ``registerMetatable(for:functions:)`` has already been called for `T`.
     ///
-    /// Note, does not consider any metatable set with ``registerDefaultMetatable(functions:)-5ul4z``.
+    /// Note, does not consider any metatable set with ``registerDefaultMetatable(functions:)``.
     public func isMetatableRegistered<T>(for type: T.Type) -> Bool {
         let name = getMetatableName(for: type)
         let t = luaL_getmetatable(self, name)
@@ -1681,12 +1681,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
-    }
-
-    // Kept for compat
-    public func registerDefaultMetatable(functions: [String: lua_CFunction]) {
-        let fns = functions.mapValues { MetafieldType.function($0) }
-        registerDefaultMetatable(functions: fns	)
     }
 
     // MARK: - get/set functions

@@ -241,7 +241,7 @@ Versions older than 5.3 are sufficiently different in their API that it's not st
 
 - ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``
 - ``Lua/Swift/UnsafeMutablePointer/isMetatableRegistered(for:)``
-- ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:)-5ul4z``
+- ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:)``
 
 ### Get/Set functions
 

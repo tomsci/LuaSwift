@@ -1234,7 +1234,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///     return "I am callable and return a result"
     /// })
     /// ```
-    public func push(closure: @escaping () throws -> Any?) {
+    public func push<Ret>(closure: @escaping () throws -> Ret) {
         push({ L in
             L.push(any: try closure())
             return 1
@@ -1260,7 +1260,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// })
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
-    public func push<Arg1>(closure: @escaping (Arg1?) throws -> Any?) {
+    /// - Note: There is an ambiguity if pushing a closure which takes a `LuaState?` and returns a `CInt` if _also_
+    ///   using the [trailing closure](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/closures#Trailing-Closures)
+    ///   syntax - the wrong overload of `push()` will be called. To avoid this ambiguity, do not use the trailing
+    ///   closure syntax in such cases and call as `push(closure: {...})`.
+    public func push<Ret, Arg1>(closure: @escaping (Arg1?) throws -> Ret) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             L.push(any: try closure(arg1))
@@ -1287,7 +1291,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// })
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
-    public func push<Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Any?) {
+    public func push<Ret, Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Ret) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
@@ -1315,7 +1319,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// })
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
-    public func push<Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Any?) {
+    public func push<Ret, Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Ret) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)

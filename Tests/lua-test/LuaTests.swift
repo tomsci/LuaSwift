@@ -728,10 +728,35 @@ final class LuaTests: XCTestCase {
         try L.pcall()
         XCTAssertTrue(called)
 
+        // Check the trailing closure syntax works too
+        called = false
+        L.push() { () -> Int? in
+            called = true
+            return 123
+        }
+        let iresult: Int? = try L.pcall()
+        XCTAssertTrue(called)
+        XCTAssertEqual(iresult, 123)
+
+        called = false
+        L.push() { (L: LuaState) -> CInt in
+            called = true
+            L.push("result")
+            return 1
+        }
+        let sresult: String? = try L.pcall()
+        XCTAssertTrue(called)
+        XCTAssertEqual(sresult, "result")
+
         L.push(closure: {
             return "Void->String closure"
         })
         XCTAssertEqual(try L.pcall(), "Void->String closure")
+
+        L.push() {
+            return "Void->String trailing closure"
+        }
+        XCTAssertEqual(try L.pcall(), "Void->String trailing closure")
 
         let c = { (val: String?) -> String in
             let v = val ?? "no"

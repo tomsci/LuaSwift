@@ -120,7 +120,7 @@ L.registerMetatable(for: Foo.self, functions: [
 ])
 ```
 
-Then pass the `Foo` instance to Lua using ``Lua/Swift/UnsafeMutablePointer/push(userdata:)`` or ``Lua/Swift/UnsafeMutablePointer/push(any:)``:
+Then pass the `Foo` instance to Lua using ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)`` or ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``:
 
 ```swift
 let foo = Foo(baz: "my foo instance")
@@ -137,9 +137,9 @@ foo:bar()
 
 ### Converting types using Any
 
-Any Swift type can be converted to a Lua value by calling ``Lua/Swift/UnsafeMutablePointer/push(any:)`` (or any of the convenience functions which use it, such as `pcall(args...)` or ``Lua/Swift/UnsafeMutablePointer/ref(any:)``). Arrays and Dictionaries are converted to Lua tables; Strings are converted to Lua strings using the default string encoding (see ``Lua/Swift/UnsafeMutablePointer/setDefaultStringEncoding(_:)``); numbers, booleans, Data, and nil Optionals are converted to the applicable Lua type. Any other type is bridged as described in the previous section.
+Any Swift type can be converted to a Lua value by calling ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` (or any of the convenience functions which use it, such as `pcall(args...)` or ``Lua/Swift/UnsafeMutablePointer/ref(any:)``). See the documentation for ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` for exact details of the conversion.
 
-Any Lua value can be converted back to a Swift value of type `T?` by calling ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``. `table`s and `string`s are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue<T>()` returns nil. If `T` is `Any` (ie the most relaxed type constrait), but there is no Swift type capable of representing the Lua value (for example, a closure) then a ``LuaValue`` instance is returned. Similarly if `T` is `Dictionary<AnyHashable, Any>` but the Lua table contains a key which when converted is not hashable in Swift, `LuaValue` will be used there as well.
+Any Lua value can be converted back to a Swift value of type `T?` by calling ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``. `table`s and `string`s are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue<T>()` returns nil. If `T` is `Any` (ie the most relaxed type constraint), but there is no Swift type capable of representing the Lua value (for example, a closure) then a ``LuaValue`` instance is returned. Similarly if `T` is `Dictionary<AnyHashable, Any>` but the Lua table contains a key which when converted is not hashable in Swift, `LuaValue` will be used there as well.
 
 Any Lua value can be tracked as a Swift object, without converting back into a Swift type, by calling ``Lua/Swift/UnsafeMutablePointer/ref(index:)`` which returns a ``LuaValue`` object.
 
@@ -158,6 +158,10 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 LuaSwift by default includes Lua 5.4.6. The codebase will also work with any 5.3 or 5.4 release, but to do that you need to fork the repository and check out an appropriate branch of the submodule `Sources/CLua/lua`.
 
 Versions older than 5.3 are sufficiently different in their API that it's not straightforward to support.
+
+### Push functions toindex parameter
+
+All of the [`push()`](#push()-functions) APIs take an optional parameter `toindex` which specifies where on the stack to put the new element. This is the stack index where the element should be on return of the function, and is allowed to be relative. So `-1` means push the element onto the top of the stack (the default), `-2` means put it just below the top of the stack, `1` means put it at the bottom of the stack, etc. Existing stack elements will be moved if necessary as per [`lua_insert()`](https://www.lua.org/manual/5.4/manual.html#lua_insert).
 
 ## Topics
 
@@ -183,6 +187,7 @@ Versions older than 5.3 are sufficiently different in their API that it's not st
 - ``Lua/Swift/UnsafeMutablePointer/settop(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/absindex(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkstack(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/insert(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/newtable(narr:nrec:)``
 
 ### to...() functions
@@ -203,26 +208,26 @@ Versions older than 5.3 are sufficiently different in their API that it's not st
 
 ### push() functions
 
-- ``Lua/Swift/UnsafeMutablePointer/pushnil()``
-- ``Lua/Swift/UnsafeMutablePointer/pushfail()``
-- ``Lua/Swift/UnsafeMutablePointer/push(index:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(_:)-5b22c``
-- ``Lua/Swift/UnsafeMutablePointer/push(string:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(utf8String:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:)-277x``
-- ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:)-75xks``
-- ``Lua/Swift/UnsafeMutablePointer/push(_:)-3o5nr``
-- ``Lua/Swift/UnsafeMutablePointer/push(bytes:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(function:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(error:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(closure:)-80bt5``
-- ``Lua/Swift/UnsafeMutablePointer/push(closure:)-22ess``
-- ``Lua/Swift/UnsafeMutablePointer/push(closure:)-4rotd``
-- ``Lua/Swift/UnsafeMutablePointer/push(closure:)-5wt8k``
-- ``Lua/Swift/UnsafeMutablePointer/push(userdata:)``
-- ``Lua/Swift/UnsafeMutablePointer/push(any:)``
-- ``Lua/Swift/UnsafeMutablePointer/pushGlobals()``
+- ``Lua/Swift/UnsafeMutablePointer/pushnil(toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/pushfail(toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(index:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``
+- ``Lua/Swift/UnsafeMutablePointer/push(string:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(utf8String:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:toindex:)-6rddl``
+- ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:toindex:)-9nxec``
+- ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``
+- ``Lua/Swift/UnsafeMutablePointer/push(bytes:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-pont``
+- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-nmyz``
+- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-2hshc``
+- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-7d7ly``
+- ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``
+- ``Lua/Swift/UnsafeMutablePointer/pushGlobals(toindex:)``
 
 ### Iterators
 

@@ -103,41 +103,44 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Get the default string encoding.
     ///
     /// This is the encoding which Lua strings are assumed to be in if an explicit encoding is not supplied when
-    /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-9syls`` or ``push(string:)``. By default, it is
-    /// assumed all Lua strings are (or should be) UTF-8.
+    /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-9syls`` or
+    /// ``push(string:toindex:)``. By default, it is assumed all Lua strings are (or should be) UTF-8.
     public func getDefaultStringEncoding() -> LuaStringEncoding {
         return maybeGetState()?.defaultStringEncoding ?? .stringEncoding(.utf8)
     }
 
     /// Push a string onto the stack, using the specified encoding.
     ///
-    /// See also ``push(string:encoding:)-75xks`` to use encodings other than `String.Encoding`.
+    /// See also ``push(string:encoding:toindex:)-9nxec`` to use encodings other than `String.Encoding`.
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
-    public func push(string: String, encoding: String.Encoding) {
-        push(string: string, encoding: .stringEncoding(encoding))
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(string: String, encoding: String.Encoding, toindex: CInt = -1) {
+        push(string: string, encoding: .stringEncoding(encoding), toindex: toindex)
     }
 
     /// Push a string onto the stack, using the specified encoding.
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
-    public func push(string: String, encoding: LuaStringEncoding) {
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(string: String, encoding: LuaStringEncoding, toindex: CInt = -1) {
         guard let data = string.data(using: encoding) else {
             assertionFailure("Cannot represent string in the given encoding?!")
-            pushnil()
+            pushnil(toindex: toindex)
             return
         }
-        push(data)
+        push(data, toindex: toindex)
     }
 
     /// Push any type conforming to `ContiguousBytes` on to the stack, as a Lua `string`.
     ///
     /// - Parameter bytes: the data to push.
-    public func push(bytes: ContiguousBytes) {
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(bytes: ContiguousBytes, toindex: CInt = -1) {
         bytes.withUnsafeBytes { buf in
-            push(buf)
+            push(buf, toindex: toindex)
         }
     }
 

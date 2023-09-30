@@ -5,20 +5,20 @@ import CLua
 
 /// A class which wraps a Swift closure of type ``LuaClosure`` and can be pushed as a Lua function.
 ///
-/// Normally you would call ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:)`` or one of the
-/// `L.push(closure:)` overloads rather than using this class directly - internally those functions
-/// use `LuaClosureWrapper`. Using `LuaClosureWrapper` directly can be useful if you need to
-/// track a `LuaClosure` as a ``Pushable`` object.
+/// Normally you would call ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)`` or one of the
+/// `L.push(closure:)` overloads rather than using this class directly - internally those functions use
+/// `LuaClosureWrapper`. Using `LuaClosureWrapper` directly can be useful if you need to track a `LuaClosure` as a
+/// ``Pushable`` object.
 ///
 /// Do not use `push(userdata:)` to push a `LuaClosureWrapper` - it will not be callable. Use
-/// ``Lua/Swift/UnsafeMutablePointer/push(_:)-5b22c``, ``push(onto:)`` or
+/// ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``, ``push(onto:)`` or
 /// ``push(onto:numUpvalues:)`` instead.
 public class LuaClosureWrapper: Pushable {
 
     /// The number of internal upvalues used when pushing a ``LuaClosure``.
     ///
-    /// If ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:)`` was called with a non-zero `numUpvalues`, those
-    /// upvalues they do not start at `lua_upvalueindex(1)` as you might expect, but rather at
+    /// If ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)`` was called with a non-zero `numUpvalues`,
+    /// those upvalues they do not start at `lua_upvalueindex(1)` as you might expect, but rather at
     /// `lua_upvalueindex(NumInternalUpvalues + 1)`. This is because some upvalues are used internally to support the
     /// ability for errors thrown by closures to be translated into Lua errors.
     ///

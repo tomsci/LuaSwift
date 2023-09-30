@@ -177,6 +177,15 @@ final class LuaTests: XCTestCase {
 #endif
     }
 
+    func test_push_toindex() {
+        L.push(333)
+        L.push(111, toindex: 1)
+        L.push(222, toindex: -2)
+        XCTAssertEqual(L.toint(1), 111)
+        XCTAssertEqual(L.toint(2), 222)
+        XCTAssertEqual(L.toint(3), 333)
+    }
+
     func test_ipairs() {
         let arr = [11, 22, 33, 44]
         L.push(arr) // Because Array<Int> conforms to Array<T: Pushable> which is itself Pushable

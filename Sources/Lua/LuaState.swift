@@ -480,6 +480,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         lua_pop(self, nitems)
     }
 
+    /// Move the item on top of the stack to the given index.
+    ///
+    /// Move the item on top of the stack to the given index, shifting up the elements above this index to open space.
+    ///
+    /// - Parameter index: The stack index to move the top item to.
+    public func insert(_ index: CInt) {
+        lua_insert(self, index)
+    }
+
     /// See [lua_gettop](https://www.lua.org/manual/5.4/manual.html#lua_gettop).
     public func gettop() -> CInt {
         return lua_gettop(self)
@@ -732,7 +741,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return nil
     }
 
-    /// Convert a Lua userdata which was created with `push(userdata:)` back to a value of type `T`.
+    /// Convert a Lua userdata which was created with ``push(userdata:toindex:)`` back to a value of type `T`.
     ///
     /// - Parameter index: The stack index.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position is not a `userdata` created
@@ -943,7 +952,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
     ///   does not support indexing.
     public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Bool) throws {
-        let absidx = absindex(index)
         try withoutActuallyEscaping(block) { escapingBlock in
             let wrapper = LuaClosureWrapper({ L in
                 var i = start
@@ -968,8 +976,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 wrapper._closure = nil
             }
 
-            push(wrapper)
-            push(index: absidx) // The value being iterated is the first (and only arg) to wrapper above
+            push(index: index) // Push first as could be relative index
+            push(wrapper, toindex: -2)
             try pcall(nargs: 1, nret: 0, traceback: false)
         }
     }
@@ -1132,65 +1140,86 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     // MARK: - push() functions
 
     /// Push a nil value onto the stack.
-    public func pushnil() {
+    ///
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func pushnil(toindex: CInt = -1) {
         lua_pushnil(self)
+        if toindex != -1 {
+            insert(toindex)
+        }
     }
 
     /// Push the **fail** value onto the stack.
     ///
     /// Currently (in Lua 5.4) this function behaves identically to `pushnil()`.
-    public func pushfail() {
-        pushnil()
+    ///
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func pushfail(toindex: CInt = -1) {
+        pushnil(toindex: toindex)
     }
 
-    /// Pushes a copy of the element at the given index onto the top of the stack.
+    /// Pushes a copy of the element at the given index onto the stack.
     ///
     /// - Parameter index: Stack index of the value to copy.
-    public func push(index: CInt) {
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(index: CInt, toindex: CInt = -1) {
         lua_pushvalue(self, index)
+        if toindex != -1 {
+            insert(toindex)
+        }
     }
 
     /// Push anything which conforms to ``Pushable`` onto the stack.
     ///
     /// - Parameter value: Any Swift value which conforms to ``Pushable``.
-    public func push<T>(_ value: T?) where T: Pushable {
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push<T>(_ value: T?, toindex: CInt = -1) where T: Pushable {
         if let value = value {
             value.push(onto: self)
         } else {
-            self.pushnil()
+            pushnil()
+        }
+        if toindex != -1 {
+            insert(toindex)
         }
     }
 
     /// Push a String onto the stack, using the default string encoding.
     ///
     /// See ``getDefaultStringEncoding()``.
-    public func push(string: String) {
+    ///
+    /// - Parameter string: The `String` to push.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(string: String, toindex: CInt = -1) {
 #if LUASWIFT_NO_FOUNDATION
         let data = Array<UInt8>(string.utf8)
-        push(data)
+        push(data, toindex: toindex)
 #else
-        push(string: string, encoding: getDefaultStringEncoding())
+        push(string: string, encoding: getDefaultStringEncoding(), toindex: toindex)
 #endif
     }
 
     /// Push a String onto the stack, using UTF-8 string encoding.
     ///
-    /// - Note: If `LUASWIFT_NO_FOUNDATION` is defined, this function behaves identically to ``push(string:)``.
+    /// - Note: If `LUASWIFT_NO_FOUNDATION` is defined, this function behaves identically to ``push(string:toindex:)``.
     ///
-    public func push(utf8String string: String) {
+    /// - Parameter utf8String: The `String` to push.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(utf8String string: String, toindex: CInt = -1) {
 #if LUASWIFT_NO_FOUNDATION
-        push(string: string)
+        push(string: string, toindex: toindex)
 #else
-        push(string: string, encoding: .utf8)
+        push(string: string, encoding: .utf8, toindex: toindex)
 #endif
     }
 
     /// Push a byte array onto the stack, as a Lua `string`.
     ///
     /// - Parameter data: the data to push.
-    public func push(_ data: [UInt8]) {
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(_ data: [UInt8], toindex: CInt = -1) {
         data.withUnsafeBytes { rawBuf in
-            push(rawBuf)
+            push(rawBuf, toindex: toindex)
         }
     }
 
@@ -1201,8 +1230,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// * Do not throw Swift or Lua errors
     /// * Do not capture any variables
-    public func push(function: lua_CFunction) {
+    ///
+    /// - Parameter function: the function or closure to push.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(function: lua_CFunction, toindex: CInt = -1) {
         lua_pushcfunction(self, function)
+        if toindex != -1 {
+            insert(toindex)
+        }
     }
 
     /// Push a function or closure of type ``LuaClosure`` onto the stack as a Lua function.
@@ -1214,15 +1249,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// at index 1 plus ``LuaClosureWrapper/NumInternalUpvalues``, rather than `1`, due to the housekeeping required to
     /// perform the Lua-Swift bridging. Normally however, you would use Swift captures rather than Lua upvalues to
     /// access variables from within `closure` and thus `numUpvalues` would normally be omitted or `0`.
-    public func push(_ closure: @escaping LuaClosure, numUpvalues: CInt = 0) {
+    ///
+    /// - Parameter closure: the function or closure to push.
+    /// - Parameter numUpvalues: The number of upvalues to add to the closure.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(_ closure: @escaping LuaClosure, numUpvalues: CInt = 0, toindex: CInt = -1) {
         LuaClosureWrapper(closure).push(onto: self, numUpvalues: numUpvalues)
+        if toindex != -1 {
+            insert(toindex)
+        }
     }
 
-    /// Pushes a zero-arguments closure on to the stack as a Lua function.
+    /// Push a zero-arguments closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call the `closure`, and convert any result to a Lua value using
-    /// ``push(any:)``. If `closure` throws an error, it will be converted to a Lua error using
-    /// ``push(error:)``.
+    /// ``push(any:toindex:)``. If `closure` throws an error, it will be converted to a Lua error using
+    /// ``push(error:toindex:)``.
     ///
     /// If `closure` does not return a value, the Lua function will return `nil`.
     ///
@@ -1234,21 +1276,24 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///     return "I am callable and return a result"
     /// })
     /// ```
-    public func push<Ret>(closure: @escaping () throws -> Ret) {
+    ///
+    /// - Parameter closure: The closure to push.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push<Ret>(closure: @escaping () throws -> Ret, toindex: CInt = -1) {
         push({ L in
             L.push(any: try closure())
             return 1
-        })
+        }, toindex: toindex)
     }
 
     /// Push a one-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will
-    /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
-    /// with `nil`.
+    /// and convert any result to a Lua value using ``push(any:toindex:)``. If arguments cannot be converted, a Lua
+    /// error will be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are
+    /// filled in with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:)``. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1264,22 +1309,25 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   using the [trailing closure](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/closures#Trailing-Closures)
     ///   syntax - the wrong overload of `push()` will be called. To avoid this ambiguity, do not use the trailing
     ///   closure syntax in such cases and call as `push(closure: {...})`.
-    public func push<Ret, Arg1>(closure: @escaping (Arg1?) throws -> Ret) {
+    ///
+    /// - Parameter closure: The closure to push.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push<Ret, Arg1>(closure: @escaping (Arg1?) throws -> Ret, toindex: CInt = -1) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             L.push(any: try closure(arg1))
             return 1
-        })
+        }, toindex: toindex)
     }
 
     /// Push a two-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will
-    /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
-    /// with `nil`.
+    /// and convert any result to a Lua value using ``push(any:toindex:)``. If arguments cannot be converted, a Lua
+    /// error will be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are
+    /// filled in with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:)``. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1291,23 +1339,26 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// })
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
-    public func push<Ret, Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Ret) {
+    ///
+    /// - Parameter closure: The closure to push.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push<Ret, Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Ret, toindex: CInt = -1) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
             L.push(any: try closure(arg1, arg2))
             return 1
-        })
+        }, toindex: toindex)
     }
 
-    /// Pushes a three-argument closure on to the stack as a Lua function.
+    /// Push a three-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will
-    /// be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are filled in
-    /// with `nil`.
+    /// and convert any result to a Lua value using ``push(any:toindex:)``. If arguments cannot be converted, a Lua
+    /// error will be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are
+    /// filled in with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:)``. If
+    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``. If
     /// `closure` does not return a value, the Lua function will return `nil`.
     ///
     /// ```swift
@@ -1319,14 +1370,17 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// })
     /// ```
     /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
-    public func push<Ret, Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Ret) {
+    ///
+    /// - Parameter closure: The closure to push.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push<Ret, Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Ret, toindex: CInt = -1) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
             let arg3: Arg3? = try L.checkClosureArgument(index: 3)
             L.push(any: try closure(arg1, arg2, arg3))
             return 1
-        })
+        }, toindex: toindex)
     }
 
     /// Helper function used by implementations of `push(closure:)`.
@@ -1354,14 +1408,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// previously registered will generate a warning, and the object will have no metamethods declared on it,
     /// except for `__gc` which is always defined in order that Swift object lifetimes are preserved.
     ///
-    /// - Parameter val: The value to push onto the Lua stack.
     /// - Note: This function always pushes a `userdata` - if `val` represents any other type (for example, an integer)
-    ///   it will not be converted to that type in Lua. Use ``push(any:)`` instead to automatically convert types to
-    ///   their Lua native representation where possible.
-    public func push<T>(userdata: T) {
+    ///   it will not be converted to that type in Lua. Use ``push(any:toindex:)`` instead to automatically convert
+    ///   types to their Lua native representation where possible.
+    /// - Parameter userdata: The value to push onto the Lua stack.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push<T>(userdata: T, toindex: CInt = -1) {
         let anyval = userdata as Any
         let tname = getMetatableName(for: Swift.type(of: anyval))
         pushuserdata(anyval, metatableName: tname)
+        if toindex != -1 {
+            insert(toindex)
+        }
     }
 
     private func pushuserdata(_ val: Any, metatableName: String) {
@@ -1390,24 +1448,25 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
     /// * If `value` is an `NSNumber`, if it is convertible to `Int` it is pushed as such, otherwise as a `Double`.
-    /// * If `value` is `[UInt8]`, ``push(_:)-3o5nr`` is used.
-    /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:)`` is used.
+    /// * If `value` is `[UInt8]`, ``push(_:toindex:)-59fx9`` is used.
+    /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:toindex:)`` is used.
     /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, `push(any:)` is called recursively to push
     ///   its elements.
-    /// * If `value` is a `lua_CFunction`, ``push(function:)`` is used.
-    /// * If `value` is a `LuaClosure`, ``push(_:numUpvalues:)`` is used (with `numUpvalues=0`).
+    /// * If `value` is a `lua_CFunction`, ``push(function:toindex:)`` is used.
+    /// * If `value` is a `LuaClosure`, ``push(_:numUpvalues:toindex:)`` is used (with `numUpvalues=0`).
     /// * If `value` is a zero-argument closure that returns `Void` or `Any?`, it is pushed using `push(closure:)`.
     ///   Due to limitations in Swift type inference, these are the only closure types that are handled in this way.
-    /// * Any other type is pushed as a `userdata` using ``push(userdata:)``.
+    /// * Any other type is pushed as a `userdata` using ``push(userdata:toindex:)``.
     ///
-    /// - Parameter value: The value to push
-    public func push(any value: Any?) {
+    /// - Parameter value: The value to push onto the Lua stack.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(any value: Any?, toindex: CInt = -1) {
         guard let value else {
-            pushnil()
+            pushnil(toindex: toindex)
             return
         }
         if value as? Void != nil {
-            pushnil()
+            pushnil(toindex: toindex)
             return
         }
         switch value {
@@ -1448,6 +1507,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         default:
             push(userdata: value)
         }
+
+        if toindex != -1 {
+            insert(toindex)
+        }
+
     }
 
     /// Push a Swift Error onto the Lua stack.
@@ -1455,17 +1519,20 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// This function special-cases ``LuaCallError``, ``LuaLoadError/parseError(_:)`` and errors returned by
     /// ``error(_:)``, and pushes the original underlying Lua error value unmodified. Otherwise the string
     /// `"Swift error: \(error.localizedDescription)"` is used.
-    public func push(error: Error) {
+    ///
+    /// - Parameter error: The error to push onto the Lua stack.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push(error: Error, toindex: CInt = -1) {
         switch error {
         case let err as LuaCallError:
-            push(err)
+            push(err, toindex: toindex)
         case LuaLoadError.parseError(let str):
-            push(str)
+            push(str, toindex: toindex)
         default:
 #if LUASWIFT_NO_FOUNDATION
-            push("Swift error: \(String(describing: error))")
+            push("Swift error: \(String(describing: error))", toindex: toindex)
 #else
-            push("Swift error: \(error.localizedDescription)")
+            push("Swift error: \(error.localizedDescription)", toindex: toindex)
 #endif
         }
     }
@@ -1490,8 +1557,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let index: CInt
         if traceback {
             index = gettop() - nargs
-            push(function: tracebackFn)
-            lua_insert(self, index) // Move traceback before nargs and fn
+            push(function: tracebackFn, toindex: index)
         } else {
             index = 0
         }
@@ -1508,7 +1574,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Convenience zero-result wrapper around ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)``.
     ///
     /// Make a protected call to a Lua function that must already be pushed
-    /// onto the stack. Each of `arguments` is pushed using ``push(any:)``. The
+    /// onto the stack. Each of `arguments` is pushed using ``push(any:toindex:)``. The
     /// function is popped from the stack and any results are discarded.
     ///
     /// - Parameter arguments: Arguments to pass to the Lua function.
@@ -1530,7 +1596,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Convenience one-result wrapper around ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)``.
     ///
     /// Make a protected call to a Lua function that must already be pushed
-    /// onto the stack. Each of `arguments` is pushed using ``push(any:)``. The
+    /// onto the stack. Each of `arguments` is pushed using ``push(any:toindex:)``. The
     /// function is popped from the stack. All results are popped from the stack
     /// and the first one is converted to `T` using ``tovalue(_:)``. `nil` is
     /// returned if the result could not be converted to `T`.
@@ -1606,10 +1672,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Register a metatable for values of type `T`.
     ///
-    /// Register a metatable for values of type `T` for when they are pushed using ``push(userdata:)`` or 
-    /// ``push(any:)``. Note, attempting to register a metatable for types that are bridged to Lua types (such as
-    /// `Integer,` or `String`), will not work with values pushed with ``push(any:)`` - if you really need to do that,
-    /// they must always be pushed with ``push(userdata:)`` (at which point they cannot be used as normal Lua
+    /// Register a metatable for values of type `T` for when they are pushed using ``push(userdata:toindex:)`` or 
+    /// ``push(any:toindex:)``. Note, attempting to register a metatable for types that are bridged to Lua types (such as
+    /// `Integer,` or `String`), will not work with values pushed with ``push(any:toindex:)`` - if you really need to do that,
+    /// they must always be pushed with ``push(userdata:toindex:)`` (at which point they cannot be used as normal Lua
     /// numbers/strings/etc).
     ///
     /// Use `.function` to specify a `lua_CFunction` directly. You can use a Swift closure in lieu of a `lua_CFunction`
@@ -1737,10 +1803,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     @discardableResult
     public func get(_ index: CInt) throws -> LuaType {
         let absidx = absindex(index)
-        push(function: luaswift_gettable)
-        lua_insert(self, -2) // Move the fn below key
-        push(index: absidx)
-        lua_insert(self, -2) // move tbl below key
+        push(function: luaswift_gettable, toindex: -2) // Put the fn below key
+        push(index: absidx, toindex: -2) // Put tbl below key
         try pcall(nargs: 2, nret: 1, traceback: false)
         return type(-1)!
     }
@@ -1914,8 +1978,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Pushes the globals table (`_G`) onto the stack.
-    public func pushGlobals() {
+    ///
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func pushGlobals(toindex: CInt = -1) {
         lua_pushglobaltable(self)
+        if toindex != -1 {
+            lua_insert(self, toindex)
+        }
     }
 
     /// Wrapper around [`luaL_requiref()`](https://www.lua.org/manual/5.4/manual.html#luaL_requiref).
@@ -2006,7 +2075,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Returns an `Error` wrapping the given string.
     ///
-    /// Which when pushed by ``push(error:)`` will be converted back to a Lua error with exactly the given string
+    /// Which when pushed by ``push(error:toindex:)`` will be converted back to a Lua error with exactly the given string
     /// contents.
     ///
     /// This is useful inside a ``LuaClosure`` to safely throw a Lua error.

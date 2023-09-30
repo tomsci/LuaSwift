@@ -86,7 +86,7 @@ Therefore you can safely use different `LuaState` instances from different threa
 
 ### Bridging Swift objects
 
-Swift structs and classes can be bridged into Lua in a type-safe and reference-counted manner, using Lua's `userdata` and metatable mechanisms. When the bridged Lua object is garbage collected by the Lua runtime, a reference to the Swift value is released.
+Swift structs and classes can be bridged into Lua in a type-safe and reference-counted manner, using Lua's userdata and metatable mechanisms. When the bridged Lua value is garbage collected by the Lua runtime, a reference to the Swift value is released.
 
 ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)`` is used to register a Lua metatable for a given Swift type. This defines which members the bridged object has and how to call them. A bridged type with no additional members defined will not be callable from Lua, but retains a reference to the Swift value until it is garbage collected.
 

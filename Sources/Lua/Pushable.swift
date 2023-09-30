@@ -43,6 +43,7 @@ extension Double: Pushable {
 }
 
 extension String: Pushable {
+    /// Push the string onto the Lua stack using the default string encoding.
     public func push(onto L: LuaState) {
         L.push(string: self)
     }

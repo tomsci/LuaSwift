@@ -1152,7 +1152,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Push anything which conforms to ``Pushable`` onto the stack.
     ///
-    /// Parameter value: Any Swift value which conforms to ``Pushable``.
+    /// - Parameter value: Any Swift value which conforms to ``Pushable``.
     public func push<T>(_ value: T?) where T: Pushable {
         if let value = value {
             value.push(onto: self)
@@ -1205,7 +1205,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         lua_pushcfunction(self, function)
     }
 
-    /// Push a closure of type ``LuaClosure`` onto the stack as a Lua function.
+    /// Push a function or closure of type ``LuaClosure`` onto the stack as a Lua function.
     ///
     /// See ``LuaClosure`` for a discussion of how LuaClosures behave.
     ///
@@ -1241,7 +1241,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         })
     }
 
-    /// Pushes a one-argument closure on to the stack as a Lua function.
+    /// Push a one-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
     /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will
@@ -1272,7 +1272,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         })
     }
 
-    /// Pushes a two-argument closure on to the stack as a Lua function.
+    /// Push a two-argument closure on to the stack as a Lua function.
     ///
     /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
     /// and convert any result to a Lua value using ``push(any:)``. If arguments cannot be converted, a Lua error will

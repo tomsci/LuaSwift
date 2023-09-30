@@ -489,9 +489,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
     private class IPairsIterator : Sequence, IteratorProtocol {
         let value: LuaValue
         var i: lua_Integer
-        init(_ value: LuaValue, start: lua_Integer?) {
+        init(_ value: LuaValue, start: lua_Integer) {
             self.value = value
-            i = (start ?? 1) - 1
+            i = start - 1
         }
         public func next() -> (lua_Integer, LuaValue)? {
             i = i + 1
@@ -521,10 +521,10 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// // Index 3 is 33
     /// ```
     ///
-    /// - Parameter start: If set, start iteration at this index rather than the beginning of the array.
+    /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
-    public func ipairs(start: lua_Integer? = nil) throws -> some Sequence<(lua_Integer, LuaValue)> {
+    public func ipairs(start: lua_Integer = 1) throws -> some Sequence<(lua_Integer, LuaValue)> {
         try checkValid()
         push(onto: L)
         try Self.checkTopIsIndexable(L)
@@ -613,11 +613,11 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// // Index 3 is 33
     /// ```
     ///
-    /// - Parameter start: If set, start iteration at this index rather than the beginning of the array.
+    /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
     ///           ``LuaCallError`` if an error is thrown during an `__index` call.
-    public func for_ipairs(start: lua_Integer? = nil, block: (lua_Integer, LuaValue) throws -> Bool) throws {
+    public func for_ipairs(start: lua_Integer = 1, block: (lua_Integer, LuaValue) throws -> Bool) throws {
         try checkValid()
         push(onto: L)
         try Self.checkTopIsIndexable(L)
@@ -632,7 +632,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     /// Iterate a Lua table-like value, calling `block` for each member.
     ///
-    /// This function observes `__pairs` metatables if present. `block` should
+    /// This function observes `__pairs` metafields if present. `block` should
     /// return `true` to continue iteration, or `false` otherwise.
     ///
     /// ```swift

@@ -14,7 +14,7 @@ Note that `LuaState` pointers are _not_ reference counted, meaning the state is 
 
 There are two different ways to use the `LuaState` API - the **stack-based** API which will be familiar to Lua C developers, just with stronger typing, and the **object-oriented** API using `LuaValue`, which behaves more naturally but has much more going on under the hood to make that work, and is also less flexible. The two styles, as well as the raw `CLua` API, can be freely mixed, so you can for example use the higher-level API for convenience where it works, and drop down to the stack-based or raw APIs where necessary.
 
-In both styles of API, the only call primitive that is exposed is `pcall()`. `lua_call()` is not safe to call from Swift (because it can error, bypassing Swift stack unwinding) and thus is not exposed. import `CLua` and call `lua_call()` directly if you really need to. `pcall()` converts Lua errors to Swift ones (of type ``LuaCallError``) and thus must always be called with `try`.
+In both styles of API, the only call primitive that is exposed is `pcall()`. `lua_call()` is not safe to call from Swift (because it can error, bypassing Swift stack unwinding) and thus is not exposed. Import `CLua` and call `lua_call()` directly if you really need to, and are certain the call cannot possibly error. `pcall()` converts Lua errors to Swift ones (of type ``LuaCallError``) and thus must always be called with `try`.
 
 #### Stack-based API
 
@@ -41,7 +41,7 @@ try printfn("Hello world!") // ... which can be called
 try L.globals("wat?") // but this will error because the globals table is not callable.
 ```
 
-`LuaValue` supports subscript assignment (again providing the underlying Lua value does), although due to limitations in Swift typing you can only do this with `LuaValue`s, to assign any value use `set()` or construct a `LuaValue` with `L.ref(any:)`:
+`LuaValue` supports subscript assignment (again providing the underlying Lua value does), although due to limitations in Swift typing you can only do this with `LuaValue`s, to assign any value use ``LuaValue/set(_:_:)`` or construct a `LuaValue` with ``Lua/Swift/UnsafeMutablePointer/ref(any:)``:
 
 ```swift
 let g = L.globals

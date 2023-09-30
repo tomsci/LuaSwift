@@ -866,11 +866,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let index: CInt
         let top: CInt?
         var i: lua_Integer
-        init(_ L: LuaState, _ index: CInt, start: lua_Integer?, resetTop: Bool) {
+        init(_ L: LuaState, _ index: CInt, start: lua_Integer, resetTop: Bool) {
             self.L = L
             self.index = L.absindex(index)
             top = resetTop ? lua_gettop(L) : nil
-            i = (start ?? 1) - 1
+            i = start - 1
         }
         public func next() -> lua_Integer? {
             if let top {
@@ -908,15 +908,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// // Index 3 is 33
     /// ```
     ///
-    /// - Parameter index:Stack index of the table to iterate.
-    /// - Parameter start: If set, start iteration at this index rather than the
-    ///   beginning of the array.
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
     /// - Parameter resetTop: By default, the stack top is reset on exit and
     ///   each time through the iterator to what it was at the point of calling
     ///   `ipairs`. Occasionally (such as when using `luaL_Buffer`) this is not
     ///   desirable and can be disabled by setting `resetTop` to false.
     /// - Precondition: `index` must refer to a table value.
-    public func ipairs(_ index: CInt, start: lua_Integer? = nil, resetTop: Bool = true) -> some Sequence<lua_Integer> {
+    public func ipairs(_ index: CInt, start: lua_Integer = 1, resetTop: Bool = true) -> some Sequence<lua_Integer> {
         precondition(type(index) == .table, "Value must be a table to iterate with ipairs()")
         return IPairsRawIterator(self, index, start: start, resetTop: resetTop)
     }
@@ -939,16 +938,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     ///
     /// - Parameter index: Stack index of the table to iterate.
-    /// - Parameter start: If set, start iteration at this index rather than the
-    ///   beginning of the array.
+    /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
     /// - Parameter block: The code to execute.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
     ///   does not support indexing.
-    public func for_ipairs(_ index: CInt, start: lua_Integer? = nil, _ block: (lua_Integer) throws -> Bool) throws {
+    public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Bool) throws {
         let absidx = absindex(index)
         try withoutActuallyEscaping(block) { escapingBlock in
             let wrapper = LuaClosureWrapper({ L in
-                var i = start ?? 1
+                var i = start
                 while true {
                     L.settop(1)
                     let t = try L.get(1, key: i)
@@ -1067,7 +1065,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Iterate a Lua table-like value, calling `block` for each member.
     ///
-    /// This function observes `__pairs` metatables if present. `block` should
+    /// This function observes `__pairs` metafields if present. `block` should
     /// return `true` to continue iteration, or `false` otherwise. `block` is
     /// called with the stack indexes of each key and value.
     ///

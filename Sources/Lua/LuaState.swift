@@ -951,8 +951,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 var i = start ?? 1
                 while true {
                     L.settop(1)
-                    let t = lua_geti(L, 1, i)
-                    if t == LUA_TNIL {
+                    let t = try L.get(1, key: i)
+                    if t == .nil {
                         break
                     }
                     let shouldContinue = try escapingBlock(i)
@@ -1097,12 +1097,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     func do_for_pairs(_ block: (CInt, CInt) throws -> Bool) throws {
         try withoutActuallyEscaping(block) { escapingBlock in
             let wrapper = LuaClosureWrapper({ L in
-                // IMPORTANT: this closure uses unprotected lua_calls that may error. Therefore it must NOT put
-                // any non-trivial type onto the stack or rely on any Swift stack cleanup happening such as
-                // defer {...}.
-
                 // Stack: 1 = iterfn, 2 = state, 3 = initval (k)
-                assert(L.gettop() == 3)
                 while true {
                     L.settop(3)
                     L.push(index: 1)

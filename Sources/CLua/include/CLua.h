@@ -157,18 +157,6 @@ static inline int luaswift_gc1(lua_State* L, int what, int arg1) {
     return lua_gc(L, what, arg1);
 }
 
-#if LUA_VERSION_NUM >= 504
-
-static inline int luaswift_gc2(lua_State* L, int what, int arg1, int arg2) {
-    return lua_gc(L, what, arg1, arg2);
-}
-
-static inline int luaswift_gc3(lua_State* L, int what, int arg1, int arg2, int arg3) {
-    return lua_gc(L, what, arg1, arg2, arg3);
-}
-
-#endif
-
 #endif // LUASWIFT_MINIMAL_CLUA
 
 int luaswift_loadfile(lua_State *L, const char *filename,
@@ -186,6 +174,17 @@ void* luaswift_newuserdata(lua_State* L, size_t sz);
 
 size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
 void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);
+
+#if LUA_VERSION_NUM <= 504
+#define LUASWIFT_GCGEN 10
+#define LUASWIFT_GCINC 11
+#else
+#define LUASWIFT_GCGEN LUA_GCGEN
+#define LUASWIFT_GCINC LUA_GCINC
+#endif
+
+int luaswift_setgen(lua_State* L, int minormul, int majormul);
+int luaswift_setinc(lua_State* L, int pause, int stepmul, int stepsize);
 
 #ifdef LUA_VERSION_MAJOR_N
 #define LUASWIFT_LUA_VERSION_MAJOR LUA_VERSION_MAJOR_N

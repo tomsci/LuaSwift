@@ -171,3 +171,27 @@ void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransf
     *ntransfer = 0;
 #endif
 }
+
+int luaswift_setgen(lua_State* L, int minormul, int majormul) {
+#if LUA_VERSION_NUM >= 504
+    return lua_gc(L, LUA_GCGEN, minormul, majormul);
+#else
+    return 0; // Anything other than LUASWIFT_GCGEN, LUASWIFT_GCINC works
+#endif
+}
+
+int luaswift_setinc(lua_State* L, int pause, int stepmul, int stepsize) {
+#if LUA_VERSION_NUM >= 504
+    return lua_gc(L, LUA_GCINC, pause, stepmul, stepsize);
+#else
+    if (pause) {
+        lua_gc(L, LUA_GCSETPAUSE, pause);
+    }
+    if (stepmul) {
+        lua_gc(L, LUA_GCSETSTEPMUL, stepmul);
+    }
+    // 5.3 doesn't have a way to set stepsize, hm.
+
+    return LUASWIFT_GCINC; // Since incremental is the only option
+#endif
+}

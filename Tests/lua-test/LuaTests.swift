@@ -50,9 +50,8 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(LuaState.GcWhat.stop.rawValue, LUA_GCSTOP)
         XCTAssertEqual(LuaState.GcWhat.restart.rawValue, LUA_GCRESTART)
         XCTAssertEqual(LuaState.GcWhat.collect.rawValue, LUA_GCCOLLECT)
-        XCTAssertEqual(LuaState.internal_MoreGarbage.count.rawValue, LUA_GCCOUNT)
-        XCTAssertEqual(LuaState.internal_MoreGarbage.countb.rawValue, LUA_GCCOUNTB)
-        XCTAssertEqual(LuaState.internal_MoreGarbage.isrunning.rawValue, LUA_GCISRUNNING)
+        XCTAssertEqual(LuaState.GcMode.incremental.rawValue, LUASWIFT_GCINC)
+        XCTAssertEqual(LuaState.GcMode.generational.rawValue, LUASWIFT_GCGEN)
 
         for t in LuaType.allCases {
             XCTAssertEqual(t.tostring(), String(cString: lua_typename(L, t.rawValue)))
@@ -1346,5 +1345,28 @@ final class LuaTests: XCTestCase {
         XCTAssertFalse(try one.equal(two))
         XCTAssertTrue(try one.compare(two, .lt)) // ie one < two
         XCTAssertFalse(try two.compare(one, .lt)) // ie two < one
+    }
+
+    func test_gc() {
+        if LUA_VERSION.is54orLater() {
+            var ret = L.collectorSetGenerational()
+            XCTAssertEqual(ret, .incremental)
+            ret = L.collectorSetIncremental(stepmul: 100)
+            XCTAssertEqual(ret, .generational)
+        } else {
+            let ret = L.collectorSetIncremental(stepmul: 100)
+            XCTAssertEqual(ret, .incremental)
+        }
+        XCTAssertEqual(L.collectorRunning(), true)
+        L.collectgarbage(.stop)
+        XCTAssertEqual(L.collectorRunning(), false)
+        L.collectgarbage(.restart)
+        XCTAssertEqual(L.collectorRunning(), true)
+
+        let count = L.collectorCount()
+        XCTAssertEqual(count, L.collectorCount()) // Check it's stable
+        L.push("hello world")
+        XCTAssertGreaterThan(L.collectorCount(), count)
+
     }
 }

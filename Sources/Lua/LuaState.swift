@@ -348,10 +348,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case collect = 2
     }
 
-    enum MoreGarbage: CInt {
-        case count = 3
-        case countb = 4
-        case isrunning = 9
+    public enum GcMode : CInt {
+        case generational = 10
+        case incremental = 11
     }
 
     /// Call the garbage collector according to the `what` parameter.
@@ -365,12 +364,55 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Equivalent to `lua_gc(L, LUA_GCISRUNNING)` in C.
     public func collectorRunning() -> Bool {
-        return luaswift_gc0(self, MoreGarbage.isrunning.rawValue) != 0
+        return luaswift_gc0(self, LUA_GCISRUNNING) != 0
     }
 
     /// Returns the total amount of memory in bytes that the Lua state is using.
     public func collectorCount() -> Int {
-        return Int(luaswift_gc0(self, MoreGarbage.count.rawValue)) * 1024 + Int(luaswift_gc0(self, MoreGarbage.countb.rawValue))
+        return Int(luaswift_gc0(self, LUA_GCCOUNT)) * 1024 + Int(luaswift_gc0(self, LUA_GCCOUNTB))
+    }
+
+    /// Performs an incremental step of garbage collection.
+    ///
+    /// Corresponding to the allocation of `stepSize` KB.
+    public func collectorStep(_ stepSize: CInt) {
+        luaswift_gc1(self, LUA_GCSTEP, stepSize)
+    }
+
+    /// Set the garbage collector to incremental mode.
+    ///
+    /// And optionally set any or all of the collection parameters.
+    /// See [Incremental Garbage Collection](https://www.lua.org/manual/5.4/manual.html#2.5.1).
+    ///
+    /// - Parameter pause: how long the collector waits before starting a new cycle, or `nil` to leave the parameter
+    ///   unchanged.
+    /// - Parameter stepmul: the speed of the collector relative to memory allocation, or `nil` to leave the parameter
+    ///   unchanged.
+    /// - Parameter stepsize: size of each incremental step, or `nil` to leave the parameter unchanged.
+    /// - Returns: The previous garbage collection mode.
+    @discardableResult
+    public func collectorSetIncremental(pause: CInt? = nil, stepmul: CInt? = nil, stepsize: CInt? = nil) -> GcMode {
+        let prevMode = luaswift_setinc(self, pause ?? 0, stepmul ?? 0, stepsize ?? 0)
+        return GcMode(rawValue: prevMode)!
+    }
+
+    /// Set the garbage collector to generational mode.
+    ///
+    /// And optionally set any or all of the collection parameters.
+    /// See [Generational Garbage Collection](https://www.lua.org/manual/5.4/manual.html#2.5.2). Only supported on
+    /// Lua 5.4 and later.
+    ///
+    /// - Parameter minormul: the frequency of minor collections, or `nil` to leave the parameter unchanged.
+    /// - Parameter majormul: the frequency of major collections, or `nil` to leave the parameter unchanged.
+    /// - Returns: The previous garbage collection mode.
+    @discardableResult
+    public func collectorSetGenerational(minormul: CInt? = nil, majormul: CInt? = nil) -> GcMode {
+        let prevMode = luaswift_setgen(self, minormul ?? 0, majormul ?? 0)
+        if let result = GcMode(rawValue: prevMode) {
+            return result
+        } else {
+            fatalError("Attempt to call collectorSetGenerational() on a Lua version that doesn't support it")
+        }
     }
 
     class _State {

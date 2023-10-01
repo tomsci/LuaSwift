@@ -1086,7 +1086,11 @@ final class LuaTests: XCTestCase {
 
         XCTAssertNil(try L.len(1))
         XCTAssertEqual(try L.len(2), 4)
+        let top = L.gettop()
         XCTAssertEqual(try L.len(3), 999) // len of 3 is different to rawlen thanks to metatable
+        XCTAssertEqual(L.gettop(), top)
+        XCTAssertEqual(L.absindex(-3), 3)
+        XCTAssertEqual(try L.len(-3), 999) // -3 is 3 here
         XCTAssertEqual(try L.len(4), 42)
         XCTAssertEqual(try L.len(5), nil)
 

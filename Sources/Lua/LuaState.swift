@@ -2179,6 +2179,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             // Len on strings cannot fail or error
             return rawlen(index)!
         }
+        let absidx = absindex(index)
         let mt = luaL_getmetafield(self, index, "__len")
         if mt == LUA_TNIL {
             if t == .table {
@@ -2189,8 +2190,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 return nil
             }
         } else {
-            push(index: index)
+            push(index: absidx)
             try pcall(nargs: 1, nret: 1)
+            defer {
+                pop()
+            }
             return tointeger(-1)
         }
     }
@@ -2241,6 +2245,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push(index: i2)
         push(op.rawValue)
         try pcall(nargs: 3, nret: 1, traceback: false)
+        defer {
+            pop()
+        }
         return toint(-1) != 0
     }
 

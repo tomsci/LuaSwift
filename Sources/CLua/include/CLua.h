@@ -1,22 +1,5 @@
 // Copyright (c) 2023 Tom Sutcliffe
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// See LICENSE file for license information.
 
 #ifndef clua_bridge_h
 #define clua_bridge_h
@@ -24,6 +7,8 @@
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
+
+#ifndef LUASWIFT_MINIMAL_CLUA
 
 // Define this as a concrete type so that lua_State* gets typed on the Swift side
 // as UnsafeMutablePointer<lua_State>? instead of OpaquePointer? so that we can have
@@ -184,10 +169,13 @@ static inline int luaswift_gc3(lua_State* L, int what, int arg1, int arg2, int a
 
 #endif
 
+#endif // LUASWIFT_MINIMAL_CLUA
+
 int luaswift_loadfile(lua_State *L, const char *filename,
                       const char *displayname,
                       const char *mode);
 
+#define LUASWIFT_CALLCLOSURE_ERROR (-2)
 int luaswift_callclosurewrapper(lua_State *L);
 int luaswift_gettable(lua_State *L);
 int luaswift_settable(lua_State *L);

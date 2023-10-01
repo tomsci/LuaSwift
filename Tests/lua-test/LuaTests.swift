@@ -58,6 +58,10 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(t.tostring(), String(cString: lua_typename(L, t.rawValue)))
         }
         XCTAssertEqual(LuaType.tostring(nil), String(cString: lua_typename(L, LUA_TNONE)))
+
+        XCTAssertEqual(LuaState.ComparisonOp.eq.rawValue, LUA_OPEQ)
+        XCTAssertEqual(LuaState.ComparisonOp.lt.rawValue, LUA_OPLT)
+        XCTAssertEqual(LuaState.ComparisonOp.le.rawValue, LUA_OPLE)
     }
 
     func testSafeLibraries() {

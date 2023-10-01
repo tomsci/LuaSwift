@@ -36,7 +36,8 @@ public struct LuaDebug {
         /// Sets ``LuaDebug/istailcall``.
         case istailcall = "t"
 
-        /// Sets ``LuaDebug/ftransfer`` and ``LuaDebug/ntransfer``
+        /// Sets ``LuaDebug/ftransfer`` and ``LuaDebug/ntransfer``.
+        ///
         /// - Note: will be ignored unless Lua 5.4 is being used.
         case transfers = "r"
     }

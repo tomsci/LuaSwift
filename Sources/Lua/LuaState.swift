@@ -1060,12 +1060,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 } else {
                     return 2
                 }
-            })
-            lua_insert(L, -2) // push next below value
+            }, toindex: -2) // push next below value
             L.pushnil()
             return isTable
         } else {
-            lua_insert(L, -2) // Push __pairs below value
+            insert(-2) // Push __pairs below value
             try L.pcall(nargs: 1, nret: 3, traceback: false)
             return true
         }
@@ -1131,8 +1130,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             defer {
                 wrapper._closure = nil
             }
-            push(wrapper)
-            lua_insert(self, -4) // Push wrapper below iterfn, state, initval
+            push(wrapper, toindex: -4) // Push wrapper below iterfn, state, initval
             try pcall(nargs: 3, nret: 0)
         }
     }
@@ -1882,16 +1880,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func rawset<K: Pushable>(_ index: CInt, key: K) {
         let absidx = absindex(index)
         // val on top of stack
-        push(key)
-        lua_insert(self, -2) // Push key below val
+        push(key, toindex: -2) // Push key below val
         rawset(absidx)
     }
 
     public func rawset(_ index: CInt, utf8Key key: String) {
         let absidx = absindex(index)
         // val on top of stack
-        push(utf8String: key)
-        lua_insert(self, -2) // Push key below val
+        push(utf8String: key, toindex: -2) // Push key below val
         rawset(absidx)
     }
 
@@ -1926,15 +1922,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Performs `tbl[key] = val`. May invoke metamethods.
     ///
     /// Where `tbl` is the table at `index` on the stack, `val` is the value on the top of the stack, and `key` is the
-    /// value just below the top.
+    /// value just below the top. `key` and `val` are popped from the stack.
     ///
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
     public func set(_ index: CInt) throws {
         let absidx = absindex(index)
-        push(function: luaswift_settable)
-        lua_insert(self, -3) // Move the fn below key and val
-        push(index: absidx)
-        lua_insert(self, -3) // move tbl below key and val
+        push(function: luaswift_settable, toindex: -3) // Put below key and val
+        push(index: absidx, toindex: -3) // Put below key and val (and above function)
         try pcall(nargs: 3, nret: 0, traceback: false)
     }
 
@@ -1947,8 +1941,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func set<K: Pushable>(_ index: CInt, key: K) throws {
         let absidx = absindex(index)
         // val on top of stack
-        push(key)
-        lua_insert(self, -2) // Push key below val
+        push(key, toindex: -2) // Push key below val
         try set(absidx)
     }
 
@@ -1983,7 +1976,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func pushGlobals(toindex: CInt = -1) {
         lua_pushglobaltable(self)
         if toindex != -1 {
-            lua_insert(self, toindex)
+            insert(toindex)
         }
     }
 
@@ -2224,7 +2217,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// The type of comparison to perform in ``compare(_:_:_:)``.
-    public enum ComparisonOp : Int {
+    public enum ComparisonOp : CInt {
         /// Compare for equality (`==`)
         case eq = 0 // LUA_OPEQ
         /// Compare less than (`<`)

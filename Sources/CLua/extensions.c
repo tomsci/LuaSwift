@@ -1,8 +1,8 @@
 // Heavily based on Lua's lauxlib.c, otherwise Copyright (c) 2023 Tom Sutcliffe
 // See LICENSE file for license information and README.md for Lua copyright and license.
 
-#include <lua.h>
-#include <lauxlib.h>
+#define LUASWIFT_MINIMAL_CLUA
+#include "CLua.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,7 +107,7 @@ int luaswift_loadfile(lua_State *L, const char *filename,
 int luaswift_callclosurewrapper(lua_State *L) {
     lua_CFunction f = lua_tocfunction(L, lua_upvalueindex(1));
     int ret = f(L);
-    if (ret == -2) {
+    if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
         return lua_error(L);
     } else {
         return ret;

@@ -54,7 +54,7 @@ public class LuaClosureWrapper: Pushable {
             return try closure(L)
         } catch {
             L.push(error: error)
-            return -2
+            return LUASWIFT_CALLCLOSURE_ERROR
         }
     }
 
@@ -72,4 +72,3 @@ public class LuaClosureWrapper: Pushable {
         lua_pushcclosure(L, luaswift_callclosurewrapper, numUpvalues + Self.NumInternalUpvalues)
     }
 }
-

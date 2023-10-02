@@ -55,6 +55,10 @@ func myLuaCFunction(_ L: LuaState!) -> CInt {
 }
 ```
 
+## API compatibility
+
+LuaSwift should currently be considered a 0.x version. Although the API is mostly complete and finalized, it may still change in incompatible, if minor, ways.
+
 ## More information
 
 See the [LuaState documentation](https://tomsci.github.io/LuaSwift/documentation/lua/luastate).

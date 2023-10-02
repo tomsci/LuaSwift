@@ -143,6 +143,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
         /// The subset of libraries which do not permit undefined or sandbox-escaping behavior.
         ///
+        /// The safe libraries are:
+        /// * `coroutine`
+        /// * `table`
+        /// * `string`
+        /// * `math`
+        /// * `utf8`
+        ///
         /// Note that `package` is not a 'safe' library by this definition because it permits arbitrary DLLs to be
         /// loaded. `package` is safe if ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)`` is called,
         /// however.

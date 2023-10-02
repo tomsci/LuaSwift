@@ -228,4 +228,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return LuaDebug(from: ar, fields: what, state: self)
     }
 
+    /// Wrapper around [`luaL_where()`](https://www.lua.org/manual/5.4/manual.html#luaL_where).
+    public func getWhere(level: CInt) -> String {
+        luaL_where(self, level)
+        defer {
+            pop()
+        }
+        return tostring(-1)!
+    }
 }

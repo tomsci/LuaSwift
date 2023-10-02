@@ -1223,6 +1223,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(Set<LuaDebug.WhatInfo>.allHook, Set(LuaDebug.WhatInfo.allCases))
 
         var info: LuaDebug! = nil
+        var whereStr: String! = nil
         try L.load(string: """
             fn = ...
             function moo(arg, arg2, arg3)
@@ -1234,6 +1235,7 @@ final class LuaTests: XCTestCase {
         L.push(closure: {
             let L = self.L!
             info = L.getStackInfo(level: 1)
+            whereStr = L.getWhere(level: 1)
             return 0
         })
         try L.pcall(nargs:1, nret: 0)
@@ -1248,6 +1250,8 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(info.isvararg, false)
         XCTAssertEqual(info.function?.type, .function)
         XCTAssertEqual(info.validlines, [3, 4])
+        XCTAssertEqual(info.short_src, "[string \"?\"]")
+        XCTAssertEqual(whereStr, info.short_src! + ":3: ")
 
         // This is getting info for the fn returned by load(file:)
         let fninfo = L.getTopFunctionInfo()

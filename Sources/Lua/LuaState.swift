@@ -395,7 +395,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   unchanged.
     /// - Parameter stepmul: the speed of the collector relative to memory allocation, or `nil` to leave the parameter
     ///   unchanged.
-    /// - Parameter stepsize: size of each incremental step, or `nil` to leave the parameter unchanged.
+    /// - Parameter stepsize: size of each incremental step, or `nil` to leave the parameter unchanged. This parameter
+    ///   is ignored prior to Lua 5.4.
     /// - Returns: The previous garbage collection mode.
     @discardableResult
     public func collectorSetIncremental(pause: CInt? = nil, stepmul: CInt? = nil, stepsize: CInt? = nil) -> GcMode {
@@ -2409,5 +2410,30 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func dofile(_ path: String, mode: LoadMode = .text) throws {
         try load(file: path, mode: mode)
         try pcall(nargs: 0, nret: LUA_MULTRET)
+    }
+
+    /// Dump a function as a binary chunk.
+    ///
+    /// Dumps the function on the top of the stack as a binary chunk. The function is not popped from the stack.
+    ///
+    /// - Parameter strip: Whether to strip debug information.
+    /// - Returns: The binary chunk, or nil if the value on the top of the stack is not a Lua function.
+    public func dump(strip: Bool = false) -> [UInt8]? {
+        let writefn: lua_Writer = { (L, p, sz, ud) in
+            let buf = UnsafeRawBufferPointer(start: p, count: sz)
+            ud!.withMemoryRebound(to: [UInt8].self, capacity: 1) { resultPtr in
+                resultPtr.pointee.append(contentsOf: buf)
+            }
+            return 0
+        }
+        var result: [UInt8] = []
+        let err = withUnsafeMutablePointer(to: &result) { resultPtr in
+            return lua_dump(self, writefn, UnsafeMutableRawPointer(resultPtr), strip ? 1 : 0)
+        }
+        if err == 0 {
+            return result
+        } else {
+            return nil
+        }
     }
 }

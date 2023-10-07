@@ -1371,6 +1371,16 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(count, L.collectorCount()) // Check it's stable
         L.push("hello world")
         XCTAssertGreaterThan(L.collectorCount(), count)
+    }
 
+    func test_dump() {
+        try! L.load(string: """
+            return "called"
+            """)
+        let data = L.dump(strip: false)!
+        L.settop(0)
+        try! L.load(data: data, name: "undumped", mode: .binary)
+        try! L.pcall(nargs: 0, nret: 1)
+        XCTAssertEqual(L.tostring(-1), "called")
     }
 }

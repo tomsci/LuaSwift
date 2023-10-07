@@ -191,6 +191,7 @@ int luaswift_setinc(lua_State* L, int pause, int stepmul, int stepsize) {
         lua_gc(L, LUA_GCSETSTEPMUL, stepmul);
     }
     // 5.3 doesn't have a way to set stepsize, hm.
+    (void)stepsize;
 
     return LUASWIFT_GCINC; // Since incremental is the only option
 #endif

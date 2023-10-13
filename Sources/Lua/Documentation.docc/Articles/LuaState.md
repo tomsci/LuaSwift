@@ -259,6 +259,8 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/get(_:key:_:)``
 - ``Lua/Swift/UnsafeMutablePointer/getdecodable(_:key:)``
 - ``Lua/Swift/UnsafeMutablePointer/getglobal(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/setglobal(name:)``
+- ``Lua/Swift/UnsafeMutablePointer/setglobal(name:value:)``
 - ``Lua/Swift/UnsafeMutablePointer/rawset(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/rawset(_:key:)``
 - ``Lua/Swift/UnsafeMutablePointer/rawset(_:utf8Key:)``

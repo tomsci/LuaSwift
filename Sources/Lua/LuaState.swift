@@ -1995,9 +1995,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         try set(absidx)
     }
 
-    /// Performs `tbl[key] = val`. May invoke metamethods.
+    /// Performs `tbl[key] = value`. May invoke metamethods.
     ///
-    /// Where `tbl` is the table at `index` on the stack and `val` is the value on the top of the stack
+    /// Where `tbl` is the table at `index` on the stack.
     ///
     /// - Parameter key: The key to use.
     /// - Parameter value: The value to set.
@@ -2013,11 +2013,45 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Pushes the global called `name` onto the stack.
     ///
-    /// - Parameter name: The name of the global to push onto the stack. The global name is always assumed to be in
-    ///   UTF-8 encoding.
+    /// The global name is always assumed to be in UTF-8 encoding.
+    ///
+    /// > Important: Unlike `lua_getglobal()`, this function uses raw accesses, ie does not invoke metamethods.
+    ///
+    /// - Parameter name: The name of the global to push onto the stack.
+    /// - Returns: The type of the value pushed onto the stack.
     @discardableResult
     public func getglobal(_ name: String) -> LuaType {
-        return LuaType(rawValue: lua_getglobal(self, name))!
+        pushGlobals()
+        let t = rawget(-1, utf8Key: name)
+        lua_remove(self, -2)
+        return t
+    }
+
+    /// Sets the global variable called `name` to the value on the top of the stack.
+    ///
+    /// The global name is always assumed to be in UTF-8 encoding. The stack value is popped.
+    ///
+    /// > Important: Unlike `lua_setglobal()`, this function uses raw accesses, ie does not invoke metamethods.
+    ///
+    /// - Parameter name: The name of the global to set.
+    public func setglobal(name: String) {
+        precondition(gettop() > 0)
+        pushGlobals(toindex: -2)
+        rawset(-2, utf8Key: name)
+        pop() // globals
+    }
+
+    /// Sets the global variable called `name` to `value`.
+    ///
+    /// The global name is always assumed to be in UTF-8 encoding.
+    ///
+    /// > Important: Unlike `lua_setglobal()`, this function uses raw accesses, ie does not invoke metamethods.
+    ///
+    /// - Parameter name: The name of the global to set.
+    /// - Parameter value: The value to assign.
+    public func setglobal<V: Pushable>(name: String, value: V) {
+        push(value)
+        setglobal(name: name)
     }
 
     /// Pushes the globals table (`_G`) onto the stack.

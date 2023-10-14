@@ -1413,4 +1413,51 @@ final class LuaTests: XCTestCase {
         let barRet: Int? = try L.pcall()
         XCTAssertEqual(barRet, 456)
     }
+
+    func test_getLocals() throws {
+        try L.load(string: """
+            local foo, bar = 123, 456
+            function bat(hello, world, ...)
+            end
+            function callNativeFn()
+                local bb = bar
+                local aa = foo
+                nativeFn(aa, bb)
+            end
+            """)
+        try L.pcall(nargs: 0, nret: 0)
+
+        var localNames: [String] = []
+        let closure = LuaClosureWrapper { L in
+            let ret = L.withStackFrameFor(level: 1) { (frame: LuaStackFrame!) in
+                XCTAssertEqual(frame.locals["aa"].toint(), 123)
+                localNames = frame.localNames().map({ $0.name })
+                XCTAssertEqual(localNames.sorted(), frame.locals.toDict().keys.sorted())
+                return "woop"
+            }
+            XCTAssertEqual(ret, "woop") // Check we're returning the closure's result
+            L.withStackFrameFor(level: 5) { frame in
+                XCTAssertNil(frame)
+            }
+            return 0
+        }
+        L.setglobal(name: "nativeFn", value: closure)
+        try L.globals["callNativeFn"].pcall()
+        XCTAssertEqual(localNames, ["bb", "aa"])
+
+        // Test getTopFunctionArguments, getTopFunctionInfo
+        L.getglobal("bat")
+        let args = L.getTopFunctionArguments()
+        XCTAssertEqual(args, ["hello", "world"])
+        let info = L.getTopFunctionInfo(what: [.paraminfo])
+        XCTAssertEqual(info.isvararg, true)
+        XCTAssertEqual(info.nparams, 2)
+
+        try L.load(data: L.dump(strip: true)!, name: "=bat_stripped", mode: .binary)
+        let strippedArgs = L.getTopFunctionArguments()
+        let strippedInfo = L.getTopFunctionInfo(what: [.paraminfo])
+        XCTAssertEqual(strippedInfo.isvararg, true)
+        XCTAssertEqual(strippedInfo.nparams, 2)
+        XCTAssertEqual(strippedArgs, []) // lua_getlocal() returns nothing for stripped function arguments.
+    }
 }

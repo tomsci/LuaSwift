@@ -305,6 +305,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 
 ### Debugging
 
+- ``Lua/Swift/UnsafeMutablePointer/withStackFrameFor(level:_:)``
 - ``Lua/Swift/UnsafeMutablePointer/getStackInfo(level:what:)``
 - ``Lua/Swift/UnsafeMutablePointer/getTopFunctionInfo(what:)``
 - ``Lua/Swift/UnsafeMutablePointer/getTopFunctionArguments()``

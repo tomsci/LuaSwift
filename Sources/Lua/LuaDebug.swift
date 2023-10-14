@@ -3,13 +3,14 @@
 
 import CLua
 
-/// Contains debug information about a function.
+/// Contains debug information about a function or stack frame.
 ///
 /// Which members will be non-nil is dependent on what ``WhatInfo`` fields were requested in the call to
 /// ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)`` or similar. See the individual ``WhatInfo`` enum cases for
 /// information about what fields they cause to be set.
 ///
 /// This struct is a Swift-friendly equivalent to [`lua_Debug`](http://www.lua.org/manual/5.4/manual.html#lua_Debug).
+/// Unlike `lua_Debug`, `LuaDebug` instances are self-contained and safe to store or pass around.
 public struct LuaDebug {
     /// Determines what ``LuaDebug`` fields are filled in when calling
     /// ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)`` or similar.
@@ -73,7 +74,7 @@ public struct LuaDebug {
     public let function: LuaValue?
     public let validlines: [CInt]?
 
-    public init(from ar: lua_Debug, fields: Set<WhatInfo>, state: LuaState?) {
+    public init(from ar: lua_Debug, fields: Set<WhatInfo>, state: LuaState) {
         if fields.contains(.name) {
             name = ar.name != nil ? String(cString: ar.name) : nil
             namewhat = .init(rawValue: String(cString: ar.namewhat)) ?? .other
@@ -143,7 +144,7 @@ public struct LuaDebug {
             ntransfer = nil
         }
 
-        if let state, fields.contains(.validlines) {
+        if fields.contains(.validlines) {
             var lines: [CInt] = []
             if let linesSet: [CInt: Any] = state.tovalue(-1) {
                 for (k, _) in linesSet {
@@ -157,10 +158,279 @@ public struct LuaDebug {
             validlines = nil
         }
 
-        if let state, fields.contains(.function) {
+        if fields.contains(.function) {
             function = state.popref()
         } else {
             function = nil
+        }
+    }
+}
+
+/// A temporary object used to access information about a Lua stack frame.
+///
+/// This type permits multiple different ways to access the local variables in the stack frame. The most basic is
+/// ``pushLocal(_:)`` which pushes the nth local onto the stack, and also returns the local name. ``findLocal(name:)``
+/// searches for a local of the given name and returns its index, suitable for passing to other functions which take an
+/// `n` parameter such as ``setLocal(n:value:)``.
+///
+/// The second access method is to use ``localNames()`` to iterate the variable indexes and names.
+///
+/// The final option is to use the LuaValue-based ``locals`` property, which behaves similarly to
+/// ``Lua/Swift/UnsafeMutablePointer/globals``.
+///
+/// Objects of this type are only valid during the execution of
+/// ``Lua/Swift/UnsafeMutablePointer/withStackFrameFor(level:_:)``. Do not store the value for future use.
+public class LuaStackFrame {
+    let L: LuaState
+    var ar: lua_Debug
+
+    init(L: LuaState, ar: lua_Debug) {
+        self.L = L
+        self.ar = ar
+    }
+
+    /// Pushes the nth local value in this stack frame onto the stack.
+    ///
+    /// If `n` is larger than the number of locals in scope, then `nil` is returned and nothing is pushed onto
+    /// the stack.
+    ///
+    /// - Parameter n: Which local to return.
+    /// - Returns: The name of the value pushed to the stack, or `nil` if `n` is greater than the number of locals in
+    ///   scope.
+    @discardableResult
+    public func pushLocal(_ n: CInt) -> String? {
+        let name = withUnsafePointer(to: ar) { arPtr in
+            return lua_getlocal(L, arPtr, n)
+        }
+        if let name {
+            return String(cString: name)
+        } else {
+            return nil
+        }
+    }
+
+    /// Return the index of the first local variable matching the given name.
+    ///
+    /// - Parameter name: The local name to search for.
+    /// - Returns: The index of the first local variable matching `name`, or `nil` if no matching local was found.
+    public func findLocal(name: String) -> CInt? {
+        return withUnsafePointer(to: ar) { arPtr -> CInt? in
+            var i: CInt = 1
+            while true {
+                let iname = lua_getlocal(L, arPtr, i)
+                guard let iname else {
+                    return nil
+                }
+                L.pop()
+                if String(cString: iname) == name {
+                    return i
+                } else {
+                    i = i + 1
+                }
+            }
+        }
+    }
+
+    private struct LocalsIterator : Sequence, IteratorProtocol {
+        let frame: LuaStackFrame
+        var i: CInt
+        init(frame: LuaStackFrame) {
+            self.frame = frame
+            self.i = 0
+        }
+        public mutating func next() -> (index: CInt, name: String)? {
+            i = i + 1
+            if let name = frame.pushLocal(i) {
+                frame.L.pop()
+                return (i, name)
+            } else {
+                return nil
+            }
+        }
+    }
+
+    /// Returns a sequence of all the valid local variable indexes and names.
+    ///
+    /// This allows iterating of all the locals in the stack frame, for example:
+    /// ```swift
+    /// L.withStackFrameFor(level: 1) { frame in
+    ///     for (index, name) in frame!.localNames() {
+    ///         print("Local \(index) is named \(name)")
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Or to return all the valid local names in order as an array of Strings:
+    /// ```swift
+    /// let names = frame.localNames().map({ $0.name })
+    /// ```
+    public func localNames() -> some Sequence<(index: CInt, name: String)> {
+        return LocalsIterator(frame: self)
+    }
+
+    /// Sets the nth local variable to the value on top of the stack.
+    ///
+    /// > Note: Unlike [`lua_setlocal()`](https://www.lua.org/manual/5.4/manual.html#lua_setlocal), the value is always
+    ///   popped from the stack regardless of whether the function succeeds or not.
+    ///
+    /// - Parameter n: Which local variable to set.
+    /// - Returns: `true` if `n` was a valid local variable which was updated, `false` otherwise.
+    @discardableResult
+    public func setLocal(n: CInt) -> Bool {
+        let ret = withUnsafePointer(to: ar) { arPtr in
+            return lua_setlocal(L, arPtr, n)
+        }
+        if ret != nil {
+            return true
+        } else {
+            L.pop()
+            return false
+        }
+    }
+
+    /// Sets the nth local variable to the specified value.
+    ///
+    /// - Parameter n: Which local variable to set.
+    /// - Parameter value: The value to assign to the local.
+    /// - Returns: `true` if `n` was a valid local variable which was updated, `false` otherwise.
+    @discardableResult
+    public func setLocal<V: Pushable>(n: CInt, value: V) -> Bool {
+        L.push(value)
+        let ret = withUnsafePointer(to: ar) { arPtr in
+            return lua_setlocal(L, arPtr, n)
+        }
+        if ret != nil {
+            return true
+        } else {
+            L.pop()
+            return false
+        }
+    }
+
+    /// Get debug information about the stack frame this instance refers to.
+    ///
+    /// - Parameter what: What information to retrieve.
+    /// - Returns: a struct containing the requested information.
+    public func getInfo(_ what: Set<LuaDebug.WhatInfo> = .allNonHook) -> LuaDebug {
+        var ar = self.ar
+        lua_getinfo(L, what.rawValue, &ar)
+        return LuaDebug(from: ar, fields: what, state: L)
+    }
+
+    /// Returns an object representing the local variables as `LuaValues`.
+    private(set) lazy public var locals = LuaLocalVariables(frame: self)
+}
+
+/// A type representing the local variables defined in a Lua stack frame as `LuaValues`.
+///
+/// This object can be subscripted by integer index, which which looks up the local for that index, or by String which
+/// searches for a local with that name.
+///
+/// ```swift
+/// let val: LuaValue = frame.locals[1] // Same as frame.locals.get(1)?.value ?? LuaValue()
+/// frame.locals["foo"] = L.ref(any: "bar")
+/// ```
+///
+/// It can also be iterated:
+///
+/// ```swift
+/// for (index, name, val) in frame.locals {
+///     print("Local \(index) is named \(name) and has type \(val.type.tostring())")
+/// }
+/// ```
+///
+/// Objects of this type are only valid during the execution of
+/// ``Lua/Swift/UnsafeMutablePointer/withStackFrameFor(level:_:)``. Do not store the value for future use.
+public struct LuaLocalVariables : Sequence {
+    let frame: LuaStackFrame
+
+    /// Returns the name and value of the nth local value in this stack frame.
+    ///
+    /// See [`debug.getlocal()`](https://www.lua.org/manual/5.4/manual.html#pdf-debug.getlocal) for more information
+    /// about local variable indexes.
+    ///
+    /// - Parameter n: Which local to return.
+    /// - Returns: The name and value of the given local, or `nil` if `n` is greater than the number of locals in scope
+    ///   in this stack frame.
+    public func get(_ n: CInt) -> (name: String, value: LuaValue)? {
+        if let name = frame.pushLocal(n) {
+            return (name: name, value: frame.L.popref())
+        } else {
+            return nil
+        }
+    }
+
+    /// Returns the index and value of the fist local value with the specified name in this stack frame.
+    ///
+    /// See [`debug.getlocal()`](https://www.lua.org/manual/5.4/manual.html#pdf-debug.getlocal) for more information
+    /// about local variable indexes.
+    ///
+    /// - Parameter name: The name of the local to return.
+    /// - Returns: The index and value of the given local, or `nil` if there are no locals with the given name in scope.
+    public func get(_ name: String) -> (index: CInt, value: LuaValue)? {
+        if let index = frame.findLocal(name: name) {
+            frame.pushLocal(index)
+            return (index: index, value: frame.L.popref())
+        } else {
+            return nil
+        }
+    }
+
+    /// Return the locals as a dictionary of names to LuaValues.
+    ///
+    /// Note that if there are multiple locals with the same name (such as anonymous temporaries) only the
+    /// first one will be present (in order to be consistent with the behaviour of ``LuaStackFrame/findLocal(name:)``).
+    public func toDict() -> [String : LuaValue] {
+        var result: [String : LuaValue] = [:]
+        for (_, name, val) in self {
+            if result[name] == nil {
+                result[name] = val
+            }
+        }
+        return result
+    }
+
+    private struct LocalValuesIterator : IteratorProtocol {
+        let frame: LuaStackFrame
+        var i: CInt
+        init(frame: LuaStackFrame) {
+            self.frame = frame
+            self.i = 0
+        }
+        public mutating func next() -> (index: CInt, name: String, value: LuaValue)? {
+            i = i + 1
+            if let name = frame.pushLocal(i) {
+                let value = frame.L.popref()
+                return (index: i, name: name, value: value)
+            } else {
+                return nil
+            }
+        }
+    }
+
+    public func makeIterator() -> some IteratorProtocol<(index: CInt, name: String, value: LuaValue)> {
+        return LocalValuesIterator(frame: frame)
+    }
+
+    /// Access a local variable by index.
+    public subscript(n: CInt) -> LuaValue {
+        get {
+            return get(n)?.value ?? LuaValue.nilValue
+        }
+        set {
+            frame.setLocal(n: n, value: newValue)
+        }
+    }
+
+    /// Access a local variable by name.
+    public subscript(name: String) -> LuaValue {
+        get {
+            return get(name)?.value ?? LuaValue.nilValue
+        }
+        set {
+            if let index = frame.findLocal(name: name) {
+                frame.setLocal(n: index, value: newValue)
+            }
         }
     }
 }
@@ -186,22 +456,52 @@ extension Set where Element == LuaDebug.WhatInfo {
     }
 }
 
-
 extension UnsafeMutablePointer where Pointee == lua_State {
 
+    /// Invokes the given closure with a ``LuaStackFrame`` referring to the given stack level.
+    ///
+    /// When called with a level greater than the stack depth, `body` is invoked with a `nil` argument.
+    ///
+    /// Do not store or return the `LuaStackFrame` for later use.
+    ///
+    /// Usage:
+    /// ```swift
+    /// L.withStackFrameFor(level: level) { (frame: LuaStackFrame?) in
+    ///     /* Use `frame` to query the given level of the stack */
+    /// }
+    /// ```
+    ///
+    /// - Parameter level: What level of the call stack to get info for. Level 0 is the current running function,
+    ///   level 1 is the function that called the current function, etc.
+    /// - Parameter body: The closure to execute.
+    /// - Returns: The return value, if any, of the body closure.
+    public func withStackFrameFor<Result>(level: CInt, _ body: (LuaStackFrame?) throws -> Result) rethrows -> Result {
+        var ar = lua_Debug()
+        if lua_getstack(self, level, &ar) == 0 {
+            return try body(nil)
+        } else {
+            let info = LuaStackFrame(L: self, ar: ar)
+            return try body(info)
+        }
+    }
+
     /// Get debug information about a function in the call stack.
+    ///
+    /// Equivalent to:
+    /// ```swift
+    /// L.withStackFrameFor(level: level) { frame in
+    ///     return frame?.getInfo(what)
+    /// }
+    /// ```
     ///
     /// - Parameter level: What level of the call stack to get info for. Level 0 is the current running function,
     ///   level 1 is the function that called the current function, etc.
     /// - Parameter what: What information to retrieve.
     /// - Returns: a struct containing the requested information, or `nil` if `level` is larger than the stack is.
     public func getStackInfo(level: CInt, what: Set<LuaDebug.WhatInfo> = .allNonHook) -> LuaDebug? {
-        var ar = lua_Debug()
-        if lua_getstack(self, level, &ar) == 0 {
-            return nil
+        return withStackFrameFor(level: level) { frame in
+            return frame?.getInfo(what)
         }
-        lua_getinfo(self, what.rawValue, &ar)
-        return LuaDebug(from: ar, fields: what, state: self)
     }
 
     /// Get debug information about the function on the top of the stack.

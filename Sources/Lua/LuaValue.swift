@@ -78,6 +78,8 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
+    static let nilValue = LuaValue()
+
     public static func == (lhs: LuaValue, rhs: LuaValue) -> Bool {
         return lhs.L == rhs.L && lhs.ref == rhs.ref
     }
@@ -434,7 +436,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// ```
     public subscript(key: Any) -> LuaValue {
         get {
-            return (try? get(key)) ?? LuaValue()
+            return (try? get(key)) ?? LuaValue.nilValue
         }
         set(newValue) {
             do {
@@ -726,6 +728,22 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return try L.compare(-2, -1, op)
     }
 
+}
+
+// It's not clear to me why the "where Self == LuaValue" has to exist, other than because the type system needs there
+// to be _some_ sort of concrete type to resolve ".nilValue" against.
+extension Pushable where Self == LuaValue {
+    /// Returns a Pushable representing the `nil` Lua value.
+    ///
+    /// This permits the use of `.nilValue` anywhere a Pushable can be specified. For example to remove `somekey`
+    /// from the table on top of the stack:
+    ///
+    /// ```swift
+    /// L.set(-1, key: "somekey", value: .nilValue)
+    /// ```
+    public static var nilValue: some Pushable {
+        return LuaValue.nilValue
+    }
 }
 
 struct UnownedLuaValue {

@@ -1383,4 +1383,34 @@ final class LuaTests: XCTestCase {
         try! L.pcall(nargs: 0, nret: 1)
         XCTAssertEqual(L.tostring(-1), "called")
     }
+
+    func test_upvalues() throws {
+        try L.load(string: """
+            local foo, bar = 123, 456
+            function baz()
+                return foo or bar
+            end
+            """)
+
+        try L.pcall(nargs: 0, nret: 0)
+        L.getglobal("baz")
+
+        let n = L.findUpvalue(index: -1, name: "foo")
+        XCTAssertEqual(n, 1)
+        XCTAssertEqual(L.findUpvalue(index: -1, name: "bar"), 2)
+        XCTAssertEqual(L.findUpvalue(index: -1, name: "nope"), nil)
+        XCTAssertEqual(L.getUpvalues(index: -1).keys.sorted(), ["bar", "foo"])
+        XCTAssertNil(L.getUpvalue(index: -1, n: 3))
+        XCTAssertEqual(L.getUpvalue(index: -1, n: 1)?.value.toint(), 123)
+
+        let updated = L.setUpvalue(index: -1, n: n!, value: "abc") // modify foo
+        XCTAssertTrue(updated)
+        let ret: String? = try L.pcall()
+        XCTAssertEqual(ret, "abc")
+
+        L.getglobal("baz")
+        L.setUpvalue(index: -1, n: n!, value: .nilValue)
+        let barRet: Int? = try L.pcall()
+        XCTAssertEqual(barRet, 456)
+    }
 }

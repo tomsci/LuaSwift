@@ -2470,4 +2470,132 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return nil
         }
     }
+
+    // MARK: - Upvalues
+
+    /// Search a closure's upvalues for one matching the given name.
+    ///
+    /// Search a closure's upvalues for one matching the given name, and returns the number of the first upvalue
+    /// match, suitable for passing to the `n` parameter of ``getUpvalue(index:n:)`` or ``setUpvalue(index:n:value:)``.
+    ///
+    /// - Parameter index: The stack index of the closure.
+    /// - Parameter name: The upvalue name to search for.
+    /// - Returns: The number of the upvalue, or `nil` if `index` does not refer to a closure or the closure does not
+    ///   have an upvalue with the specified name.
+    public func findUpvalue(index: CInt, name: String) -> CInt? {
+        var i: CInt = 1
+        while true {
+            if let valname = lua_getupvalue(self, index, i) {
+                pop()
+                if String(cString: valname) == name {
+                    return i
+                } else {
+                    i = i + 1
+                    // Keep looping
+                }
+            } else {
+                return nil
+            }
+        }
+    }
+
+    /// Pushes the nth upvalue of the closure at the given index onto the stack.
+    ///
+    /// If `n` is larger than the number of upvalues of the closure, then `nil` is returned and nothing is pushed onto
+    /// the stack.
+    ///
+    /// The exact order of upvalues to a function is not defined and may be dependent on the order they are accessed
+    /// within the function, thus could change merely as a result of refactoring the internals of the function.
+    /// Therefore `_ENV` is not guaranteed to be at `n=1` unless the closure is a main chunk.
+    ///
+    /// - Parameter index: The stack index of the closure.
+    /// - Parameter n: Which upvalue to return.
+    /// - Returns: The name of the value pushed to the stack, or `nil` if `n` is greater than the number of upvalues the
+    ///   closure defines. Note that the name may not be meaningful or unique, but it will be non-nil if the upvalue
+    ///   exists.
+    @discardableResult
+    public func pushUpvalue(index: CInt, n: CInt) -> String? {
+        if let name = lua_getupvalue(self, index, n) {
+            return String(cString: name)
+        } else {
+            return nil
+        }
+    }
+
+    /// Returns the name and value of the nth upvalue of the closure at the given index.
+    ///
+    /// The exact order of upvalues to a function is not defined and may be dependent on the order they are accessed
+    /// within the function, thus could change merely as a result of refactoring the internals of the function.
+    /// Therefore `_ENV` is not guaranteed to be at `n=1` unless the closure is a main chunk.
+    ///
+    /// - Parameter index: The stack index of the closure.
+    /// - Parameter n: Which upvalue to return.
+    /// - Returns: The name and value of the given upvalue, or `nil` if `n` is greater than the number of upvalues the
+    ///   closure defines. Note that upvalue names may not be meaningful or unique.
+    public func getUpvalue(index: CInt, n: CInt) -> (name: String, value: LuaValue)? {
+        if let name = pushUpvalue(index: index, n: n) {
+            let val = popref()
+            return (name: name, value: val)
+        } else {
+            return nil
+        }
+    }
+
+    /// Returns all the uniquely-named upvalues for the closure at the given index.
+    ///
+    /// If there are multiple upvalues with the same name, for example because the function was stripped of debug
+    /// information and all the upvalues are consequently called `?`, then none of those upvalues are included in the
+    /// result.
+    ///
+    /// - Parameter index: The stack index of the closure.
+    /// - Returns: A Dictionary of all the closure's uniquely-named upvalues.
+    public func getUpvalues(index: CInt) -> [String : LuaValue] {
+        var i: CInt = 1
+        var result: [String : LuaValue] = [:]
+        var seenNames: Set<String> = []
+        while true {
+            if let (name, val) = getUpvalue(index: index, n: i) {
+                if seenNames.contains(name) {
+                    result[name] = nil
+                } else {
+                    result[name] = val
+                    seenNames.insert(name)
+                }
+                i = i + 1
+            } else {
+                break
+            }
+        }
+        return result
+    }
+
+    /// Set a closure's upvalue to the value on the top of the stack.
+    ///
+    /// The value is always popped from the stack.
+    ///
+    /// - Parameter index: The stack index of the closure.
+    /// - Parameter n: Which upvalue to set.
+    /// - Returns: `true` if `n` was a valid upvalue which was updated, `false` otherwise.
+    @discardableResult
+    public func setUpvalue(index: CInt, n: CInt) -> Bool {
+        if lua_setupvalue(self, index, n) != nil {
+            return true
+        } else {
+            pop()
+            return false
+        }
+    }
+
+    /// Set a closure's upvalue to the specified value.
+    ///
+    /// - Parameter index: The stack index of the closure.
+    /// - Parameter n: Which upvalue to set.
+    /// - Parameter value: The value to assign to the upvalue.
+    /// - Returns: `true` if `n` was a valid upvalue which was updated, `false` otherwise.
+    @discardableResult
+    public func setUpvalue<V: Pushable>(index: CInt, n: CInt, value: V) -> Bool {
+        let absidx = absindex(index)
+        push(value)
+        return setUpvalue(index: absidx, n: n)
+    }
 }

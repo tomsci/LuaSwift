@@ -311,6 +311,14 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)``
 - ``Lua/Swift/UnsafeMutablePointer/getWhere(level:)``
 
+### Upvalues
+
+- ``Lua/Swift/UnsafeMutablePointer/pushUpvalue(index:n:)``
+- ``Lua/Swift/UnsafeMutablePointer/getUpvalue(index:n:)``
+- ``Lua/Swift/UnsafeMutablePointer/getUpvalues(index:)``
+- ``Lua/Swift/UnsafeMutablePointer/findUpvalue(index:name:)``
+- ``Lua/Swift/UnsafeMutablePointer/setUpvalue(index:n:value:)``
+
 ### Miscellaneous
 
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:function:global:)``

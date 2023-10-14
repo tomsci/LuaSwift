@@ -206,18 +206,19 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Get debug information about the function on the top of the stack.
     ///
-    /// Pops the function from the stack.
+    /// Does not pop the function from the stack.
     ///
     /// - Parameter what: What information to retrieve.
     /// - Returns: a struct containing the requested information.
     public func getTopFunctionInfo(what: Set<LuaDebug.WhatInfo> = .allNonCall) -> LuaDebug {
         precondition(gettop() > 0 && type(-1) == .function, "Must be a function on top of the stack")
         var ar = lua_Debug()
+        push(index: -1)
         lua_getinfo(self, ">" + what.rawValue, &ar)
         return LuaDebug(from: ar, fields: what, state: self)
     }
 
-    /// Get debug information about a function.
+    /// Get debug information from an activation record.
     ///
     /// - Parameter ar: must be a valid activation record that was filled by a previous call to
     ///   `lua_getstack` or given as argument to a hook.
@@ -236,4 +237,28 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
         return tostring(-1)!
     }
+
+    /// Get the argument names for the function on top of the stack.
+    ///
+    /// This will return an empty array if the top value on the stack is not a Lua function, or if the function has
+    /// no debug information (eg was loaded from a stripped binary chunk). Therefore, use ``getTopFunctionInfo(what:)``
+    /// including ``LuaDebug/WhatInfo/paraminfo`` and check ``LuaDebug/nparams`` if you want the argument count in a
+    /// way which works even if the function has been stripped.
+    ///
+    /// Does not pop the function from the stack.
+    public func getTopFunctionArguments() -> [String] {
+        precondition(gettop() > 0)
+        var i: CInt = 1
+        var result: [String] = []
+        while true {
+            if let name = lua_getlocal(self, nil, i) {
+                result.append(String(cString: name))
+                i = i + 1
+            } else {
+                break
+            }
+        }
+        return result
+    }
+
 }

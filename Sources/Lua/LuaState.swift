@@ -111,6 +111,26 @@ extension LuaType {
     }
 }
 
+/// Conforming to this protocol permits values to perform custom cleanup in response to a `__close` metamethod event.
+///
+/// Types conforming to `Closable` do not need to supply a custom `__close` metamethod in their call to
+/// ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``, and instead just need to implement
+/// `close()`.
+///
+/// If a type does not need to continue to be usable after a `__close` event, then it need not implement `Closable` in
+/// which case the default implementation of `__toclose` will deinit the Swift value (and if any metamethods are
+/// subsequently called, they will need to cope with `touserdata()` returning nil).
+public protocol Closable {
+    /// This function will be called when a userdata representing this instance is closed by a Lua `__close` event.
+    ///
+    /// If a value of type `T` conforming to `Closable` is bridged into Lua using `push(userdata:)`, and the call to
+    /// ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)`` for `T` did not specify a custom `__close`
+    /// metamethod, and the value is assigned to a `local ... <close>` variable, then the `Closable` `close()` function
+    /// will be called when that variable goes out of scope. See
+    /// [To-be-closed Variables](https://www.lua.org/manual/5.4/manual.html#3.3.8) for more information.
+    func close()
+}
+
 extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// OptionSet representing the standard Lua libraries. 
@@ -1705,21 +1725,27 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             rawset(-2, utf8Key: "__index")
         }
 
-        let gcUserdata: lua_CFunction = { L in
+        push(function: { L in
             let rawptr = lua_touserdata(L, 1)!
             let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
             anyPtr.deinitialize(count: 1)
-            // Leave anyPtr in a safe state for when we are called via __close and there will therefore be a subsequent
-            // call via __gc
-            anyPtr.initialize(to: false)
             return 0
-        }
-
-        push(function: gcUserdata)
+        })
         rawset(-2, utf8Key: "__gc")
 
         if functions["__close"] == nil {
-            push(function: gcUserdata)
+            push(function: { L in
+                let rawptr = lua_touserdata(L, 1)!
+                let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
+                if let closable = anyPtr.pointee as? Closable {
+                    closable.close()
+                } else {
+                    anyPtr.deinitialize(count: 1)
+                    // Leave anyPtr in a safe state for __gc
+                    anyPtr.initialize(to: false)
+                }
+                return 0
+            })
             rawset(-2, utf8Key: "__close")
         }
     }
@@ -1767,12 +1793,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     ///
     /// Assuming Lua 5.4 is being used, `__close` may optionally be specified in `functions` to implement custom
-    /// to-be-closed behaviour. If not specified, a default implementation is included which deinits the value, after
-    /// which point attempting to recover the value by calling `touserdata()` will always return `nil`.
+    /// to-be-closed behavior. If not specified, a default implementation is included, which behaves in one of two
+    /// ways: if the Swift value implements ``Closable``, then it calls ``Closable/close()``; otherwise it deinits the
+    /// Swift object, after which point `touserdata<T>()` will no longer return the object and will return `nil`
+    /// instead.
     ///
-    /// All metatables are stored in the Lua registry using the prefix `"LuaSwift_"`, to avoid conflicting with any
-    /// other uses of [`luaL_newmetatable()`](http://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The exact
-    /// name used is an internal implementation detail.
+    /// All metatables are stored in the Lua registry using a key starting with `"LuaSwift_"`, to avoid conflicting with
+    /// any other uses of [`luaL_newmetatable()`](http://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The
+    /// exact name used is an internal implementation detail.
     ///
     /// - Parameter type: Type to register.
     /// - Parameter functions: Map of functions.

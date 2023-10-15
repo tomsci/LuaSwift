@@ -19,6 +19,17 @@ class DeinitChecker {
     }
 }
 
+class ClosableDeinitChecker : DeinitChecker, Closable {
+    let closeFn: () -> Void
+    init(deinitFn: @escaping () -> Void, closeFn: @escaping () -> Void) {
+        self.closeFn = closeFn
+        super.init(deinitFn)
+    }
+    func close() {
+        closeFn()
+    }
+}
+
 final class LuaTests: XCTestCase {
 
     var L: LuaState!
@@ -617,6 +628,48 @@ final class LuaTests: XCTestCase {
         L.setglobal(name: "val", value: .nilValue)
         L.collectgarbage()
         XCTAssertEqual(deinited, 1)
+    }
+
+    func test_pushuserdata_Closeable_close() throws {
+        try XCTSkipIf(!LUA_VERSION.is54orLater())
+
+        var deinited = 0
+        var closed = 0
+        var val: DeinitChecker? = ClosableDeinitChecker(deinitFn: { deinited += 1 }, closeFn: { closed += 1 })
+        XCTAssertEqual(deinited, 0)
+        XCTAssertEqual(closed, 0)
+
+        L.registerMetatable(for: ClosableDeinitChecker.self, functions: [:])
+        XCTAssertEqual(L.gettop(), 0)
+
+        // Avoid calling lua_toclose, to make this test still compile with Lua 5.3
+        try! L.load(string: """
+            val = ...
+            local arg <close> = val
+            """)
+        L.push(userdata: val!)
+        val = nil
+        XCTAssertEqual(deinited, 0)
+        XCTAssertEqual(closed, 0)
+        do {
+            let valUserdata: DeinitChecker? = L.touserdata(-1)
+            XCTAssertNotNil(valUserdata)
+        }
+        try! L.pcall(nargs: 1, nret: 0)
+        XCTAssertEqual(deinited, 0)
+        XCTAssertEqual(closed, 1)
+        XCTAssertEqual(L.getglobal("val"), .userdata)
+        do {
+            // Since the type implements Closable, touserdata _should_ still return it
+            let valUserdata: DeinitChecker? = L.touserdata(-1)
+            XCTAssertNotNil(valUserdata)
+        }
+        L.pop()
+
+        L.setglobal(name: "val", value: .nilValue)
+        L.collectgarbage()
+        XCTAssertEqual(deinited, 1)
+        XCTAssertEqual(closed, 1)
     }
 
     func test_registerMetatable() throws {

@@ -90,6 +90,8 @@ Swift structs and classes can be bridged into Lua in a type-safe and reference-c
 
 ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)`` is used to register a Lua metatable for a given Swift type. This defines which members the bridged object has and how to call them. A bridged type with no additional members defined will not be callable from Lua, but retains a reference to the Swift value until it is garbage collected.
 
+All bridged objects automatically gain the ability to be [closed](https://www.lua.org/manual/5.4/manual.html#3.3.8) (when using Lua 5.4 or later), that is to say that in addition to adding a `__gc` function to the type's metatable, a default `__close` function is also added. This default implementation deinits the Swift object, after which point `touserdata<T>()` will always return `nil`. Provide a custom implementation of `__toclose` in the call to `registerMetatable()` to override this behavior if, for example, the object still needs to be callable from Lua after being closed.
+
 The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a "bar" closure which calls `Foo.bar()`. ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` is used to convert the Lua value back to a Swift `Foo` type. Note that by using the `.closure` type, "bar" is allowed to throw Swift errors which are converted to Lua errors. (If `.function` was used instead of `.closure`, throwing errors would not be permitted, see the discussion on ``LuaClosure``.)
 
 ```swift
@@ -109,7 +111,7 @@ let L = LuaState(libraries: [])
 L.registerMetatable(for: Foo.self, functions: [
     "bar": .closure { L in
         // Recover the `Foo` instance from the first argument to the function
-        guard let foo: Foo = L.tovalue(1) else {
+        guard let foo: Foo = L.touserdata(1) else {
             throw L.error("Bad argument #1 to bar()")
         }
         // Call the function
@@ -139,7 +141,7 @@ foo:bar()
 
 Any Swift type can be converted to a Lua value by calling ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` (or any of the convenience functions which use it, such as `pcall(args...)` or ``Lua/Swift/UnsafeMutablePointer/ref(any:)``). See the documentation for ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` for exact details of the conversion.
 
-Any Lua value can be converted back to a Swift value of type `T?` by calling ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``. `table`s and `string`s are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue<T>()` returns nil. If `T` is `Any` (ie the most relaxed type constraint), but there is no Swift type capable of representing the Lua value (for example, a closure) then a ``LuaValue`` instance is returned. Similarly if `T` is `Dictionary<AnyHashable, Any>` but the Lua table contains a key which when converted is not hashable in Swift, `LuaValue` will be used there as well.
+Any Lua value can be converted back to a Swift value of type `T?` by calling ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``. `table`s and `string`s are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue<T>()` returns nil. If `T` is `Any` (ie the most relaxed type constraint), but there is no Swift type capable of representing the Lua value (for example, a function written in Lua) then a ``LuaValue`` instance is returned. Similarly if `T` is `Dictionary<AnyHashable, Any>` but the Lua table contains a key which when converted is not hashable in Swift, `LuaValue` will be used there as well.
 
 Any Lua value can be tracked as a Swift object, without converting back into a Swift type, by calling ``Lua/Swift/UnsafeMutablePointer/ref(index:)`` which returns a ``LuaValue`` object.
 

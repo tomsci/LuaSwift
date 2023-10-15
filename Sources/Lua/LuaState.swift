@@ -56,13 +56,6 @@ public struct LuaVer {
 public let LUA_VERSION = LuaVer(major: LUASWIFT_LUA_VERSION_MAJOR, minor: LUASWIFT_LUA_VERSION_MINOR,
     release: LUASWIFT_LUA_VERSION_RELEASE)
 
-fileprivate func gcUserdata(_ L: LuaState!) -> CInt {
-    let rawptr = lua_touserdata(L, 1)!
-    let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
-    anyPtr.deinitialize(count: 1)
-    return 0
-}
-
 fileprivate func tracebackFn(_ L: LuaState!) -> CInt {
     let msg = L.tostring(-1)
     luaL_traceback(L, L, msg, 0)
@@ -1712,8 +1705,23 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             rawset(-2, utf8Key: "__index")
         }
 
+        let gcUserdata: lua_CFunction = { L in
+            let rawptr = lua_touserdata(L, 1)!
+            let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
+            anyPtr.deinitialize(count: 1)
+            // Leave anyPtr in a safe state for when we are called via __close and there will therefore be a subsequent
+            // call via __gc
+            anyPtr.initialize(to: false)
+            return 0
+        }
+
         push(function: gcUserdata)
         rawset(-2, utf8Key: "__gc")
+
+        if functions["__close"] == nil {
+            push(function: gcUserdata)
+            rawset(-2, utf8Key: "__close")
+        }
     }
 
     private static let DefaultMetatableName = "LuaSwift_Default"
@@ -1738,9 +1746,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```swift
     /// L.registerMetatable(for: Foo.self, functions: [
     ///     "__call": .function { L in
-    ///        print("TODO call support")
-    ///        return 0
-    ///    }
+    ///         let foo: Foo? = L.touserdata(1)
+    ///         print("TODO call support")
+    ///         return 0
+    ///     }
     /// ])
     /// ```
     ///
@@ -1757,13 +1766,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// // Means you can do foo.bar()
     /// ```
     ///
+    /// Assuming Lua 5.4 is being used, `__close` may optionally be specified in `functions` to implement custom
+    /// to-be-closed behaviour. If not specified, a default implementation is included which deinits the value, after
+    /// which point attempting to recover the value by calling `touserdata()` will always return `nil`.
+    ///
     /// All metatables are stored in the Lua registry using the prefix `"LuaSwift_"`, to avoid conflicting with any
     /// other uses of [`luaL_newmetatable()`](http://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The exact
     /// name used is an internal implementation detail.
     ///
     /// - Parameter type: Type to register.
     /// - Parameter functions: Map of functions.
-    /// - Precondition: There must not already be a metatable defined for `type`.
+    /// - Precondition: There must not already be a metatable defined for `type`. `functions` must not contain an entry
+    ///   for `__gc`.
     public func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
         doRegisterMetatable(typeName: getMetatableName(for: type), functions: functions)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
@@ -1784,8 +1798,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ``registerMetatable(for:functions:)``.
     ///
     /// If this function is not called, a warning will be printed the first time an unregistered type is pushed. A
-    /// minimal metatable will be generated in such cases, which supports garbage collection but otherwise exposes no
-    /// other functions.
+    /// minimal metatable will be generated in such cases, which supports garbage collection and being closed but
+    /// exposes no other functions.
     ///
     /// - Parameter functions: map of functions.
     public func registerDefaultMetatable(functions: [String: MetafieldType]) {

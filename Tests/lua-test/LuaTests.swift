@@ -582,6 +582,43 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(deinited, 1)
     }
 
+    func test_pushuserdata_close() throws {
+        try XCTSkipIf(!LUA_VERSION.is54orLater())
+
+        var deinited = 0
+        var val: DeinitChecker? = DeinitChecker { deinited += 1 }
+        XCTAssertEqual(deinited, 0)
+
+        L.registerMetatable(for: DeinitChecker.self, functions: [:])
+        XCTAssertEqual(L.gettop(), 0)
+
+        // Avoid calling lua_toclose, to make this test still compile with Lua 5.3
+        try! L.load(string: """
+            val = ...
+            local arg <close> = val
+            """)
+        L.push(userdata: val!)
+        val = nil
+        XCTAssertEqual(deinited, 0)
+        do {
+            let valUserdata: DeinitChecker? = L.touserdata(-1)
+            XCTAssertNotNil(valUserdata)
+        }
+        try! L.pcall(nargs: 1, nret: 0)
+        XCTAssertEqual(deinited, 1)
+        XCTAssertEqual(L.getglobal("val"), .userdata)
+        do {
+            // After being closed, touserdata should no longer return it
+            let valUserdata: DeinitChecker? = L.touserdata(-1)
+            XCTAssertNil(valUserdata)
+        }
+        L.pop()
+
+        L.setglobal(name: "val", value: .nilValue)
+        L.collectgarbage()
+        XCTAssertEqual(deinited, 1)
+    }
+
     func test_registerMetatable() throws {
         class SomeClass {
             var member: String? = nil

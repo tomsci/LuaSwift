@@ -1550,4 +1550,32 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(strippedInfo.nparams, 2)
         XCTAssertEqual(strippedArgs, []) // lua_getlocal() returns nothing for stripped function arguments.
     }
+
+    func test_checkOption() throws {
+        enum Foo : String {
+            case foo
+            case bar
+            case baz
+        }
+        L.push("foo")
+        let arg1: Foo = try! L.checkOption(1)
+        XCTAssertEqual(arg1, .foo)
+        let arg2: Foo = try! L.checkOption(2, default: .bar)
+        XCTAssertEqual(arg2, .bar)
+
+        L.push(123)
+        XCTAssertThrowsError(try L.checkOption(2, default: Foo.foo), "", { err in
+            XCTAssertEqual(err.localizedDescription, "bad argument #2 (Expected type convertible to String, got number)")
+        })
+
+        L.settop(0)
+        L.setglobal(name: "nativeFn", value: LuaClosureWrapper { L in
+            let _: Foo = try L.checkOption(1)
+            return 0
+        })
+        try! L.load(string: "nativeFn('nope')")
+        XCTAssertThrowsError(try L.pcall(traceback: false), "", { err in
+            XCTAssertEqual(err.localizedDescription, "bad argument #1 to 'nativeFn' (invalid option 'nope' for Foo)")
+        })
+    }
 }

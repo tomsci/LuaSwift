@@ -2640,4 +2640,85 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push(value)
         return setUpvalue(index: absidx, n: n)
     }
+
+    // MARK: - Argument checks
+
+    /// Returns an `Error` suitable for throwing from a `LuaClosure` when there is a problem with an argument.
+    ///
+    /// This is the LuaSwift equivalent of
+    /// [`luaL_argerror()`](https://www.lua.org/manual/5.4/manual.html#luaL_argerror).
+    ///
+    /// ```swift
+    /// func myLuaClosure(L: LuaState) throws -> CInt {
+    ///     if L.isnil(1) {
+    ///         throw L.argumentError(1, "expected non-nil")
+    ///     }
+    ///     /* rest of fn */
+    /// }
+    /// ```
+    ///
+    /// - Parameter arg: Index of the argument which has the problem.
+    /// - Parameter extramsg: More information about the problem, which is appended to the error string.
+    /// - Returns: An error which, when thrown from a `LuaClosure`, will result in a string error in Lua.
+    public func argumentError(_ arg: CInt, _ extramsg: String) -> LuaCallError {
+        var adjustedArg = arg
+        guard let fninfo = getStackInfo(level: 0, what: [.name]) else {
+            return error("bad argument #\(arg) (\(extramsg))")
+        }
+
+        if fninfo.namewhat == .method {
+            adjustedArg = arg - 1
+            if adjustedArg == 0 {
+                // If namewhat is method name is definitely set (it appears)
+                return error("calling '\(fninfo.name!)' on bad self (\(extramsg)")
+            }
+        }
+
+        let name = fninfo.name ?? "?"
+        return error("bad argument #\(arg) to '\(name)' (\(extramsg))")
+    }
+
+    /// Checks if an argument is of the correct type.
+    ///
+    /// Throws an ``argumentError(_:_:)`` if the specified argument cannot be converted to type `T`. Argument conversion
+    /// is performed according to ``tovalue(_:)``.
+    public func checkArgument<T>(_ arg: CInt) throws -> T {
+        if let val: T = tovalue(arg) {
+            return val
+        } else {
+            throw argumentError(arg, "Expected type convertible to \(String(describing: T.self)), got \(typename(index: arg))")
+        }
+    }
+
+    /// Checks if an argument can be converted to a RawRepresentable type.
+    /// 
+    /// The argument is assumed to be in the RawRepresentable's raw value type. For example, given a definition like:
+    /// ```swift
+    /// enum Foo : String {
+    ///     case foo
+    ///     case bar
+    /// }
+    /// ```
+    /// then `let arg: Foo = try L.checkOption(1)` when argument 1 is the string "bar" will set `arg` to `Foo.bar`.
+    ///
+    /// - Parameter arg: Index of the argument to convert.
+    /// - Parameter default: If specified, this value is returned if the argument is none or nil. If not specified then
+    ///   a nil or omitted argument will throw an error.
+    /// - Returns: An instance of `T`, assuming `T(rawValue: <argval>)` succeeded.
+    /// - Throws: An ``argumentError(_:_:)`` if the specified argument was not of the correct raw type or could not be
+    ///   converted to `T`.
+    public func checkOption<T, U>(_ arg: CInt, default def: T? = nil) throws -> T where T: RawRepresentable<U> {
+        if isnoneornil(arg), let defaultVal = def {
+            return defaultVal
+        }
+
+        let raw: U = try checkArgument(arg)
+        if let result = T(rawValue: raw) {
+            return result
+        } else {
+            throw argumentError(arg, "invalid option '\(raw)' for \(String(describing: T.self))")
+        }
+    }
+
+
 }

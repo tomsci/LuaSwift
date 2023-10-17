@@ -219,6 +219,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:toindex:)-6rddl``
 - ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:toindex:)-9nxec``
 - ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``
+- ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku``
 - ``Lua/Swift/UnsafeMutablePointer/push(bytes:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)``
@@ -320,7 +321,14 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/getUpvalue(index:n:)``
 - ``Lua/Swift/UnsafeMutablePointer/getUpvalues(index:)``
 - ``Lua/Swift/UnsafeMutablePointer/findUpvalue(index:name:)``
+- ``Lua/Swift/UnsafeMutablePointer/setUpvalue(index:n:)``
 - ``Lua/Swift/UnsafeMutablePointer/setUpvalue(index:n:value:)``
+
+### Argument checks
+
+- ``Lua/Swift/UnsafeMutablePointer/argumentError(_:_:)``
+- ``Lua/Swift/UnsafeMutablePointer/checkArgument(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/checkOption(_:default:)``
 
 ### Miscellaneous
 

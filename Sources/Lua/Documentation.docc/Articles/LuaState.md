@@ -6,7 +6,7 @@
 
 It can therefore be constructed either using the explicit constructor provided, or any C `lua_State` obtained from anywhere can be treated as a `LuaState` Swift object. By convention `LuaState`/`lua_State` variables are often called `L`, although that is not mandatory.
 
-See the [Readme](https://github.com/tomsci/LuaSwift/blob/main/README.md#usage) for some example usage. See <https://www.lua.org/manual/5.4/manual.html> for documentation of the underlying Lua C APIs.
+See <https://www.lua.org/manual/5.4/manual.html> for documentation of the underlying Lua C APIs.
 
 Note that `LuaState` pointers are _not_ reference counted, meaning the state is not automatically destroyed when it goes out of scope. You must call ``Lua/Swift/UnsafeMutablePointer/close()``.
 
@@ -22,7 +22,7 @@ As in the Lua C API, functions and values are pushed on to the stack with one of
 
 ```swift
 import Lua
-let L = LuaState(libaries: .all)
+let L = LuaState(libraries: .all)
 L.getglobal("print")
 L.push("Hello world!")
 try! L.pcall(nargs: 1, nret: 0)
@@ -34,7 +34,7 @@ This API uses a single Swift type ``LuaValue`` to represent any Lua value (inclu
 
 ```swift
 import Lua
-let L = LuaState(libaries: .all)
+let L = LuaState(libraries: .all)
 let printfn = try L.globals["print"] // printfn is a LuaValue...
 try printfn("Hello world!") // ... which can be called
 
@@ -78,6 +78,8 @@ L.close()
 
 Using `CLua` directly is generally only useful for complex stack manipulations for which there are no suitable higher-level functions declared by `Lua`.
 
+Keep in mind that the C API gives access to functions which are (or can be) unsafe to call from Swift. It is possible to leak memory, orphan Swift objects, or crash the process by misusing the C API.
+
 ### Thread safety
 
 As a result of `LuaState` being usable anywhere a C `lua_State` is, all the internal state needed by the `LuaState` (for example, tracking metatables and default string encodings) is stored inside the state itself (using the Lua registry), meaning each top-level `LuaState` is completely independent, just a normal C `lua_State` is.
@@ -111,9 +113,7 @@ let L = LuaState(libraries: [])
 L.registerMetatable(for: Foo.self, functions: [
     "bar": .closure { L in
         // Recover the `Foo` instance from the first argument to the function
-        guard let foo: Foo = L.touserdata(1) else {
-            throw L.error("Bad argument #1 to bar()")
-        }
+        let foo: Foo = try L.checkArgument(1)
         // Call the function
         foo.bar()
         // Tell Lua that this function returns zero results

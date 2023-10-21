@@ -11,7 +11,7 @@ A copy of the LuaSwift API documentation can be found here: <https://tomsci.gith
 ```swift
 import Lua
 
-let L = LuaState(libaries: .all)
+let L = LuaState(libraries: .all)
 L.getglobal("print")
 try! L.pcall("Hello world!")
 L.close()
@@ -25,7 +25,7 @@ import CLua
 
 let L = luaL_newstate()
 luaL_openlibs(L)
-// The above two lines are exactly equivalent to `let L = LuaState(libaries: .all)`
+// The above two lines are exactly equivalent to `let L = LuaState(libraries: .all)`
 lua_getglobal(L, "print") // same as L.getglobal("print")
 lua_pushstring(L, "Hello world!")
 lua_pcall(L, 1, 0) // Ignoring some error checking here...
@@ -37,7 +37,7 @@ It could also be written using the more object-oriented (but slightly less effic
 ```swift
 import Lua
 
-let L = LuaState(libaries: .all)
+let L = LuaState(libraries: .all)
 try! L.globals["print"]("Hello world!")
 L.close()
 ```

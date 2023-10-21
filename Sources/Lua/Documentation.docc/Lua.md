@@ -6,13 +6,20 @@ A framework providing Swift typesafe wrappers around the Lua C APIs.
 
 The project is hosted here: <https://github.com/tomsci/LuaSwift>.
 
-See <doc:LuaState> for an introduction to the framework.
+```swift
+import Lua
 
+let L = LuaState(libraries: .all)
+L.getglobal("print")
+try! L.pcall("Hello world!")
+L.close()
+``` 
+
+See <doc:LuaState> for an introduction to the framework.
 
 ## Topics
 
 - <doc:LuaState>
-
 
 @Comment {
 

@@ -35,7 +35,20 @@ Assuming your project contained a file called `example.lua`, you can now do:
 require("example")
 ```
 
-`lua_sources` is just a dictionary of module names to compiled luac-style binary data, so if you need to load the Lua code from Swift you can access an individual module:
+`lua_sources` is just a dictionary of module names to compiled luac-style binary data, which looks something like this:
+
+```swift
+let lua_sources: [String: [UInt8]] = [
+    "example": [
+        /* ...data... */
+    ],
+    "someothermodule": [
+        /* ...data... */
+    ],
+]
+```
+
+So if you need to load the Lua code from Swift you can access an individual module and call ``Lua/Swift/UnsafeMutablePointer/load(data:name:mode:)``:
 
 ```swift
 try L.load(data: lua_sources["example"]!, mode: .binary)

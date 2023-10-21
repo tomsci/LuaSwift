@@ -63,6 +63,8 @@ let L = luaL_newstate()
 lua_close(L)
 ```
 
+Those parts of the C API that are implemented as macros have been reimplemented as functions, so they can be callable from Swift without having to worry about the distinction.
+
 The `Lua` and `CLua` APIs can be freely mixed, a `lua_State` from `CLua` can be used as if it were a `LuaState` from `Lua`, and vice versa:
 
 ```swift
@@ -149,11 +151,15 @@ Any Lua value can be tracked as a Swift object, without converting back into a S
 
 The intent is for LuaSwift to be as flexible as possible with regard to what the client code might want to do with the `lua_State`. That said, there are a couple of assumptions that must hold true for LuaSwift to function correctly.
 
-* The [registry table](https://www.lua.org/manual/5.4/manual.html#4.3) must not be manipulated in any way that violates the assumptions of [`luaL_ref`](https://www.lua.org/manual/5.4/manual.html#luaL_ref) or [`luaL_newmetatable`](https://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). [`LUA_RIDX_MAINTHREAD`](https://www.lua.org/manual/5.4/manual.html#pdf-LUA_RIDX_MAINTHREAD) and [`LUA_RIDX_GLOBALS`](https://www.lua.org/manual/5.4/manual.html#pdf-LUA_RIDX_GLOBALS) are assumed to be valid.
+* The [registry table](https://www.lua.org/manual/5.4/manual.html#4.3) must not be manipulated in any way that violates the assumptions of [`luaL_ref`](https://www.lua.org/manual/5.4/manual.html#luaL_ref) or [`luaL_newmetatable`](https://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). [`LUA_RIDX_MAINTHREAD`](https://www.lua.org/manual/5.4/manual.html#pdf-LUA_RIDX_MAINTHREAD) and [`LUA_RIDX_GLOBALS`](https://www.lua.org/manual/5.4/manual.html#pdf-LUA_RIDX_GLOBALS) are assumed to behave in the usual way.
 
 * LuaSwift may set registry table entries using keys that are private `lua_CFunction` pointers or strings with prefix `"LuaSwift_"`. Clients must not interfere with such entries. LuaSwift also uses `luaL_ref` internally.
 
 * To use ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)``, the `package` library must be imported and `package.searchers` must be set to its default value.
+
+* ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)`` assumes [`LUA_LOADED_TABLE`](https://www.lua.org/manual/5.4/manual.html#pdf-LUA_LOADED_TABLE) behaves in the usual way.
+
+* ``Lua/Swift/UnsafeMutablePointer/addModules(_:mode:)`` and ``Lua/Swift/UnsafeMutablePointer/setModules(_:mode:)`` assume that [`LUA_PRELOAD_TABLE`](https://www.lua.org/manual/5.4/manual.html#pdf-LUA_PRELOAD_TABLE) behaves in the usual way.
 
 ### Support for different Lua versions
 

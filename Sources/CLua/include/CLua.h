@@ -19,8 +19,38 @@ struct lua_State {};
 // Reimplement some things that are macros, so the bridge can see them
 
 #undef lua_isnoneornil
-static inline _Bool lua_isnoneornil(lua_State* L, int n) {
+static inline int lua_isnoneornil(lua_State* L, int n) {
     return lua_type(L, n) <= 0;
+}
+
+#undef lua_isnil
+static inline int lua_isnil(lua_State* L, int n) {
+    return lua_type(L, n) == LUA_TNIL;
+}
+
+#undef lua_isboolean
+static inline int lua_isboolean(lua_State* L, int n) {
+    return lua_type(L, n) == LUA_TBOOLEAN;
+}
+
+#undef lua_islightuserdata
+static inline int lua_islightuserdata(lua_State* L, int n) {
+    return lua_type(L, n) == LUA_TLIGHTUSERDATA;
+}
+
+#undef lua_istable
+static inline int lua_istable(lua_State* L, int n) {
+    return lua_type(L, n) == LUA_TTABLE;
+}
+
+#undef lua_isfunction
+static inline int lua_isfunction(lua_State* L, int n) {
+    return lua_type(L, n) == LUA_TFUNCTION;
+}
+
+#undef lua_isthread
+static inline int lua_isthread(lua_State* L, int n) {
+    return lua_type(L, n) == LUA_TTHREAD;
 }
 
 #undef lua_pop
@@ -128,6 +158,11 @@ static const int LUA_REGISTRYINDEX = -LUAI_MAXSTACK - 1000;
 // Ditto
 #ifndef LUA_LOADED_TABLE
 #define LUA_LOADED_TABLE "_LOADED"
+#endif
+
+// Only in 5.4
+#ifndef LUA_GNAME
+#define LUA_GNAME "_G"
 #endif
 
 #undef luaL_getmetatable

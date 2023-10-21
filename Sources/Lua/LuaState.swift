@@ -187,7 +187,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter libraries: Which of the standard libraries to open.
     public init(libraries: Libraries) {
         self = luaL_newstate()
-        requiref_unsafe(name: "_G", function: luaopen_base)
+        requiref_unsafe(name: LUA_GNAME, function: luaopen_base)
         openLibraries(libraries)
     }
 

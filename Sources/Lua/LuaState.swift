@@ -2110,6 +2110,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Does not leave the module on the stack.
     ///
+    /// - Parameter name: The name of the module.
+    /// - Parameter function: The function which sets up the module.
+    /// - Parameter global: Whether or not to set `_G[name]`.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
     public func requiref(name: String, function: lua_CFunction, global: Bool = true) throws {
         push(function: luaswift_requiref)
@@ -2125,6 +2128,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// called forms the body of the module, pass in a `closure` which must push a function on to the Lua stack. It is
     /// this resulting function which is called to create the module.
     ///
+    /// Does not leave the module on the stack.
+    ///
     /// This allows code like:
     ///
     /// ```swift
@@ -2134,37 +2139,32 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     ///
     /// - Parameter name: The name of the module.
-    /// - Parameter global: Whether or not to set _G[name].
+    /// - Parameter global: Whether or not to set `_G[name]`.
     /// - Parameter closure: This closure is called to push the module function onto the stack. Note, it will not be
-    ///   called if a module called `name` is already loaded.
+    ///   called if a module called `name` is already loaded. Must push exactly one item onto the stack.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the module function.
     ///   Rethrows if `closure` throws.
     public func requiref(name: String, global: Bool = true, closure: () throws -> Void) throws {
         // There's just no reasonable way to shoehorn this into calling luaL_requiref, we have to unroll it...
-        let L = self
-        luaL_getsubtable(L, LUA_REGISTRYINDEX, LUA_LOADED_TABLE)
-        rawget(-1, utf8Key: name)  /* LOADED[modname] */
-        let loaded_idx = L.gettop()
+        let top = gettop()
         defer {
-            // Note unlike luaL_requiref we do not leave the module on the stack
-            lua_remove(L, loaded_idx)
+            settop(top)
         }
-        if (lua_toboolean(L, -1) == 0) {  /* package not already loaded? */
-            lua_pop(L, 1)  /* remove field */
-            
-            let top = L.gettop()
+        luaL_getsubtable(self, LUA_REGISTRYINDEX, LUA_LOADED_TABLE)
+        rawget(-1, utf8Key: name) // LOADED[modname]
+        if (!toboolean(-1)) {  // package not already loaded?
+            pop()  // remove nil LOADED[modname]
             try closure()
-            precondition(L.gettop() == top + 1 && L.type(-1) == .function,
+            precondition(gettop() == top + 2 && type(-1) == .function,
                          "requiref closure did not push a function onto the stack!")
 
-            push(utf8String: name)  /* argument to open function */
-            try pcall(nargs: 1, nret: 1)  /* call 'openf' to open module */
-            lua_pushvalue(L, -1)  /* make copy of module (call result) */
-            lua_setfield(L, -3, name)  /* LOADED[modname] = module */
+            push(utf8String: name)  // argument to open function
+            try pcall(nargs: 1, nret: 1)  // call 'openf' to open module
+            push(index: -1)  // make copy of module (call result)
+            rawset(-3, utf8Key: name)  // LOADED[modname] = module
         }
         if (global) {
-            lua_pushvalue(L, -1)  /* copy of module */
-            lua_setglobal(L, name)  /* _G[modname] = module */
+            setglobal(name: name)  // _G[modname] = module
         }
     }
 

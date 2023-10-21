@@ -1141,6 +1141,7 @@ final class LuaTests: XCTestCase {
         try L.requiref(name: "test") {
             try L.load(data: lua_sources["test"]!, name: "test", mode: .text)
         }
+        XCTAssertEqual(L.gettop(), 0)
         XCTAssertEqual(L.globals["test"].tostring(), "hello")
     }
 

@@ -70,6 +70,10 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
 }
 
 /// A Swift enum of the Lua types.
+///
+/// The `rawValue` of the enum uses the same integer values as the `LUA_T...` type constants. Note that `LUA_TNONE` does
+/// not have a `LuaType` representation, and is instead represented by `nil`, ie an optional `LuaType`, in places where
+/// LUA_TNONE can occur.
 public enum LuaType : CInt, CaseIterable {
     // Annoyingly can't use LUA_TNIL etc here because the bridge exposes them as `var LUA_TNIL: CInt { get }`
     // which is not acceptable for an enum (which requires the rawValue to be a literal)
@@ -100,6 +104,18 @@ extension LuaType {
         case .function: return "function"
         case .userdata: return "userdata"
         case .thread: return "thread"
+        }
+    }
+
+    /// Construct a LuaType from a C type integer.
+    ///
+    /// - Parameter ctype: Must be an integer in the range `LUA_TNONE...LUA_TTHREAD`.
+    /// - Returns: A `LuaType` representing the given type, or `nil` if `ctype` is `LUA_TNONE`.
+    public init?(ctype: CInt) {
+        if ctype == LUA_TNONE {
+            return nil
+        } else {
+            self.init(rawValue: ctype)!
         }
     }
 
@@ -495,8 +511,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   `nil` is the equivalent of `LUA_TNONE`, whereas ``LuaType/nil`` is the equivalent of `LUA_TNIL`.
     public func type(_ index: CInt) -> LuaType? {
         let t = lua_type(self, index)
-        assert(t >= LUA_TNONE && t <= LUA_TTHREAD)
-        return LuaType(rawValue: t)
+        return LuaType(ctype: t)
     }
 
     /// Get the type of the value at the given stack index, as a String.
@@ -982,10 +997,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
-    /// - Parameter resetTop: By default, the stack top is reset on exit and
-    ///   each time through the iterator to what it was at the point of calling
-    ///   `ipairs`. Occasionally (such as when using `luaL_Buffer`) this is not
-    ///   desirable and can be disabled by setting `resetTop` to false.
+    /// - Parameter resetTop: By default, the stack top is reset on exit and each time through the iterator to what it
+    ///   was at the point of calling `ipairs`. Occasionally this is not desirable and can be disabled by setting
+    ///   `resetTop` to false.
     /// - Precondition: `index` must refer to a table value.
     public func ipairs(_ index: CInt, start: lua_Integer = 1, resetTop: Bool = true) -> some Sequence<lua_Integer> {
         precondition(type(index) == .table, "Value must be a table to iterate with ipairs()")
@@ -1052,8 +1066,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         init(_ L: LuaState, _ index: CInt) {
             self.L = L
             self.index = L.absindex(index)
-            top = lua_gettop(L)
-            lua_pushnil(L) // initial k
+            top = L.gettop()
+            L.pushnil() // initial k
         }
         public func next() -> (CInt, CInt)? {
             if L.gettop() < top + 1 {
@@ -1077,13 +1091,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// The values in the table are iterated in an unspecified order. Each time
     /// through the for loop, the iterator returns the indexes of the key and
-    /// value which are pushed onto the stack. The stack is reset each time
-    /// through the loop, and on exit. The `__pairs` metafield is ignored if the
+    /// value which are pushed onto the stack. The `__pairs` metafield is ignored if the
     /// table has one, that is to say raw accesses are used.
+    ///
+    /// To iterate with non-raw accesses, use ``for_pairs(_:_:)`` instead.
     ///
     /// The indexes to the key and value will always be `top+1` and `top+2`, where `top` is the value of `gettop()`
     /// prior to the call to `pairs()`, thus are provided for convenience only. `-2` and `-1` can be used instead, if
-    /// desired.
+    /// desired. The stack is reset to `top` at the end of each iteration through the loop.
     ///
     /// ```swift
     /// // Assuming top of stack is a table { a = 1, b = 2, c = 3 }
@@ -1107,9 +1122,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Push the 3 values needed to iterate the value at the top of the stack.
     ///
-    /// The value is popped from the stack.
+    /// This function only exposed for implementations of pairs iterators to use, thus usually should not be called
+    /// directly. The value is popped from the stack.
     ///
-    /// Returns: false (and pushes `next, value, nil`) if the value isn't iterable, otherwise `true`.
+    /// Returns: `false` (and pushes `next, value, nil`) if the value isn't iterable, otherwise `true`.
     /// Throws: ``LuaCallError`` if the value had a `__pairs` metafield which errored.
     @discardableResult
     public func pushPairsParameters() throws -> Bool {
@@ -1230,7 +1246,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Push anything which conforms to ``Pushable`` onto the stack.
+    /// Push anything which conforms to `Pushable` onto the stack.
     ///
     /// - Parameter value: Any Swift value which conforms to ``Pushable``.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
@@ -1301,7 +1317,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Push a function or closure of type ``LuaClosure`` onto the stack as a Lua function.
+    /// Push a function or closure of type `LuaClosure` onto the stack as a Lua function.
     ///
     /// See ``LuaClosure`` for a discussion of how LuaClosures behave.
     ///
@@ -1448,9 +1464,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func checkClosureArgument<T>(index: CInt) throws -> T? {
         let val: T? = tovalue(index)
         if val == nil && !isnoneornil(index) {
-            let t = typename(index: index)
-            let err = "Type of argument \(index) (\(t)) does not match type required by Swift closure (\(T.self))"
-            throw error(err)
+            throw argumentError(index, "Expected \(T.self), got \(typename(index: index))")
         } else {
             return val
         }
@@ -1647,6 +1661,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         try pcall(arguments: arguments, traceback: traceback)
     }
 
+    /// Like `pcall(arguments...)` but using an explicit array for the arguments.
+    ///
+    /// See ``pcall(_:traceback:)-2ujhj``.
     public func pcall(arguments: [Any?], traceback: Bool = true) throws {
         for arg in arguments {
             push(any: arg)
@@ -1673,6 +1690,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return try pcall(arguments: arguments, traceback: traceback)
     }
 
+    /// Like `pcall(arguments...)` but using an explicit array for the arguments.
+    ///
+    /// See ``pcall(_:traceback:)-3qlin``.
     public func pcall<T>(arguments: [Any?], traceback: Bool = true) throws -> T? {
         for arg in arguments {
             push(any: arg)

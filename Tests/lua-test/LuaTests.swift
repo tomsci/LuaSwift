@@ -871,9 +871,8 @@ final class LuaTests: XCTestCase {
         L.push(closure: c)
         XCTAssertThrowsError(try L.pcall(1234, traceback: false), "", { err in
             XCTAssertEqual((err as? LuaCallError)?.errorString,
-                           "Type of argument 1 (number) does not match type required by Swift closure (String)")
+                           "bad argument #1 to '?' (Expected String, got number)")
         })
-
     }
 
     func test_push_any_closure() throws {

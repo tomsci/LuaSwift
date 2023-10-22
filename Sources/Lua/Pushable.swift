@@ -5,6 +5,20 @@ import CLua
 
 /// Protocol adopted by any Swift type that can unambiguously be converted to a basic Lua type.
 ///
+/// Any type which conforms to Pushable (either due to an extension provided by the `Lua` module, or by an implemention
+/// from anywhere else) can be pushed onto the Lua stack using
+/// ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``. Several functions have convenience overloads allowing
+/// `Pushable` values to be passed in directly, shortcutting the need to push them onto the stack then refer to them by
+/// stack index, such as ``Lua/Swift/UnsafeMutablePointer/setglobal(name:value:)``.
+///
+/// For example:
+/// ```swift
+/// let L = LuaState(libraries: .all)
+/// L.push(1234) // Integer is Pushable
+/// L.push(["abc", "def"]) // String is Pushable, therefore Array<String> is too
+/// L.setglobal("foo", "bar")
+/// ```
+///
 /// Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be
 /// represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either.
 public protocol Pushable {

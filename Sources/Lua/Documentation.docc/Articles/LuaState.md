@@ -250,6 +250,8 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(_:traceback:)-2ujhj``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(_:traceback:)-3qlin``
+- ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-11jc5``
+- ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-8gv5``
 
 ### Registering metatables
 

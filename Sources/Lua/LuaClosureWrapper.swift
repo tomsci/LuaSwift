@@ -31,7 +31,7 @@ public class LuaClosureWrapper: Pushable {
     ///     /* do things with upvalue */
     /// }, numUpvalues: 1)
     /// ```
-    public static let NumInternalUpvalues: CInt = 2
+    public static let NumInternalUpvalues: CInt = 1
 
     // This is only optional because of the nonescaping requirements in for_pairs/for_ipairs
     var _closure: Optional<LuaClosure>
@@ -45,7 +45,7 @@ public class LuaClosureWrapper: Pushable {
     }
 
     private static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
-        let wrapper: LuaClosureWrapper = L.tovalue(lua_upvalueindex(2))!
+        let wrapper: LuaClosureWrapper = L.touserdata(lua_upvalueindex(1))!
         guard let closure = wrapper._closure else {
             fatalError("Attempt to call a LuaClosureWrapper after it has been explicitly nilled")
         }
@@ -63,7 +63,11 @@ public class LuaClosureWrapper: Pushable {
     }
 
     public func push(onto L: LuaState, numUpvalues: CInt) {
+        // This only technically needs doing once but it's easier to just do it every time.
+        L.push(function: luaswift_callclosurewrapper)
         L.push(function: Self.callClosure)
+        L.rawset(LUA_REGISTRYINDEX)
+
         L.push(userdata: self)
         // Move these below numUpvalues
         if numUpvalues > 0 {

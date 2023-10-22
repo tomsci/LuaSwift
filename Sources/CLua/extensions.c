@@ -105,8 +105,14 @@ int luaswift_loadfile(lua_State *L, const char *filename,
 // The next few functions exist because it is not safe to call lua_error() from a Swift function
 
 int luaswift_callclosurewrapper(lua_State *L) {
-    lua_CFunction f = lua_tocfunction(L, lua_upvalueindex(1));
-    int ret = f(L);
+    // The function pointer for LuaClosureWrapper.callClosure is in the registry keyed by the
+    // luaswift_callclosurewrapper function pointer.
+    lua_pushcfunction(L, luaswift_callclosurewrapper);
+    lua_rawget(L, LUA_REGISTRYINDEX);
+    lua_CFunction LuaClosureWrapper_callClosure = lua_tocfunction(L, -1);
+    lua_pop(L, 1);
+
+    int ret = LuaClosureWrapper_callClosure(L);
     if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
         return lua_error(L);
     } else {

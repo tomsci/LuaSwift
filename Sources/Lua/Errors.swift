@@ -2,6 +2,8 @@
 // See LICENSE file for license information.
 
 /// An `Error` type representing an error thrown by Lua code.
+///
+/// This type's implementation of `Pushable` pushes the underlying error object (or string).
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable {
     private init(_ error: LuaValue) {
         self.errorValue = error
@@ -50,6 +52,8 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable 
 }
 
 /// Errors than can be thrown by ``Lua/Swift/UnsafeMutablePointer/load(file:displayPath:mode:)`` (and other overloads).
+///
+/// This type's implementation of `Pushable` pushes the underlying error string.
 public enum LuaLoadError: Error, Equatable {
     /// An error indicating that the specified file could not be found or opened.
     ///
@@ -61,11 +65,20 @@ public enum LuaLoadError: Error, Equatable {
     case parseError(String)
 }
 
-extension LuaLoadError: CustomStringConvertible {
+extension LuaLoadError: CustomStringConvertible, Pushable {
     public var description: String {
         switch self {
         case .fileError(let err): return "LuaLoadError.fileError(\(err))"
         case .parseError(let err): return "LuaLoadError.parseError(\(err))"
+        }
+    }
+
+    public func push(onto L: LuaState) {
+        switch self {
+        case .fileError(let err):
+            L.push(err)
+        case .parseError(let err):
+            L.push(err)
         }
     }
 }

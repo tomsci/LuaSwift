@@ -1591,19 +1591,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Push a Swift Error onto the Lua stack.
     ///
-    /// This function special-cases ``LuaCallError``, ``LuaLoadError/parseError(_:)`` and errors returned by
-    /// ``error(_:)``, and pushes the original underlying Lua error value unmodified. Otherwise the string
-    /// `"Swift error: \(error.localizedDescription)"` is used.
+    /// If `error` also conforms to `Pushable`, then ``Pushable/push(onto:)`` is used. This includes ``LuaCallError``,
+    /// ``LuaLoadError``, and errors returned by ``error(_:)``, all of which push the underlying Lua error value
+    /// unmodified.
+    ///
+    /// For any other Error type, the string `"Swift error: \(error.localizedDescription)"` is pushed.
     ///
     /// - Parameter error: The error to push onto the Lua stack.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push(error: Error, toindex: CInt = -1) {
-        switch error {
-        case let err as LuaCallError:
-            push(err, toindex: toindex)
-        case LuaLoadError.parseError(let str):
-            push(str, toindex: toindex)
-        default:
+        if let pushable = error as? Pushable {
+            push(pushable, toindex: toindex)
+        } else {
 #if LUASWIFT_NO_FOUNDATION
             push("Swift error: \(String(describing: error))", toindex: toindex)
 #else

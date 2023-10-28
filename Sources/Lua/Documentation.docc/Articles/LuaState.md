@@ -224,7 +224,6 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/push(utf8String:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:toindex:)-6rddl``
 - ``Lua/Swift/UnsafeMutablePointer/push(string:encoding:toindex:)-9nxec``
-- ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``
 - ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku``
 - ``Lua/Swift/UnsafeMutablePointer/push(bytes:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``

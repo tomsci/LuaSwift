@@ -2,9 +2,7 @@
 // See LICENSE file for license information.
 
 import Foundation
-
 import Lua
-import CLua
 
 @main
 struct EmbedLua {
@@ -39,11 +37,8 @@ struct EmbedLua {
             } catch {
                 fatalError("Unhandled error \(error)")
             }
-            var data: [UInt8] = []
-            withUnsafeMutablePointer(to: &data) { dataPtr -> Void in
-                lua_dump(L, writer, dataPtr, 0)
-            }
 
+            let data = L.dump()!
             result.append("\n    // From \(input)")
             result.append("\n    \"\(baseName)\": \(escape(data)),")
 
@@ -55,13 +50,6 @@ struct EmbedLua {
         }
 
         try! result.write(toFile: output, atomically: true, encoding: .utf8)
-    }
-
-    static let writer: lua_Writer = { (L: LuaState!, p: UnsafeRawPointer!, sz: Int, ud: UnsafeMutableRawPointer!) -> CInt in
-        let data = ud.bindMemory(to: [UInt8].self, capacity: 1)
-        let buf = UnsafeRawBufferPointer(start: p, count: sz)
-        data.pointee.append(contentsOf: buf)
-        return 0
     }
 
     static func escape(_ data: [UInt8]) -> String {

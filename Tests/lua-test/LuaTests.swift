@@ -1090,8 +1090,9 @@ final class LuaTests: XCTestCase {
 
     func test_load_file() {
         XCTAssertThrowsError(try L.load(file: "nopemcnopeface"), "", { err in
-            XCTAssertEqual(err as? LuaLoadError, .fileNotFound)
+            XCTAssertEqual(err as? LuaLoadError, .fileError("cannot open nopemcnopeface: No such file or directory"))
         })
+        XCTAssertEqual(L.gettop(), 0)
     }
 
     func test_load() throws {

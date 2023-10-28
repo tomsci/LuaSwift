@@ -52,7 +52,9 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable 
 /// Errors than can be thrown by ``Lua/Swift/UnsafeMutablePointer/load(file:displayPath:mode:)`` (and other overloads).
 public enum LuaLoadError: Error, Equatable {
     /// An error indicating that the specified file could not be found or opened.
-    case fileNotFound
+    ///
+    /// The associated value is the error string returned from the open operation.
+    case fileError(String)
     /// An error indicating that invalid Lua syntax was encountered during parsing.
     ///
     /// The associated value is the error string returned from the Lua compiler.
@@ -62,7 +64,7 @@ public enum LuaLoadError: Error, Equatable {
 extension LuaLoadError: CustomStringConvertible {
     public var description: String {
         switch self {
-        case .fileNotFound: return "LuaLoadError.fileNotFound"
+        case .fileError(let err): return "LuaLoadError.fileError(\(err))"
         case .parseError(let err): return "LuaLoadError.parseError(\(err))"
         }
     }

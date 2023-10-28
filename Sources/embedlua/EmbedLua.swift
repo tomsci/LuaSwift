@@ -33,8 +33,8 @@ struct EmbedLua {
             } catch LuaLoadError.parseError(let str) {
                 fputs(str + "\n", stderr)
                 exit(1)
-            } catch LuaLoadError.fileNotFound {
-                fputs("Error: file not found: \(input)\n", stderr)
+            } catch LuaLoadError.fileError(let str) {
+                fputs("Error: " + str + "\n", stderr)
                 exit(1)
             } catch {
                 fatalError("Unhandled error \(error)")

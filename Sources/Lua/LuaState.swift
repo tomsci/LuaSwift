@@ -595,20 +595,25 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - to...() functions
 
+    /// Convert the value at the given stack index to a boolean.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: `true` if the value at the given stack index is anything other than `nil` or `false`.
     public func toboolean(_ index: CInt) -> Bool {
         let b = lua_toboolean(self, index)
         return b != 0
     }
 
-    /// Return the value at the given index as an integer, if it is a number convertible to one.
+    /// Return the value at the given index as an integer.
     ///
-    /// - Note: Strings are not automatically converted, unlike
-    ///   [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx).
+    /// - Note: Unlike [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx), strings are
+    ///   not automatically converted, unless `convert: true` is specified.
     ///
     /// - Parameter index: The stack index.
-    /// - Returns: The integer value, or `nil` if the value was not a number or not convertible to an integer.
-    public func tointeger(_ index: CInt) -> lua_Integer? {
-        guard type(index) == .number else {
+    /// - Parameter convert: Whether to attempt to convert string values as well as numbers.
+    /// - Returns: The integer value, or `nil` if the value was not convertible to an integer.
+    public func tointeger(_ index: CInt, convert: Bool = false) -> lua_Integer? {
+        if !convert && type(index) != .number {
             return nil
         }
         var isnum: CInt = 0
@@ -620,25 +625,36 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Return the value at the given index as an integer, if it is a number convertible to one.
+    /// Return the value at the given index as an integer.
     ///
-    /// - Note: Strings are not automatically converted, unlike
-    ///   [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx).
+    /// - Note: Unlike [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx), strings are
+    ///   not automatically converted, unless `convert: true` is specified.
     ///
     /// - Parameter index: The stack index.
-    /// - Returns: The integer value, or `nil` if the value was not a number or not convertible to an integer.
-    public func toint(_ index: CInt) -> Int? {
-        if let int = tointeger(index) {
+    /// - Parameter convert: Whether to attempt to convert string values as well as numbers.
+    /// - Returns: The integer value, or `nil` if the value was not convertible to an integer.
+    public func toint(_ index: CInt, convert: Bool = false) -> Int? {
+        if let int = tointeger(index, convert: convert) {
             return Int(exactly: int)
         } else {
             return nil
         }
     }
 
-    public func tonumber(_ index: CInt) -> Double? {
-        let L = self
+    /// Return the value at the given index as a Double.
+    ///
+    /// - Note: Unlike [`lua_tonumberx()`](https://www.lua.org/manual/5.4/manual.html#lua_tonumberx), strings are
+    ///   not automatically converted, unless `convert: true` is specified.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Parameter convert: Whether to attempt to convert string values as well as numbers.
+    /// - Returns: The number value, or `nil`.
+    public func tonumber(_ index: CInt, convert: Bool = false) -> Double? {
+        if !convert && type(index) != .number {
+            return nil
+        }
         var isnum: CInt = 0
-        let ret = lua_tonumberx(L, index, &isnum)
+        let ret = lua_tonumberx(self, index, &isnum)
         if isnum == 0 {
             return nil
         } else {
@@ -894,7 +910,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Returns: The value as an `Int`, or `nil` if the key was not found, the value was not an integer
     ///   or if a metamethod errored.
     public func toint(_ index: CInt, key: String) -> Int? {
-        return get(index, key: key, self.toint)
+        return get(index, key: key, { toint($0) })
     }
 
     /// Convenience function that gets a key from the table at `index` and returns it as a `Double`.
@@ -906,7 +922,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Returns: The value as a `Double`, or `nil` if the key was not found, the value was not a number
     ///   or if a metamethod errored.
     public func tonumber(_ index: CInt, key: String) -> Double? {
-        return get(index, key: key, self.tonumber)
+        return get(index, key: key, { tonumber($0) })
     }
 
     /// Convenience function that gets a key from the table at `index` and returns it as a `Bool`.

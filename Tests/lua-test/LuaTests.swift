@@ -1254,32 +1254,32 @@ final class LuaTests: XCTestCase {
         L.rawset(-3)
         XCTAssertEqual(L.gettop(), 1)
         XCTAssertEqual(L.rawlen(-1), 6)
-        XCTAssertEqual(L.rawget(-1, key: 6, L.toint), 66)
+        XCTAssertEqual(L.rawget(-1, key: 6, { L.toint($0) } ), 66)
         XCTAssertEqual(L.gettop(), 1)
 
         L.push(666)
         L.rawset(-2, key: 6)
-        XCTAssertEqual(L.rawget(-1, key: 6, L.toint), 666)
+        XCTAssertEqual(L.rawget(-1, key: 6, { L.toint($0) } ), 666)
         XCTAssertEqual(L.gettop(), 1)
 
         L.rawset(-1, key: 6, value: 6666)
         XCTAssertEqual(L.gettop(), 1)
-        XCTAssertEqual(L.rawget(-1, key: 6, L.toint), 6666)
+        XCTAssertEqual(L.rawget(-1, key: 6, { L.toint($0) } ), 6666)
         XCTAssertEqual(L.gettop(), 1)
 
         L.push(1)
         L.push(111)
         try L.set(-3)
-        XCTAssertEqual(L.rawget(-1, key: 1, L.toint), 111)
+        XCTAssertEqual(L.rawget(-1, key: 1, { L.toint($0) } ), 111)
         XCTAssertEqual(L.gettop(), 1)
 
         L.push(222)
         try L.set(-2, key: 2)
-        XCTAssertEqual(L.rawget(-1, key: 2, L.toint), 222)
+        XCTAssertEqual(L.rawget(-1, key: 2, { L.toint($0) } ), 222)
         XCTAssertEqual(L.gettop(), 1)
 
         try L.set(-1, key: 3, value: 333)
-        XCTAssertEqual(L.rawget(-1, key: 3, L.toint), 333)
+        XCTAssertEqual(L.rawget(-1, key: 3, { L.toint($0) } ), 333)
         XCTAssertEqual(L.gettop(), 1)
     }
 

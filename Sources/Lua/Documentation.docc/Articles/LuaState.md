@@ -201,9 +201,9 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 ### to...() functions
 
 - ``Lua/Swift/UnsafeMutablePointer/toboolean(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/tointeger(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/toint(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/tonumber(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/tointeger(_:convert:)``
+- ``Lua/Swift/UnsafeMutablePointer/toint(_:convert:)``
+- ``Lua/Swift/UnsafeMutablePointer/tonumber(_:convert:)``
 - ``Lua/Swift/UnsafeMutablePointer/todata(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tostringUtf8(_:convert:)``
 - ``Lua/Swift/UnsafeMutablePointer/tostring(_:encoding:convert:)-4dzgb``

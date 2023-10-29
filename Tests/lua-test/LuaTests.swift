@@ -1131,6 +1131,20 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(ret.tostring(), "hello")
     }
 
+    func test_lua_sources() throws {
+        XCTAssertNotNil(lua_sources["testmodule1"])
+        L.openLibraries([.package])
+        L.setModules(lua_sources)
+        try L.load(string: "return require('testmodule1')")
+        try L.pcall(nargs: 0, nret: 1)
+        XCTAssertEqual(L.tostring(-1, key: "hello"), "world")
+        L.rawget(-1, key: "foo")
+        let info = L.getTopFunctionInfo()
+        // Check we're not leaking build machine info into the function debug info
+        XCTAssertEqual(info.source, "@testmodule1.lua")
+        XCTAssertEqual(info.short_src, "testmodule1.lua")
+    }
+
     func test_lua_sources_requiref() throws {
         let lua_sources = [
             "test": """

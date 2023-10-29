@@ -90,6 +90,9 @@ let package = Package(
             dependencies: ["Lua", "CLua"],
             swiftSettings: [
                 .define("LUASWIFT_NO_FOUNDATION", .when(platforms: [.linux]))
+            ],
+            plugins: [
+                .plugin(name: "EmbedLuaPlugin")
             ]
         ),
         .testTarget(
@@ -97,6 +100,9 @@ let package = Package(
             dependencies: ["Lua", "CLua"],
             swiftSettings: [
                 .define("LUASWIFT_NO_FOUNDATION")
+            ],
+            plugins: [
+                .plugin(name: "EmbedLuaPlugin")
             ]
         ),
     ]

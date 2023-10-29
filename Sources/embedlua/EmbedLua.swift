@@ -27,7 +27,7 @@ struct EmbedLua {
             let baseName = url.deletingPathExtension().lastPathComponent
 
             do {
-                try L.load(file: input, mode: .text)
+                try L.load(file: input, displayPath:url.lastPathComponent, mode: .text)
             } catch LuaLoadError.parseError(let str) {
                 fputs(str + "\n", stderr)
                 exit(1)

@@ -11,7 +11,7 @@ import CLua
 /// and dictionary subscript operations (providing the underlying Lua value does).
 ///
 /// The Lua value will not be collected as long as the `LuaValue` remains valid. Internally, `LuaValue` uses
-/// [`luaL_ref()`](http://www.lua.org/manual/5.4/manual.html#luaL_ref) to maintain a reference to the value. The
+/// [`luaL_ref()`](https://www.lua.org/manual/5.4/manual.html#luaL_ref) to maintain a reference to the value. The
 /// `LuaValue` object can be pushed back on to the Lua stack, or converted back to a Swift value using one of the
 /// `to...()` functions, which behave the same as the similarly-named members of `LuaState` that take a stack index.
 ///
@@ -739,7 +739,7 @@ extension Pushable where Self == LuaValue {
     /// from the table on top of the stack:
     ///
     /// ```swift
-    /// L.set(-1, key: "somekey", value: .nilValue)
+    /// L.rawset(-1, key: "somekey", value: .nilValue)
     /// ```
     public static var nilValue: some Pushable {
         return LuaValue.nilValue

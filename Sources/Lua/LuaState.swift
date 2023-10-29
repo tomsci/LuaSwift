@@ -606,7 +606,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Return the value at the given index as an integer.
     ///
-    /// - Note: Unlike [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx), strings are
+    /// - Note: Unlike [`lua_tointegerx()`](https://www.lua.org/manual/5.4/manual.html#lua_tointegerx), strings are
     ///   not automatically converted, unless `convert: true` is specified.
     ///
     /// - Parameter index: The stack index.
@@ -627,7 +627,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Return the value at the given index as an integer.
     ///
-    /// - Note: Unlike [`lua_tointegerx()`](http://www.lua.org/manual/5.4/manual.html#lua_tointegerx), strings are
+    /// - Note: Unlike [`lua_tointegerx()`](https://www.lua.org/manual/5.4/manual.html#lua_tointegerx), strings are
     ///   not automatically converted, unless `convert: true` is specified.
     ///
     /// - Parameter index: The stack index.
@@ -1343,6 +1343,16 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// perform the Lua-Swift bridging. Normally however, you would use Swift captures rather than Lua upvalues to
     /// access variables from within `closure` and thus `numUpvalues` would normally be omitted or `0`.
     ///
+    /// Example:
+    ///
+    /// ```swift
+    /// L.push({ L in
+    ///     let arg: Int = try L.checkArgument(1)
+    ///     // ...
+    ///     return 0
+    /// })
+    /// ```
+    ///
     /// - Parameter closure: the function or closure to push.
     /// - Parameter numUpvalues: The number of upvalues to add to the closure.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
@@ -1834,7 +1844,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// instead.
     ///
     /// All metatables are stored in the Lua registry using a key starting with `"LuaSwift_"`, to avoid conflicting with
-    /// any other uses of [`luaL_newmetatable()`](http://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The
+    /// any other uses of [`luaL_newmetatable()`](https://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The
     /// exact name used is an internal implementation detail.
     ///
     /// - Parameter type: Type to register.
@@ -1873,7 +1883,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - get/set functions
 
-    /// Wrapper around [lua_rawget](http://www.lua.org/manual/5.4/manual.html#lua_rawget).
+    /// Wrapper around [lua_rawget](https://www.lua.org/manual/5.4/manual.html#lua_rawget).
     ///
     /// - Precondition: The value at `index` must be a table.
     /// - Parameter index: The stack index of the table.

@@ -7,7 +7,7 @@ import CLua
 ///
 /// Normally you would call ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)`` or one of the
 /// `L.push(closure:)` overloads rather than using this class directly - internally those functions use
-/// `LuaClosureWrapper`. Using `LuaClosureWrapper` directly can be useful if you need to track a `LuaClosure` as a
+/// `LuaClosureWrapper`. Using `LuaClosureWrapper` explicitly can be useful if you need to track a `LuaClosure` as a
 /// ``Pushable`` object.
 ///
 /// Do not use `push(userdata:)` to push a `LuaClosureWrapper` - it will not be callable. Use

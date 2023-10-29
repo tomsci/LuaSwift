@@ -9,7 +9,7 @@ import CLua
 /// ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)`` or similar. See the individual ``WhatInfo`` enum cases for
 /// information about what fields they cause to be set.
 ///
-/// This struct is a Swift-friendly equivalent to [`lua_Debug`](http://www.lua.org/manual/5.4/manual.html#lua_Debug).
+/// This struct is a Swift-friendly equivalent to [`lua_Debug`](https://www.lua.org/manual/5.4/manual.html#lua_Debug).
 /// Unlike `lua_Debug`, `LuaDebug` instances are self-contained and safe to store or pass around.
 public struct LuaDebug {
     /// Determines what ``LuaDebug`` fields are filled in when calling

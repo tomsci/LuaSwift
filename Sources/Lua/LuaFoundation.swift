@@ -14,7 +14,7 @@ public enum LuaStringEncoding {
     case cfStringEncoding(CFStringEncodings)
 }
 
-public extension String {
+extension String {
     init?(data: Data, encoding: LuaStringEncoding) {
         switch encoding {
         case .stringEncoding(let enc):

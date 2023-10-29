@@ -889,6 +889,9 @@ final class LuaTests: XCTestCase {
             called = true
             return nil
         }
+        // The way we've set up the typing, Any? isn't actually set up as a type, so shut up the warnings here
+        L.registerMetatable(for: Optional<Any>.self, functions: [:])
+
         L.push(any: voidAnyClosure)
         try L.pcall()
         XCTAssertTrue(called)
@@ -1148,7 +1151,7 @@ final class LuaTests: XCTestCase {
     func test_lua_sources_requiref() throws {
         let lua_sources = [
             "test": """
-                print("Hello from module land!")
+                -- print("Hello from module land!")
                 return "hello"
                 """.map { $0.asciiValue! }
         ]
@@ -1415,12 +1418,13 @@ final class LuaTests: XCTestCase {
             called = true
             return 0
         })
+        XCTAssertEqual(called, false)
         try L.pcall()
         XCTAssertEqual(called, true)
 
         L.push(1234) // upvalue
         L.push({ L in
-            let idx = lua_upvalueindex(LuaClosureWrapper.NumInternalUpvalues + 1)
+            let idx = LuaClosureWrapper.upvalueIndex(1)
             L.push(index: idx)
             return 1
         }, numUpvalues: 1)

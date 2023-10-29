@@ -17,21 +17,34 @@ public class LuaClosureWrapper: Pushable {
 
     /// The number of internal upvalues used when pushing a ``LuaClosure``.
     ///
-    /// If ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)`` was called with a non-zero `numUpvalues`,
-    /// those upvalues they do not start at `lua_upvalueindex(1)` as you might expect, but rather at
-    /// `lua_upvalueindex(NumInternalUpvalues + 1)`. This is because some upvalues are used internally to support the
-    /// ability for errors thrown by closures to be translated into Lua errors.
+    /// If ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)`` was called with a non-zero `numUpvalues`, the
+    /// stack pseudo-indexes for those upvalues do not start at `lua_upvalueindex(1)` as you might expect, but rather
+    /// at `lua_upvalueindex(NumInternalUpvalues + 1)`. This is because some upvalues are used internally to support
+    /// the ability for errors thrown by closures to be translated into Lua errors. Use the convenience function
+    /// ``upvalueIndex(_:)`` instead of `lua_upvalueindex()` to avoid having to worry about this detail.
     ///
     /// For example:
     /// ```swift
     /// L.push(userdata: /*someValue*/) // upvalue
     /// L.push({ L in
-    ///     let idx = lua_upvalueindex(LuaClosureWrapper.NumInternalUpvalues + 1)
+    ///     // This is equivalent to lua_upvalueindex(NumInternalUpvalues + 1)
+    ///     let idx = LuaClosureWrapper.upvalueIndex(1)
     ///     let upvalue: SomeValueType = L.tovalue(idx)!
     ///     /* do things with upvalue */
     /// }, numUpvalues: 1)
     /// ```
     public static let NumInternalUpvalues: CInt = 1
+
+    /// Returns the stack pseudo-index for the specified upvalue to a `LuaClosure`.
+    ///
+    /// See ``NumInternalUpvalues`` for how this function differs from `lua_upvalueindex()`.
+    ///
+    /// - Parameter i: Which upvalue to get the index for. Must be between 1 and `numUpvalues` inclusive, where
+    ///   `numUpvalues` is the value passed to ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``.
+    /// - Returns: The stack pseudo-index for the specified upvalue.
+    public static func upvalueIndex(_ i: CInt) -> CInt {
+        return lua_upvalueindex(NumInternalUpvalues + i)
+    }
 
     // This is only optional because of the nonescaping requirements in for_pairs/for_ipairs
     var _closure: Optional<LuaClosure>
@@ -63,6 +76,8 @@ public class LuaClosureWrapper: Pushable {
     }
 
     public func push(onto L: LuaState, numUpvalues: CInt) {
+        precondition(numUpvalues >= 0 && numUpvalues <= 255 - Self.NumInternalUpvalues)
+
         // This only technically needs doing once but it's easier to just do it every time.
         L.push(function: luaswift_callclosurewrapper)
         L.push(function: Self.callClosure)

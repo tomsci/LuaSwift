@@ -131,9 +131,7 @@ int luaswift_settable(lua_State *L) {
 }
 
 int luaswift_tostring(lua_State *L) {
-    size_t len = 0;
-    const char *ptr = luaL_tolstring(L, 1, &len);
-    lua_pushlstring(L, ptr, len);
+    luaL_tolstring(L, 1, NULL);
     return 1;
 }
 

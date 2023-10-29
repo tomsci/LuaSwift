@@ -296,9 +296,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         L.rawset(-2, utf8Key: "path")
 
         L.rawget(-1, utf8Key: "searchers")
-        if path != nil {
+        if let pathRoot = path {
             let searcher: LuaClosure = { L in
-                let pathRoot = path!
                 let displayPrefix = displayPath ?? pathRoot
                 guard let module = L.tostringUtf8(1) else {
                     L.pushnil()
@@ -1585,17 +1584,17 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case let data as [UInt8]:
             push(data)
         case let array as Array<Any>:
-            lua_createtable(self, CInt(array.count), 0)
+            newtable(narr: CInt(array.count))
             for (i, val) in array.enumerated() {
                 push(any: val)
                 lua_rawseti(self, -2, lua_Integer(i + 1))
             }
         case let dict as Dictionary<AnyHashable, Any>:
-            lua_createtable(self, 0, CInt(dict.count))
+            newtable(nrec: CInt(dict.count))
             for (k, v) in dict {
                 push(any: k)
                 push(any: v)
-                lua_settable(self, -3)
+                lua_rawset(self, -3)
             }
         case let function as lua_CFunction:
             push(function: function)

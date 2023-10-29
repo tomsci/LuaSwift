@@ -10,7 +10,11 @@ public typealias LuaState = UnsafeMutablePointer<lua_State>
 
 public typealias LuaClosure = (LuaState) throws -> CInt
 
+/// The integer number type used by Lua. By default, this is configured to be `Int64`.
 public typealias lua_Integer = CLua.lua_Integer
+
+/// The floating-point number type used by Lua. By default, this is configured to be `Double`.
+public typealias lua_Number = CLua.lua_Number
 
 /// Special value for ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)`` to indicate
 /// that all results should be returned unadjusted.
@@ -546,6 +550,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Returns true if the value is an integer.
+    ///
+    /// Note that this can return false even if `tointeger()` would succeed, in the case of a number which is stored
+    /// as floating-point but does have a whole-number representation. Conversely, if `isinteger()` returns `true` then
+    /// `tointeger()` will always succeed (`toint()` may not however, if `Int` is a smaller type than `lua_Integer`).
+    ///
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: `true` if the value is a number and that number is stored as an integer, `false` otherwise.
+    public func isinteger(_ index: CInt) -> Bool {
+        return lua_isinteger(self, index) != 0
+    }
+
     /// Pops `nitems` elements from the stack.
     ///
     /// - Parameter nitems: The number of items to pop from the stack.
@@ -631,7 +647,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: The stack index.
     /// - Parameter convert: Whether to attempt to convert string values as well as numbers.
-    /// - Returns: The integer value, or `nil` if the value was not convertible to an integer.
+    /// - Returns: The integer value, or `nil` if the value was not convertible to an `Int`.
     public func toint(_ index: CInt, convert: Bool = false) -> Int? {
         if let int = tointeger(index, convert: convert) {
             return Int(exactly: int)
@@ -640,7 +656,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Return the value at the given index as a Double.
+    /// Return the value at the given index as a `lua_Number`.
     ///
     /// - Note: Unlike [`lua_tonumberx()`](https://www.lua.org/manual/5.4/manual.html#lua_tonumberx), strings are
     ///   not automatically converted, unless `convert: true` is specified.
@@ -648,7 +664,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: The stack index.
     /// - Parameter convert: Whether to attempt to convert string values as well as numbers.
     /// - Returns: The number value, or `nil`.
-    public func tonumber(_ index: CInt, convert: Bool = false) -> Double? {
+    public func tonumber(_ index: CInt, convert: Bool = false) -> lua_Number? {
         if !convert && type(index) != .number {
             return nil
         }
@@ -771,7 +787,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case .lightuserdata:
             return lua_topointer(self, index)
         case .number:
-            if let intVal = toint(index) {
+            if let intVal = tointeger(index) {
                 return intVal
             } else {
                 return tonumber(index)
@@ -806,13 +822,27 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Attempt to convert the value at the given stack index to type `T`.
     ///
     /// The types of value that are convertible are:
-    /// * `number` converts to `Int` if representable, otherwise `Double`
-    /// * `boolean` converts to `Bool`
-    /// * `thread` converts to `LuaState`
-    /// * `string` converts to `String` or `Data` depending on which `T` is
+    /// * `number` can be converted to `lua_Number` or to `lua_Integer` or `Int` providing the value can be represented
+    ///    as such, depending on `T`.
+    /// * `boolean` converts to `Bool`.
+    /// * `thread` converts to `LuaState`.
+    /// * `string` converts to `String`, `[UInt8]` or `Data` depending on which `T` is. To convert to `String`, the
+    ///    string must be valid in the default string encoding.
     /// * `table` converts to either an `Array` or a `Dictionary` depending on `T`. The table contents are recursively
     ///   converted to match the type of `T`.
     /// * `userdata` any conversion that `as?` can perform on an `Any` referring to that type.
+    ///
+    /// Note that `tovalue()` does not support converting numbers to numeric types other than `Int`, `lua_Integer`, or
+    /// `lua_Number` and attempting to do so will always return `nil`. If the value is a Lua integer without an exact
+    /// floating-point representation (eg it is greater than 2^53) then `tovalue<lua_Number>()` will return `nil`.
+    ///
+    /// ```swift
+    /// L.push(123)
+    /// let intVal: Int = L.tovalue(-1)! // OK
+    /// let doubleVal: Double: L.tovalue(-1)! // OK
+    /// let smallInt: Int8 = L.tovalue(-1)! // BAD: will never succeed
+    /// let smolInt = Int8(L.tovalue(-1, type: Int.self)!)! // OK
+    /// ```
     public func tovalue<T>(_ index: CInt) -> T? {
         let value = toany(index, guessType: false)
         if value == nil {
@@ -822,16 +852,41 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return nil
         } else if let directCast = value as? T {
             return directCast
+        } else if let intValue = value as? lua_Integer {
+            if T.self == Int.self {
+                // While Int and lua_Integer are almost certainly the same width, they still count as unrelated types
+                // (because lua_Integer is explicitly Int64 not Int in the default build config, so supporting that
+                // distinction seems worthwhile).
+                return Int(exactly: intValue) as? T
+            } else if T.self == lua_Number.self {
+                // Since lua_Number and Int are unrelated types in swift, calling tovalue<lua_Number> on a whole-number
+                // Lua number will not be handled by the `directCast = value as? lua_Number` check above, so special
+                // case that here.
+                return lua_Number(exactly: intValue) as? T
+            }
         } else if let ref = value as? LuaStringRef {
             if T.self == String.self {
                 return ref.toString() as? T
-            } else /*if T.self == Data.self*/ {
+            } else if T.self == Array<UInt8>.self {
                 return ref.toData() as? T
             }
+#if !LUASWIFT_NO_FOUNDATION
+            if T.self == Data.self {
+                return Data(ref.toData()) as? T
+            }
+#endif
         } else if let ref = value as? LuaTableRef {
             return ref.resolve()
         }
         return nil
+    }
+
+    /// Attempt to convert the value at the given stack index to type `T`.
+    ///
+    /// This function behaves identically to ``tovalue(_:)`` except for having an explicit `type:` parameter to force
+    /// the correct type where inference on the return type is not sufficient.
+    public func tovalue<T>(_ index: CInt, type: T.Type) -> T? {
+        return tovalue(index)
     }
 
     /// Convert a Lua userdata which was created with ``push(userdata:toindex:)`` back to a value of type `T`.
@@ -912,15 +967,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return get(index, key: key, { toint($0) })
     }
 
-    /// Convenience function that gets a key from the table at `index` and returns it as a `Double`.
+    /// Convenience function that gets a key from the table at `index` and returns it as a `lua_Number`.
     ///
     /// This function may invoke metamethods, and will return `nil` if one errors.
     ///
     /// - Parameter index: The stack index of the table (or table-like object with a `__index` metafield).
     /// - Parameter key: The key to look up.
-    /// - Returns: The value as a `Double`, or `nil` if the key was not found, the value was not a number
+    /// - Returns: The value as a `lua_Number`, or `nil` if the key was not found, the value was not a number
     ///   or if a metamethod errored.
-    public func tonumber(_ index: CInt, key: String) -> Double? {
+    public func tonumber(_ index: CInt, key: String) -> lua_Number? {
         return get(index, key: key, { tonumber($0) })
     }
 
@@ -1547,7 +1602,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
-    /// * If `value` is an `NSNumber`, if it is convertible to `Int` it is pushed as such, otherwise as a `Double`.
+    /// * If `value` is an `NSNumber`, if it is convertible to `lua_Integer` it is pushed as such, otherwise as a
+    ///   `lua_Number`.
     /// * If `value` is `[UInt8]`, ``push(_:toindex:)-59fx9`` is used.
     /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:toindex:)`` is used.
     /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, `push(any:)` is called recursively to push

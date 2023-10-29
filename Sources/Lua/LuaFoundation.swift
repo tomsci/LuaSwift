@@ -168,14 +168,10 @@ extension Data: Pushable {
 
 extension NSNumber: Pushable {
     public func push(onto L: LuaState) {
-        if let int = self as? Int {
+        if let int = self as? lua_Integer {
             L.push(int)
         } else {
-            // Conversion to Double cannot fail
-            // Curiously the Swift compiler knows enough to know this won't fail and tells us off for using the `!`
-            // in a scenario when it won't fail, but helpfully doesn't provide us with a mechanism to actually get
-            // a non-optional Double. The double-parenthesis tells it we know what we're doing.
-            L.push((self as! Double))
+            L.push(self.doubleValue)
         }
     }
 }

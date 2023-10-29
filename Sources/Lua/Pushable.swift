@@ -20,7 +20,7 @@ extension Int: Pushable {
     }
 }
 
-extension CInt: Pushable {
+extension Int32: Pushable {
     public func push(onto L: LuaState) {
         lua_pushinteger(L, lua_Integer(self))
     }
@@ -32,7 +32,7 @@ extension Int64: Pushable {
     }
 }
 
-extension Double: Pushable {
+extension lua_Number: Pushable {
     public func push(onto L: LuaState) {
         lua_pushnumber(L, self)
     }

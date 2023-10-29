@@ -188,8 +188,6 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 
 - ``Lua/Swift/UnsafeMutablePointer/type(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/typename(index:)``
-- ``Lua/Swift/UnsafeMutablePointer/isnone(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/isnoneornil(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/pop(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/gettop()``
 - ``Lua/Swift/UnsafeMutablePointer/settop(_:)``
@@ -211,6 +209,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)``
 - ``Lua/Swift/UnsafeMutablePointer/touserdata(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/tovalue(_:type:)``
 - ``Lua/Swift/UnsafeMutablePointer/todecodable(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/todecodable(_:_:)``
 
@@ -290,6 +289,9 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 
 ### Comparison functions
 
+- ``Lua/Swift/UnsafeMutablePointer/isnone(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/isnoneornil(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/isinteger(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/rawequal(_:_:)``
 - ``Lua/Swift/UnsafeMutablePointer/equal(_:_:)``
 - ``Lua/Swift/UnsafeMutablePointer/compare(_:_:_:)``

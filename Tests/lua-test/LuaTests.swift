@@ -132,7 +132,8 @@ final class LuaTests: XCTestCase {
         L.push(123.456) // 4
         L.pushnil() // 5
         L.push(function: dummyFn) // 6
-        XCTAssertEqual(L.tonumber(1), 1234)
+        let val: Double? = L.tonumber(1)
+        XCTAssertEqual(val, 1234)
         XCTAssertEqual(L.tonumber(2), nil)
         XCTAssertEqual(L.tonumber(3), nil)
         XCTAssertEqual(L.tonumber(4), 123.456)
@@ -752,7 +753,7 @@ final class LuaTests: XCTestCase {
 
     func test_pushany() {
         L.push(any: 1234)
-        XCTAssertEqual(L.toany(1) as? Int, 1234)
+        XCTAssertEqual(L.toany(1) as? lua_Integer, 1234)
         L.pop()
 
         L.push(any: "string")
@@ -767,7 +768,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.type(1), .table)
         L.pop()
 
-        struct Foo {
+        struct Foo : Equatable {
             let val: String
         }
         L.registerMetatable(for: Foo.self, functions: [:])
@@ -781,7 +782,7 @@ final class LuaTests: XCTestCase {
         XCTAssertNotNil(typedArray)
 
         let arr: [Foo]? = L.tovalue(1)
-        XCTAssertNotNil(arr)
+        XCTAssertEqual(arr, fooArray)
         L.pop()
     }
 
@@ -1079,8 +1080,63 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(sel3, "str")
     }
 
-    func test_tovalue_anynil() {
+    func test_tovalue_data() {
+        L.push("abc")
+        let byteArray: [UInt8]? = L.tovalue(1)
+        XCTAssertEqual(byteArray, [0x61, 0x62, 0x63])
 
+        let str: String? = L.tovalue(1)
+        XCTAssertEqual(str, "abc")
+
+#if !LUASWIFT_NO_FOUNDATION
+        let data: Data? = L.tovalue(1)
+        XCTAssertEqual(data, Data([0x61, 0x62, 0x63]))
+#endif
+    }
+
+    func test_tovalue_number() {
+        L.push(3.0) // 1: A double but integer representable
+        L.push(Double.pi) // 2: A double
+
+        let intVal: Int? = L.tovalue(1)
+        XCTAssertEqual(intVal, 3)
+
+        // This is a test for tovalue(_:type:) really
+        XCTAssertEqual(Int8(L.tovalue(1, type: Int.self)!), 3)
+
+        let integerVal: lua_Integer? = L.tovalue(1)
+        XCTAssertEqual(integerVal, 3)
+
+        let int64Val: Int64? = L.tovalue(1)
+        XCTAssertEqual(int64Val, 3)
+
+        // Because lua_tointeger() succeeded on the value, toany will return it as a lua_Integer, thus checking we can
+        // retrieve it as a Double is not a given.
+        let doubleVal: Double? = L.tovalue(1)
+        XCTAssertEqual(doubleVal, 3.0)
+
+        // Downcasting to a smaller integer type is NOT expected to work, because `Int as? Int8` is not something
+        // Swift lets you do.
+        let smolInt: Int8? = L.tovalue(1)
+        XCTAssertNil(smolInt)
+
+        // We should not allow truncation of something not representable as an integer
+        let nope: Int? = L.tovalue(2)
+        XCTAssertNil(nope)
+
+        // Check there is no loss of precision in round-tripping an irrational float
+        XCTAssertEqual(L.tovalue(2), Double.pi)
+    }
+
+    func test_math_pi() {
+        // Given these are defined in completely different unrelated places, I'm slightly surprised their definitions
+        // agree exactly.
+        L.openLibraries([.math])
+        let mathpi: Double = L.globals["math"]["pi"].tovalue()!
+        XCTAssertEqual(mathpi, Double.pi)
+    }
+
+    func test_tovalue_anynil() {
         L.push(true)
         let anyTrue: Any? = L.tovalue(1)
         XCTAssertEqual(anyTrue as? Bool?, true)
@@ -1369,13 +1425,27 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(fninfo.currentline)
     }
 
+    func test_isinteger() {
+        L.push(123)
+        L.push(123.0)
+        L.pushnil()
+        L.push(true)
+
+        XCTAssertTrue(L.isinteger(1))
+        XCTAssertFalse(L.isinteger(2))
+        XCTAssertFalse(L.isinteger(3))
+        XCTAssertFalse(L.isinteger(4))
+    }
+
 #if !LUASWIFT_NO_FOUNDATION
     func test_push_NSNumber() {
         let n: NSNumber = 1234
+        let nd: NSNumber = 1234.0
         L.push(n) // 1 - using NSNumber's Pushable
         L.push(any: n) // 2 - NSNumber as Any
 
         var i: Double = 1234.5678
+        let ni: NSNumber = 1234.5678
         let cfn: CFNumber = CFNumberCreate(nil, .doubleType, &i)
         // CF bridging is _weird_: I cannot write L.push(cfn) ie CFNumber does not directly conform to Pushable, but
         // the conversion to Pushable will always succeed, presumably because NSNumber is Pushable?
@@ -1384,6 +1454,12 @@ final class LuaTests: XCTestCase {
         L.push(cfn as NSNumber) // 3 - CFNumber as NSNumber (Pushable)
         L.push(cfn_pushable!) // 4 - CFNumber as Pushable
         L.push(any: cfn) // 5 - CFNumber as Any
+        L.push(nd) // 6 - integer-representable NSNumber from a double
+        L.push(ni) // 7 - non-integer-representable NSNumber
+
+        XCTAssertTrue(L.isinteger(1))
+        XCTAssertTrue(L.isinteger(6)) // NSNumber does not track the original type, ie that nd was a Double
+        XCTAssertFalse(L.isinteger(7))
 
         XCTAssertEqual(L.toint(1), 1234)
         XCTAssertEqual(L.toint(2), 1234)

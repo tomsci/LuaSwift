@@ -140,7 +140,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return result
     }
 
-    public func tonumber() -> Double? {
+    public func tonumber() -> lua_Number? {
         if type == .nil {
             return nil
         }
@@ -188,6 +188,10 @@ public class LuaValue: Equatable, Hashable, Pushable {
         let result: T? = L.tovalue(-1)
         L.pop()
         return result
+    }
+
+    public func tovalue<T>(type: T.Type) -> T? {
+        return tovalue()
     }
 
     public func touserdata<T>() -> T? {

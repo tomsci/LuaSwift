@@ -211,7 +211,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:type:)``
 - ``Lua/Swift/UnsafeMutablePointer/todecodable(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/todecodable(_:_:)``
+- ``Lua/Swift/UnsafeMutablePointer/todecodable(_:type:)``
 
 ### push() functions
 

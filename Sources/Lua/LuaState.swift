@@ -927,30 +927,30 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// If `T` is a composite struct or class type, the Lua representation must be a table with members corresponding
     /// to the Swift member names. Userdata values, or tables containing userdatas, are not convertible using this
-    /// function - use `touserdata()` ot `tovalue()` instead.
+    /// function - use ``touserdata(_:)`` or ``tovalue(_:)`` instead.
     ///
     /// - Parameter index: The stack index.
     /// - Parameter type: The `Decodable` type to convert to.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
-    public func todecodable<T: Decodable>(_ index: CInt, _ type: T.Type) -> T? {
-        let top = gettop()
-        defer {
-            settop(top)
-        }
-        let decoder = LuaDecoder(state: self, index: index, codingPath: [])
-        return try? decoder.decode(T.self)
+    public func todecodable<T: Decodable>(_ index: CInt, type: T.Type) -> T? {
+        return todecodable(index)
     }
 
     /// Convert a value on the stack to a `Decodable` type inferred from the return type.
     ///
     /// If `T` is a composite struct or class type, the Lua representation must be a table with members corresponding
     /// to the Swift member names. Userdata values, or tables containing userdatas, are not convertible using this
-    /// function - use `touserdata()` ot `tovalue()` instead.
+    /// function - use ``touserdata(_:)`` or ``tovalue(_:)`` instead.
     ///
     /// - Parameter index: The stack index.
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
     public func todecodable<T: Decodable>(_ index: CInt) -> T? {
-        return todecodable(index, T.self)
+        let top = gettop()
+        defer {
+            settop(top)
+        }
+        let decoder = LuaDecoder(state: self, index: index, codingPath: [])
+        return try? decoder.decode(T.self)
     }
 
     // MARK: - Convenience dict fns

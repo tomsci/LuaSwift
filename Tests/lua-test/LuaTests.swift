@@ -1165,7 +1165,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tostring(-1), "hello world")
 
         XCTAssertThrowsError(try L.load(string: "woop woop"), "", { err in
-            let expected = #"[string "?"]:1: syntax error near 'woop'"#
+            let expected = #"[string "woop woop"]:1: syntax error near 'woop'"#
             XCTAssertEqual((err as? LuaLoadError), .parseError(expected))
             XCTAssertEqual((err as CustomStringConvertible).description, "LuaLoadError.parseError(\(expected))")
             XCTAssertEqual(err.localizedDescription, "LuaLoadError.parseError(\(expected))")
@@ -1394,7 +1394,7 @@ final class LuaTests: XCTestCase {
                 fn()
             end
             moo()
-            """)
+            """, name: "=test")
         L.push(index: 1)
         L.push(closure: {
             let L = self.L!
@@ -1414,7 +1414,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(info.isvararg, false)
         XCTAssertEqual(info.function?.type, .function)
         XCTAssertEqual(info.validlines, [3, 4])
-        XCTAssertEqual(info.short_src, "[string \"?\"]")
+        XCTAssertEqual(info.short_src, "test")
         XCTAssertEqual(whereStr, info.short_src! + ":3: ")
 
         // This is getting info for the fn returned by load(file:)

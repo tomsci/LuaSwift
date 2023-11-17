@@ -2571,10 +2571,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// On return, the function representing the file is left on the top of the stack.
     ///
-    /// - Parameter string: The Lua script to load.
+    /// - Parameter string: The Lua script to load. This is always parsed using UTF-8 string encoding.
+    /// - Parameter name: The name to give to the resulting chunk. If not specified, the string parameter itself will
+    ///   be used as the name.
     /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
     public func load(string: String, name: String? = nil) throws {
-        try load(data: Array<UInt8>(string.utf8), name: name, mode: .text)
+        try load(data: Array<UInt8>(string.utf8), name: name ?? string, mode: .text)
     }
 
     /// Load a Lua chunk from file with ``load(file:displayPath:mode:)`` and execute it.

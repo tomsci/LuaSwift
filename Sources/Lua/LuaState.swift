@@ -1083,12 +1083,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// ```swift
     /// for i in L.ipairs(-1) {
-    ///     // top of stack contains `rawget(value, i)`
+    ///     // top of stack contains `L.rawget(value, key: i)`
     /// }
     ///
     /// // Compared to:
     /// try L.for_ipairs(-1) { i in
-    ///     // top of stack contains `value[i]`
+    ///     // top of stack contains `L.get(value, key: i)`
     ///     return true // continue iteration
     /// }
     /// ```
@@ -1469,7 +1469,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
-    public func push<Ret, Arg1>(closure: @escaping (Arg1?) throws -> Ret, toindex: CInt = -1) {
+    public func push<Arg1, Ret>(closure: @escaping (Arg1?) throws -> Ret, toindex: CInt = -1) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             L.push(any: try closure(arg1))
@@ -1499,7 +1499,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
-    public func push<Ret, Arg1, Arg2>(closure: @escaping (Arg1?, Arg2?) throws -> Ret, toindex: CInt = -1) {
+    public func push<Arg1, Arg2, Ret>(closure: @escaping (Arg1?, Arg2?) throws -> Ret, toindex: CInt = -1) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)
@@ -1530,7 +1530,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
-    public func push<Ret, Arg1, Arg2, Arg3>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Ret, toindex: CInt = -1) {
+    public func push<Arg1, Arg2, Arg3, Ret>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Ret, toindex: CInt = -1) {
         push({ L in
             let arg1: Arg1? = try L.checkClosureArgument(index: 1)
             let arg2: Arg2? = try L.checkClosureArgument(index: 2)

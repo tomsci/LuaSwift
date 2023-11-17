@@ -229,9 +229,9 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-pont``
-- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-nmyz``
-- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-2hshc``
-- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-7d7ly``
+- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-3esxy``
+- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-3lg84``
+- ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-89i2v``
 - ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/pushGlobals(toindex:)``

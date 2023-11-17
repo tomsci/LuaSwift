@@ -394,7 +394,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Call the garbage collector according to the `what` parameter.
     ///
-    /// When called with no arguments, performs a full garbage-collection cycle.
+    /// Starts, stops or runs the garbage collector. When called with no arguments, performs a full garbage-collection
+    /// cycle.
+    ///
+    /// > Note: Do not call this API from within a finalizer, it will have no effect.
     public func collectgarbage(_ what: GcWhat = .collect) {
         luaswift_gc0(self, what.rawValue)
     }
@@ -403,24 +406,41 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Equivalent to `lua_gc(L, LUA_GCISRUNNING)` in C.
     public func collectorRunning() -> Bool {
-        return luaswift_gc0(self, LUA_GCISRUNNING) != 0
+        return luaswift_gc0(self, LUA_GCISRUNNING) > 0
     }
 
     /// Returns the total amount of memory in bytes that the Lua state is using.
+    ///
+    /// Returns the total amount of memory in bytes that the Lua state is using.
+    ///
+    /// > Note: Do not call this API from within a finalizer, it will not return the correct value if you do.
     public func collectorCount() -> Int {
-        return Int(luaswift_gc0(self, LUA_GCCOUNT)) * 1024 + Int(luaswift_gc0(self, LUA_GCCOUNTB))
+        let kb = luaswift_gc0(self, LUA_GCCOUNT)
+        if kb == -1 {
+            // uh-oh, in a finalizer?
+            return -1
+        }
+        return Int(kb) * 1024 + Int(luaswift_gc0(self, LUA_GCCOUNTB))
     }
 
     /// Performs an incremental step of garbage collection.
     ///
-    /// Corresponding to the allocation of `stepSize` KB.
-    public func collectorStep(_ stepSize: CInt) {
-        luaswift_gc1(self, LUA_GCSTEP, stepSize)
+    /// Performs an incremental step of garbage collection, as if `stepSize` kilobytes of memory had been allocated by
+    /// Lua.
+    ///
+    /// > Note: Do not call this API from within a finalizer, it will have no effect.
+    ///
+    /// - Parameter stepSize: If zero, perform a single basic step. If greater than zero, performs garbage collection
+    ///   as if `stepSize` kilobytes of memory had been allocated by Lua.
+    /// - Returns: `true` if the step finished a collection cycle.
+    @discardableResult
+    public func collectorStep(_ stepSize: CInt) -> Bool {
+        return luaswift_gc1(self, LUA_GCSTEP, stepSize) > 0
     }
 
     /// Set the garbage collector to incremental mode.
     ///
-    /// And optionally set any or all of the collection parameters.
+    /// Set the garbage collector to incremental mode, and optionally set any or all of the collection parameters.
     /// See [Incremental Garbage Collection](https://www.lua.org/manual/5.4/manual.html#2.5.1).
     ///
     /// - Parameter pause: how long the collector waits before starting a new cycle, or `nil` to leave the parameter
@@ -430,24 +450,28 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter stepsize: size of each incremental step, or `nil` to leave the parameter unchanged. This parameter
     ///   is ignored prior to Lua 5.4.
     /// - Returns: The previous garbage collection mode.
+    /// - Precondition: Do not call from within a finalizer.
     @discardableResult
     public func collectorSetIncremental(pause: CInt? = nil, stepmul: CInt? = nil, stepsize: CInt? = nil) -> GcMode {
         let prevMode = luaswift_setinc(self, pause ?? 0, stepmul ?? 0, stepsize ?? 0)
+        precondition(prevMode >= 0, "Attempt to call collectorSetIncremental() from within a finalizer.")
         return GcMode(rawValue: prevMode)!
     }
 
     /// Set the garbage collector to generational mode.
     ///
-    /// And optionally set any or all of the collection parameters.
+    /// Set the garbage collector to generational mode, and optionally set any or all of the collection parameters.
     /// See [Generational Garbage Collection](https://www.lua.org/manual/5.4/manual.html#2.5.2). Only supported on
     /// Lua 5.4 and later.
     ///
     /// - Parameter minormul: the frequency of minor collections, or `nil` to leave the parameter unchanged.
     /// - Parameter majormul: the frequency of major collections, or `nil` to leave the parameter unchanged.
     /// - Returns: The previous garbage collection mode.
+    /// - Precondition: Do not call from within a finalizer.
     @discardableResult
     public func collectorSetGenerational(minormul: CInt? = nil, majormul: CInt? = nil) -> GcMode {
         let prevMode = luaswift_setgen(self, minormul ?? 0, majormul ?? 0)
+        precondition(prevMode >= 0, "Attempt to call collectorSetGenerational() from within a finalizer.")
         if let result = GcMode(rawValue: prevMode) {
             return result
         } else {

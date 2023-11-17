@@ -304,6 +304,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/load(bytes:name:mode:)``
 - ``Lua/Swift/UnsafeMutablePointer/load(string:name:)``
 - ``Lua/Swift/UnsafeMutablePointer/dofile(_:mode:)``
+- ``Lua/Swift/UnsafeMutablePointer/dostring(_:name:)``
 - ``Lua/Swift/UnsafeMutablePointer/dump(strip:)``
 
 ### Garbage collection

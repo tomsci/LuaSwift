@@ -1155,8 +1155,7 @@ final class LuaTests: XCTestCase {
     }
 
     func test_load() throws {
-        try L.load(string: "return 'hello world'")
-        try L.pcall(nargs: 0, nret: 1)
+        try L.dostring("return 'hello world'")
         XCTAssertEqual(L.tostring(-1), "hello world")
 
         let asArray: [UInt8] = "return 'hello world'".map { $0.asciiValue! }

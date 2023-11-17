@@ -2574,7 +2574,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter string: The Lua script to load. This is always parsed using UTF-8 string encoding.
     /// - Parameter name: The name to give to the resulting chunk. If not specified, the string parameter itself will
     ///   be used as the name.
-    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
+    /// - Throws: ``LuaLoadError/parseError(_:)`` if the string cannot be parsed.
     public func load(string: String, name: String? = nil) throws {
         try load(data: Array<UInt8>(string.utf8), name: name ?? string, mode: .text)
     }
@@ -2589,6 +2589,17 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   ``LuaLoadError/parseError(_:)`` if the file cannot be parsed.
     public func dofile(_ path: String, mode: LoadMode = .text) throws {
         try load(file: path, mode: mode)
+        try pcall(nargs: 0, nret: LUA_MULTRET)
+    }
+
+    /// Load a Lua chunk from a string with ``load(string:name:)`` and execute it.
+    ///
+    /// Any values returned from the file are left on the top of the stack.
+    ///
+    /// - Parameter string: The Lua script to load.
+    /// - Throws: ``LuaLoadError/parseError(_:)`` if the string cannot be parsed.
+    public func dostring(_ string: String, name: String? = nil) throws {
+        try load(string: string)
         try pcall(nargs: 0, nret: LUA_MULTRET)
     }
 

@@ -840,6 +840,39 @@ final class LuaTests: XCTestCase {
         L.push(any: intDict)
         let intDictResult: [Int: [String]]? = L.tovalue(1)
         XCTAssertEqual(intDictResult, intDict)
+        L.pop()
+
+        let uint8Array: [ [UInt8] ] = [ [0x61, 0x62, 0x63], [0x64, 0x65, 0x66] ] // Same as stringArray above
+        L.push(any: uint8Array)
+        let uint8ArrayResult: [ [UInt8] ]? = L.tovalue(1)
+        XCTAssertEqual(uint8ArrayResult, uint8Array)
+        let uint8ArrayAsStringResult: [String]? = L.tovalue(1)
+        XCTAssertEqual(uint8ArrayAsStringResult, stringArray)
+#if !LUASWIFT_NO_FOUNDATION
+        let dataArray = uint8Array.map({ Data($0) })
+        let uint8ArrayAsDataResult: [Data]? = L.tovalue(1)
+        XCTAssertEqual(uint8ArrayAsDataResult, dataArray)
+#endif
+        L.pop()
+
+        L.push(any: stringArray)
+        let stringAsUint8ArrayResult: [ [UInt8] ]? = L.tovalue(1)
+        XCTAssertEqual(stringAsUint8ArrayResult, uint8Array)
+#if !LUASWIFT_NO_FOUNDATION
+        let stringAsDataArrayResult: [Data]? = L.tovalue(1)
+        XCTAssertEqual(stringAsDataArrayResult, dataArray)
+#endif
+        L.pop()
+
+#if !LUASWIFT_NO_FOUNDATION
+        L.push(any: stringDict)
+        let stringDictAsDataDict: [Data: Data]? = L.tovalue(1)
+        var dataDict: [Data: Data] = [:]
+        for (k, v) in stringDict {
+            dataDict[k.data(using: .utf8)!] = v.data(using: .utf8)!
+        }
+        XCTAssertEqual(stringDictAsDataDict, dataDict)
+#endif
     }
 
     func test_push_closure() throws {

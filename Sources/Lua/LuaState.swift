@@ -867,6 +867,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// If the value cannot be represented by type `T` for whatever reason, then `nil` is returned.
     ///
+    /// Converting large tables is relatively expensive, due to the large number of dynamic casts required to correctly
+    /// infer all the types, although generally this shouldn't be an issue until hundreds of thousands of elements are
+    /// involved.
+    ///
     /// ```swift
     /// L.push(123)
     /// let intVal: Int = L.tovalue(-1)! // OK

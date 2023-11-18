@@ -99,11 +99,14 @@ public struct LuaTableRef {
 
     func doResolveArray(test: (Any) -> Bool) -> Any? {
         var result = Array<Any>()
+        var testArray = Array<Any>()
         func good(_ val: Any, keepOnSuccess: Bool = false) -> Bool {
-            result.append(val)
-            let success = test(result)
-            if !success || !keepOnSuccess {
-                result.removeLast()
+            testArray.append(val)
+            let success = test(testArray)
+            // Oddly removeLast seems to be faster than removeAll(keepingCapacity: true)
+            testArray.removeLast()
+            if success && keepOnSuccess {
+                result.append(val)
             }
             return success
         }
@@ -146,12 +149,13 @@ public struct LuaTableRef {
 
     func doResolveDict(test: (Any) -> Bool) -> Any? {
         var result = Dictionary<AnyHashable, Any>()
-        func good(_ key: AnyHashable, _ val: Any, keepOnSuccess: Bool = false) -> Bool {
-            assert(result[key] == nil)
-            result[key] = val
-            let success = test(result)
-            if !success || !keepOnSuccess {
-                result[key] = nil
+        var testDict = Dictionary<AnyHashable, Any>()
+        func good(_ key: AnyHashable, _ val: Any, keepOnSuccess: Bool) -> Bool {
+            testDict[key] = val
+            let success = test(testDict)
+            testDict.removeAll(keepingCapacity: true)
+            if success && keepOnSuccess {
+                result[key] = val
             }
             return success
         }
@@ -169,22 +173,22 @@ public struct LuaTableRef {
             var found = false
             for pkey in possibleKeys {
                 for pval in possibleValues {
-                    if good(pkey, pval) {
+                    if good(pkey, pval.value, keepOnSuccess: false) {
                         // Since LuaTableRef/LuaStringRef do not implement Hashable, we can ignore the need to resolve
                         // pkey. And pval only needs checking against LuaTableRef.
-                        let innerTest = { good(pkey, $0) }
-                        if (pval as? Array<Any>) != nil {
-                            if let array = (val as! LuaTableRef).doResolveArray(test: innerTest) {
+                        let innerTest = { good(pkey, $0, keepOnSuccess: false) }
+                        if pval.isArray {
+                            if let array = pval.tableRef!.doResolveArray(test: innerTest) {
                                 result[pkey] = array
                                 found = true
                             }
-                        } else if (pval as? Dictionary<AnyHashable, Any>) != nil {
-                            if let dict = (val as! LuaTableRef).doResolveDict(test: innerTest) {
+                        } else if pval.isDict {
+                            if let dict = pval.tableRef!.doResolveDict(test: innerTest) {
                                 result[pkey] = dict
                                 found = true
                             }
                         } else {
-                            result[pkey] = pval
+                            result[pkey] = pval.value
                             found = true
                         }
 
@@ -220,28 +224,38 @@ public struct LuaTableRef {
         return result
     }
 
-    private func makePossibles(_ val: Any) -> [Any] {
-        var result: [Any] = []
+    // This exists to avoid extra dynamic casts on value
+    struct PossibleValue {
+        let value: Any
+        let tableRef: LuaTableRef?
+        let isDict: Bool
+        let isArray: Bool
+    }
+
+    private func makePossibles(_ val: Any) -> [PossibleValue] {
+        var result: [PossibleValue] = []
         if let ref = val as? LuaStringRef {
             if let str = ref.toString() {
-                result.append(str)
+                result.append(PossibleValue(value: str, tableRef: nil, isDict: false, isArray: false))
             }
-            result.append(ref.toData())
-        } else if (val as? LuaTableRef) != nil {
+            result.append(PossibleValue(value: ref.toData(), tableRef: nil, isDict: false, isArray: false))
+        } else if let tableRef = val as? LuaTableRef {
             // An array table can always be represented as a dictionary, but not vice versa, so put Dictionary first
             // so that an untyped top-level T (which will result in the first option being chosen) at least doesn't
             // lose information and behaves consistently.
-            result.append(Dictionary<AnyHashable, Any>())
-            result.append(Array<Any>())
+            result.append(PossibleValue(value: emptyAnyDict, tableRef: tableRef, isDict: true, isArray: false))
+            result.append(PossibleValue(value: emptyAnyArray, tableRef: tableRef, isDict: false, isArray: true))
         }
-        result.append(val)
+        result.append(PossibleValue(value: val, tableRef: nil, isDict: false, isArray: false))
         return result
     }
 }
 
+fileprivate let emptyAnyArray = Array<Any>()
+fileprivate let emptyAnyDict = Dictionary<AnyHashable, Any>()
+
 fileprivate func isArrayType<T>(_: T?) -> Bool {
-    let emptyArray = Array<Any>()
-    if let _ = emptyArray as? T {
+    if let _ = emptyAnyArray as? T {
         return true
     } else {
         return false

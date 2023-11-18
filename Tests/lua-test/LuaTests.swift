@@ -786,11 +786,24 @@ final class LuaTests: XCTestCase {
         L.pop()
     }
 
-    func test_pushany_table() {
+    func test_pushany_table() { // This doubles as test_tovalue_table()
         let stringArray = ["abc", "def"]
         L.push(any: stringArray)
         let stringArrayResult: [String]? = L.tovalue(1)
         XCTAssertEqual(stringArrayResult, stringArray)
+        L.pop()
+
+        // Make sure non-lua_Integer arrays work...
+        let intArray: [Int] = [11, 22, 33]
+        L.push(any: intArray)
+        let intArrayResult: [Int]? = L.tovalue(1)
+        XCTAssertEqual(intArrayResult, intArray)
+        L.pop()
+
+        let smolIntArray: [UInt8] = [11, 22, 33]
+        L.push(any: smolIntArray)
+        let smolIntArrayResult: [UInt8]? = L.tovalue(1)
+        XCTAssertEqual(smolIntArrayResult, smolIntArray)
         L.pop()
 
         let stringArrayArray = [["abc", "def"], ["123"]]
@@ -803,6 +816,12 @@ final class LuaTests: XCTestCase {
         L.push(any: intBoolDict)
         let intBoolDictResult: [Int: Bool]? = L.tovalue(1)
         XCTAssertEqual(intBoolDictResult, intBoolDict)
+        L.pop()
+
+        let intIntDict: [Int16: Int16] = [ 1: 11, 2: 22, 3: 33 ]
+        L.push(any: intIntDict)
+        let intIntDictResult: [Int16: Int16]? = L.tovalue(1)
+        XCTAssertEqual(intIntDictResult, intIntDict)
         L.pop()
 
         let stringDict = ["abc": "ABC", "def": "DEF"]
@@ -1115,10 +1134,11 @@ final class LuaTests: XCTestCase {
         let doubleVal: Double? = L.tovalue(1)
         XCTAssertEqual(doubleVal, 3.0)
 
-        // Downcasting to a smaller integer type is NOT expected to work, because `Int as? Int8` is not something
-        // Swift lets you do.
+        // Downcasting to a smaller integer type IS now expected to work, because while `Int as? Int8` is not something
+        // Swift lets you do, `Int as? AnyHashable as? Int8` _does_, and toany casts all integers to AnyHashable before
+        // returning them
         let smolInt: Int8? = L.tovalue(1)
-        XCTAssertNil(smolInt)
+        XCTAssertEqual(smolInt, 3)
 
         // We should not allow truncation of something not representable as an integer
         let nope: Int? = L.tovalue(2)

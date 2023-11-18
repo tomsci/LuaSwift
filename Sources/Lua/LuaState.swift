@@ -784,9 +784,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Lua types with a one-to-one correspondence to Swift types are converted and returned `as Any`.
     ///
     /// If `guessType` is true, `table` and `string` values are automatically converted to
-    /// `Array`/`Dictionary`/`String`/`Data` based on their contents:
+    /// `Array`/`Dictionary`/`String`/`[UInt8]` based on their contents:
     ///
-    /// * `string` is converted to `String` if the bytes are valid in the default string encoding, otherwise to `Data`.
+    /// * `string` is converted to `String` if the bytes are valid in the default string encoding, otherwise to `[UInt8]`.
     /// * `table` is converted to `Dictionary<AnyHashable, Any>` if there are any non-integer keys in the table,
     ///   otherwise to `Array<Any>`.
     ///
@@ -794,6 +794,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// `table` values respectively.
     ///
     /// Regardless of `guessType`, `LuaValue` may be used to represent values that cannot be expressed as Swift types.
+    ///
+    /// Generally speaking, this API is not very useful, and you should normally use ``tovalue(_:)`` instead, when
+    /// needing to do any generics-based programming.
     ///
     /// - Parameter index: The stack index.
     /// - Parameter guessType: Whether to automatically convert `string` and `table` values based on heuristics.
@@ -812,7 +815,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return lua_topointer(self, index)
         case .number:
             if let intVal = tointeger(index) {
-                return intVal
+                // Integers are returned type-erased (thanks to AnyHashable) meaning fewer cast restrictions in
+                // eg tovalue()
+                return AnyHashable(intVal)
             } else {
                 return tonumber(index)
             }
@@ -846,26 +851,31 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Attempt to convert the value at the given stack index to type `T`.
     ///
     /// The types of value that are convertible are:
-    /// * `number` can be converted to `lua_Number` or to `lua_Integer` or `Int` providing the value can be represented
-    ///    as such, depending on `T`.
+    /// * `number` can be converted to `lua_Number` or to any integer type providing the value can be represented
+    ///    as such, based on what `T` is. A Lua integer can always be converted to a `lua_Number` (ie `Double`)
+    ///    providing the value has an exact double-precision representation (ie is less than 2^53). Values are never
+    ///    rounded or truncated to satisfy `T`.
     /// * `boolean` converts to `Bool`.
     /// * `thread` converts to `LuaState`.
     /// * `string` converts to `String`, `[UInt8]` or `Data` depending on which `T` is. To convert to `String`, the
     ///    string must be valid in the default string encoding.
     /// * `table` converts to either an `Array` or a `Dictionary` depending on `T`. The table contents are recursively
-    ///   converted to match the type of `T`.
+    ///   converted to match the type of `T`. If any element fails to cast to the appropriate subtype, then the entire
+    ///   conversion fails and returns `nil`.
     /// * `userdata` any conversion that `as?` can perform on an `Any` referring to that type.
+    /// * The `nil` Lua value always converts to Swift `nil`, regardless of what `T` is.
     ///
-    /// Note that `tovalue()` does not support converting numbers to numeric types other than `Int`, `lua_Integer`, or
-    /// `lua_Number` and attempting to do so will always return `nil`. If the value is a Lua integer without an exact
-    /// floating-point representation (eg it is greater than 2^53) then `tovalue<lua_Number>()` will return `nil`.
+    /// If the value cannot be represented by type `T` for whatever reason, then `nil` is returned.
     ///
     /// ```swift
     /// L.push(123)
     /// let intVal: Int = L.tovalue(-1)! // OK
     /// let doubleVal: Double: L.tovalue(-1)! // OK
-    /// let smallInt: Int8 = L.tovalue(-1)! // BAD: will never succeed
-    /// let smolInt = Int8(L.tovalue(-1, type: Int.self)!)! // OK
+    /// let smallInt: Int8 = L.tovalue(-1)! // Also OK (since 123 fits in a Int8)
+    ///
+    /// L.push(["abc": 123, "def": 456])
+    /// let dict: [String : Int] = L.tovalue(-1)! // OK
+    /// let numDict: [String : Double] = L.tovalue(-1)! // Also OK
     /// ```
     public func tovalue<T>(_ index: CInt) -> T? {
         let value = toany(index, guessType: false)
@@ -876,18 +886,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return nil
         } else if let directCast = value as? T {
             return directCast
-        } else if let intValue = value as? lua_Integer {
-            if T.self == Int.self {
-                // While Int and lua_Integer are almost certainly the same width, they still count as unrelated types
-                // (because lua_Integer is explicitly Int64 not Int in the default build config, so supporting that
-                // distinction seems worthwhile).
-                return Int(exactly: intValue) as? T
-            } else if T.self == lua_Number.self {
-                // Since lua_Number and Int are unrelated types in swift, calling tovalue<lua_Number> on a whole-number
-                // Lua number will not be handled by the `directCast = value as? lua_Number` check above, so special
-                // case that here.
-                return lua_Number(exactly: intValue) as? T
-            }
         } else if let ref = value as? LuaStringRef {
             if T.self == String.self {
                 return ref.toString() as? T

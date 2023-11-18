@@ -162,48 +162,54 @@ public struct LuaTableRef {
     }
 
     func doResolveDict(test: (Any) -> Bool) -> Any? {
-        var result = Dictionary<AnyHashable, Any>()
         var testDict = Dictionary<AnyHashable, Any>()
-        func good(_ key: AnyHashable, _ val: Any, keepOnSuccess: Bool) -> Bool {
+        func good(_ key: AnyHashable, _ val: Any) -> Bool {
             testDict[key] = val
             let success = test(testDict)
             testDict.removeAll(keepingCapacity: true)
-            if success && keepOnSuccess {
-                result[key] = val
-            }
             return success
         }
+
+        var result = Dictionary<AnyHashable, Any>()
+
+        var ktype: ValueType? = nil
+        var vtype: ValueType? = nil
 
         for (k, v) in L.pairs(index) {
             let key = L.toany(k, guessType: false)!
             let hashableKey = key as? AnyHashable
             let val = L.toany(v, guessType: false)!
-            if let hashableKey, good(hashableKey, val, keepOnSuccess: true) {
+            if let hashableKey, good(hashableKey, val) {
+                result[hashableKey] = val
                 // Carry on
                 continue
             }
 
-            let possibleKeys = makePossibleKeys(key)
-            let possibleValues = makePossibles(val)
+            let possibleKeys = makePossibleKeys(ktype, key)
+            let possibleValues = makePossibles(vtype, val)
             var found = false
             for pkey in possibleKeys {
                 for pval in possibleValues {
-                    if good(pkey, pval.value, keepOnSuccess: false) {
+                    if good(pkey.testValue, pval.testValue) {
+                        assert(ktype == nil || ktype == pkey.type)
+                        ktype = pkey.type
+                        assert(vtype == nil || vtype == pval.type)
+                        vtype = pval.type
                         // Since LuaTableRef/LuaStringRef do not implement Hashable, we can ignore the need to resolve
                         // pkey. And pval only needs checking against LuaTableRef.
-                        let innerTest = { good(pkey, $0, keepOnSuccess: false) }
-                        if pval.isArray {
+                        let innerTest = { good(pkey.testValue, $0) }
+                        if pval.type == .array {
                             if let array = pval.tableRef!.doResolveArray(test: innerTest) {
-                                result[pkey] = array
+                                result[pkey.actualValue()!] = array
                                 found = true
                             }
-                        } else if pval.isDict {
+                        } else if pval.type == .dict {
                             if let dict = pval.tableRef!.doResolveDict(test: innerTest) {
-                                result[pkey] = dict
+                                result[pkey.actualValue()!] = dict
                                 found = true
                             }
                         } else {
-                            result[pkey] = pval.value
+                            result[pkey.actualValue()!] = pval.actualValue()
                             found = true
                         }
 
@@ -225,52 +231,155 @@ public struct LuaTableRef {
         return result
     }
 
-    private func makePossibleKeys(_ val: Any) -> [AnyHashable] {
-        var result: [AnyHashable] = []
-        if let ref = val as? LuaStringRef {
-            if let str = ref.toString() {
-                result.append(str)
-            }
-            let data = ref.toData()
-            result.append(data)
+    struct PossibleKey {
+        let testValue: AnyHashable
+        let tableRef: LuaTableRef?
+        let stringRef: LuaStringRef?
+        let type: ValueType
+
+        init(actualValue: AnyHashable) {
+            type = .other
+            testValue = actualValue
+            tableRef = nil
+            stringRef = nil
+        }
+
+        init(tableRef: LuaTableRef, dict: Bool) {
+            testValue = dict ? emptyAnyHashableDict : emptyAnyHashableArray
+            self.tableRef = tableRef
+            self.stringRef = nil
+            type = dict ? .dict : .array
+        }
+
+        init(stringRef: LuaStringRef, type: ValueType) {
+            self.type = type
+            switch type {
+            case .string: testValue = emptyString
+            case .bytes: testValue = dummyBytes
 #if !LUASWIFT_NO_FOUNDATION
-            result.append(Data(data))
+            case .data: testValue = emptyData
+#endif
+            default:
+                fatalError("Bad type \(type) to init(stringRef:type:)")
+            }
+            self.tableRef = nil
+            self.stringRef = stringRef
+        }
+
+        func actualValue() -> AnyHashable? {
+            switch type {
+            case .string: return stringRef!.toString()
+            case .bytes: return stringRef!.toData()
+#if !LUASWIFT_NO_FOUNDATION
+            case .data: return Data(stringRef!.toData())
+#endif
+            case .array: fatalError("Can't call actualValue on an array")
+            case .dict: fatalError("Can't call actualValue on a dict")
+            case .other: return testValue
+            }
+        }
+    }
+
+    private func makePossibleKeys(_ ktype: ValueType?, _ val: Any) -> [PossibleKey] {
+        var result: [PossibleKey] = []
+        if let ref = val as? LuaStringRef {
+            if ktype == nil || ktype == .string {
+                result.append(PossibleKey(stringRef: ref, type: .string))
+            }
+            if ktype == nil || ktype == .bytes {
+                result.append(PossibleKey(stringRef: ref, type: .bytes))
+            }
+#if !LUASWIFT_NO_FOUNDATION
+            if ktype == nil || ktype == .data {
+                result.append(PossibleKey(stringRef: ref, type: .data))
+            }
 #endif
         }
-        if let hashable = val as? AnyHashable {
-            result.append(hashable)
+        if result.isEmpty && (ktype == nil || ktype == .other) {
+            if let hashable = val as? AnyHashable {
+                result.append(PossibleKey(actualValue: hashable))
+            }
         }
         return result
     }
 
     // This exists to avoid extra dynamic casts on value
     struct PossibleValue {
-        let value: Any
+        let testValue: Any
         let tableRef: LuaTableRef?
-        let isDict: Bool
-        let isArray: Bool
+        let stringRef: LuaStringRef?
+        let type: ValueType
+
+        init(actualValue: Any) {
+            type = .other
+            testValue = actualValue
+            tableRef = nil
+            stringRef = nil
+        }
+
+        init(tableRef: LuaTableRef, dict: Bool) {
+            testValue = dict ? emptyAnyDict : emptyAnyArray
+            self.tableRef = tableRef
+            self.stringRef = nil
+            type = dict ? .dict : .array
+        }
+
+        init(stringRef: LuaStringRef, type: ValueType) {
+            self.type = type
+            switch type {
+            case .string: testValue = emptyString
+            case .bytes: testValue = dummyBytes
+#if !LUASWIFT_NO_FOUNDATION
+            case .data: testValue = emptyData
+#endif
+            default:
+                fatalError("Bad type \(type) to init(stringRef:type:)")
+            }
+            self.tableRef = nil
+            self.stringRef = stringRef
+        }
+
+        func actualValue() -> Any? {
+            switch type {
+            case .string: return stringRef!.toString()
+            case .bytes: return stringRef!.toData()
+#if !LUASWIFT_NO_FOUNDATION
+            case .data: return Data(stringRef!.toData())
+#endif
+            case .array: fatalError("Can't call actualValue on an array")
+            case .dict: fatalError("Can't call actualValue on a dict")
+            case .other: return testValue
+            }
+        }
     }
 
-    private func makePossibles(_ val: Any) -> [PossibleValue] {
+    private func makePossibles(_ vtype: ValueType?, _ val: Any) -> [PossibleValue] {
         var result: [PossibleValue] = []
         if let ref = val as? LuaStringRef {
-            if let str = ref.toString() {
-                result.append(PossibleValue(value: str, tableRef: nil, isDict: false, isArray: false))
+            if vtype == nil || vtype == .string {
+                result.append(PossibleValue(stringRef: ref, type: .string))
             }
-            let data = ref.toData()
-            result.append(PossibleValue(value: data, tableRef: nil, isDict: false, isArray: false))
+            if vtype == nil || vtype == .bytes {
+                result.append(PossibleValue(stringRef: ref, type: .bytes))
+            }
 #if !LUASWIFT_NO_FOUNDATION
-            result.append(PossibleValue(value: Data(data), tableRef: nil, isDict: false, isArray: false))
+            if vtype == nil || vtype == .data {
+                result.append(PossibleValue(stringRef: ref, type: .data))
+            }
 #endif
         } else if let tableRef = val as? LuaTableRef {
             // An array table can always be represented as a dictionary, but not vice versa, so put Dictionary first
             // so that an untyped top-level T (which will result in the first option being chosen) at least doesn't
             // lose information and behaves consistently.
-            result.append(PossibleValue(value: emptyAnyDict, tableRef: tableRef, isDict: true, isArray: false))
-            result.append(PossibleValue(value: emptyAnyArray, tableRef: tableRef, isDict: false, isArray: true))
+            if vtype == nil || vtype == .dict {
+                result.append(PossibleValue(tableRef: tableRef, dict: true))
+            }
+            if vtype == nil || vtype == .array {
+                result.append(PossibleValue(tableRef: tableRef, dict: false))
+            }
         }
-        if result.isEmpty {
-            result.append(PossibleValue(value: val, tableRef: nil, isDict: false, isArray: false))
+        if result.isEmpty && (vtype == nil || vtype == .other) {
+            result.append(PossibleValue(actualValue: val))
         }
         return result
     }
@@ -278,6 +387,8 @@ public struct LuaTableRef {
 
 fileprivate let emptyAnyArray = Array<Any>()
 fileprivate let emptyAnyDict = Dictionary<AnyHashable, Any>()
+fileprivate let emptyAnyHashableArray = Array<AnyHashable>()
+fileprivate let emptyAnyHashableDict = Dictionary<AnyHashable, AnyHashable>()
 fileprivate let emptyString = ""
 fileprivate let dummyBytes: [UInt8] = [0] // Not empty in case [] casts overly broadly
 #if !LUASWIFT_NO_FOUNDATION
@@ -294,6 +405,8 @@ enum ValueType {
     // table types
     case array
     case dict
+    // as-is
+    case other
 }
 
 extension ValueType {

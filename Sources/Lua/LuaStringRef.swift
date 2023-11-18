@@ -3,10 +3,10 @@
 
 /// Placeholder type used by ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)`` when `guessType` is `false`.
 public struct LuaStringRef {
-    let L: LuaState!
+    let L: LuaState
     let index: CInt
 
-    public init(L: LuaState!, index: CInt) {
+    public init(L: LuaState, index: CInt) {
         self.L = L
         self.index = L.absindex(index)
     }

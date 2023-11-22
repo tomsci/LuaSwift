@@ -1630,7 +1630,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
     /// * If `value` is an `NSNumber`, if it is convertible to `lua_Integer` it is pushed as such, otherwise as a
     ///   `lua_Number`.
-    /// * If `value` is `[UInt8]`, ``push(_:toindex:)-59fx9`` is used.
+    /// * If `value` is `[UInt8]`, ``push(_:toindex:)-171ku`` is used.
     /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:toindex:)`` is used.
     /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, `push(any:)` is called recursively to push
     ///   its elements.
@@ -1659,12 +1659,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // definitely work for all string types - this however should cover all possibilities.
         case let str as String:
             push(str)
+        case let data as [UInt8]:
+            push(data)
 #if !LUASWIFT_NO_FOUNDATION
         case let data as ContiguousBytes:
             push(bytes: data)
 #endif
-        case let data as [UInt8]:
-            push(data)
         case let array as Array<Any>:
             newtable(narr: CInt(array.count))
             for (i, val) in array.enumerated() {

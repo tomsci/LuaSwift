@@ -2,13 +2,18 @@
 // See LICENSE file for license information.
 
 /// Placeholder type used by ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)`` when `guessType` is `false`.
-public struct LuaStringRef {
+public struct LuaStringRef : LuaTemporaryRef {
     let L: LuaState
     let index: CInt
 
     public init(L: LuaState, index: CInt) {
         self.L = L
         self.index = L.absindex(index)
+    }
+
+    public func ref() -> LuaValue {
+        L.push(index: index)
+        return L.popref()
     }
 
     public func toString() -> String? {

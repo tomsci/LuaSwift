@@ -1200,6 +1200,138 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(anyNil)
     }
 
+    // There are 2 basic Any pathways to worry about, which are tovalue<Any> and tovalue<AnyHashable>.
+    // Then there are LuaTableRef.doResolveArray and LuaTableRef.doResolveDict which necessarily don't use tovalue,
+    // meaning Array<Any>, Array<AnyHashable>, Dictionary<AnyHashable, Any> and Dictionary<AnyHashable, AnyHashable>
+    // all need testing too. And for each of *those*, we need to test with string, table and something-that's-neither
+    // datatypes.
+
+    func test_tovalue_any_int() {
+        L.push(123)
+        let anyVal: Any? = L.tovalue(-1)
+        XCTAssertNotNil(anyVal as? Int)
+        let anyHashable: AnyHashable? = L.tovalue(-1)
+        XCTAssertNotNil(anyHashable as? Int)
+    }
+
+    func test_tovalue_any_string() {
+        L.push("abc")
+        let anyVal: Any? = L.tovalue(-1)
+        XCTAssertEqual((anyVal as? LuaValue)?.tovalue(), "abc")
+        let anyHashable: AnyHashable? = L.tovalue(-1)
+        XCTAssertEqual((anyHashable as? LuaValue)?.tovalue(), "abc")
+    }
+
+    func test_tovalue_any_stringarray() {
+        L.push(["abc"])
+        let anyArray: Array<Any> = L.tovalue(1)!
+        XCTAssertEqual((anyArray[0] as? LuaValue)?.tovalue(), "abc")
+        let anyHashableArray: Array<AnyHashable> = L.tovalue(1)!
+        XCTAssertEqual((anyHashableArray[0] as? LuaValue)?.tovalue(), "abc")
+    }
+
+    func test_tovalue_luavaluearray() {
+        L.newtable()
+        L.rawset(-1, key: 1, value: 123)
+        L.rawset(-1, key: 2, value: "abc")
+        let array: Array<LuaValue> = L.tovalue(1)!
+        XCTAssertEqual(array[0].tovalue(), 123)
+        XCTAssertEqual(array[1].tovalue(), "abc")
+    }
+
+    func test_tovalue_any_stringdict() {
+        L.push(["abc": "def"])
+        let anyDict: Dictionary<AnyHashable, Any> = L.tovalue(1)!
+        let (k, v) = anyDict.first!
+        XCTAssertEqual((k as? LuaValue)?.tovalue(), "abc")
+        XCTAssertEqual((v as? LuaValue)?.tovalue(), "def")
+    }
+
+    func test_tovalue_any_stringintdict() {
+        L.push(["abc": 123])
+        let anyDict: Dictionary<AnyHashable, Any> = L.tovalue(1)!
+        let (k, v) = anyDict.first!
+        XCTAssertEqual((k as? LuaValue)?.tovalue(), "abc")
+        XCTAssertEqual(v as? Int, 123)
+    }
+
+    func test_tovalue_stringanydict() {
+        L.newtable()
+        L.rawset(-1, key: "abc", value: "def")
+        L.rawset(-1, key: "123", value: 456)
+        let anyDict: Dictionary<String, Any> = L.tovalue(1)!
+        XCTAssertEqual((anyDict["abc"] as? LuaValue)?.tovalue(), "def")
+        XCTAssertEqual(anyDict["123"] as? Int, 456)
+    }
+
+    func test_tovalue_luavalue() {
+        L.push("abc")
+        L.push(123)
+        L.push([123])
+        L.push(["abc": 123])
+
+        XCTAssertEqual(L.tovalue(1, type: LuaValue.self)?.tostring(), "abc")
+    }
+
+    func test_tovalue_fndict() {
+        L.newtable()
+        let fn: lua_CFunction = L.globals["print"].tovalue()!
+        L.push(fn)
+        L.push(true)
+        L.rawset(-3)
+        // We now have a table of [lua_CFunction : Bool] except that lua_CFunction isn't Hashable
+
+        let anyanydict = L.tovalue(1, type: [AnyHashable: Any].self)!
+        XCTAssertNotNil((anyanydict.keys.first as? LuaValue)?.tovalue(type: lua_CFunction.self))
+    }
+
+// #if !LUASWIFT_NO_FOUNDATION
+//     func test_tovalue_table_perf_int_array() {
+//         L.newtable()
+//         // Add an extra zero to this (for 1000000) to make the test more obvious
+//         for i in 1 ..< 1000000 {
+//             L.rawset(-1, key: i, value: i)
+//         }
+//         measure {
+//             let _: [Int] = L.tovalue(-1)!
+//         }
+//     }
+
+//     func test_tovalue_table_perf_data_array() {
+//         L.newtable()
+//         // Add an extra zero to this (for 1000000) to make the test more obvious
+//         for i in 1 ..< 1000000 {
+//             L.rawset(-1, key: i, value: "abc")
+//         }
+//         measure {
+//             let _: [Data] = L.tovalue(-1)!
+//         }
+//     }
+
+//     func test_tovalue_table_perf_int_dict() {
+//         L.newtable()
+//         // Add an extra zero to this (for 1000000) to make the test more obvious
+//         for i in 1 ..< 1000000 {
+//             L.rawset(-1, key: i, value: i)
+//         }
+//         measure {
+//             let _: Dictionary<Int, Int> = L.tovalue(-1)!
+//         }
+//     }
+
+//     func test_tovalue_table_perf_data_dict() {
+//         L.newtable()
+//         // Add an extra zero to this (for 1000000) to make the test more obvious
+//         for i in 1 ..< 1000000 {
+//             L.rawset(-1, key: "\(i)", value: "abc")
+//         }
+//         measure {
+//             let _: Dictionary<Data, Data> = L.tovalue(-1)!
+//         }
+//     }
+
+// #endif
+
     func test_load_file() {
         XCTAssertThrowsError(try L.load(file: "nopemcnopeface"), "", { err in
             XCTAssertEqual(err as? LuaLoadError, .fileError("cannot open nopemcnopeface: No such file or directory"))

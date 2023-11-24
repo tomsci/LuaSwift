@@ -42,9 +42,14 @@ import CLua
 /// // result is "function"
 /// ```
 ///
-/// `LuaValue` objects are only valid as long as the `LuaState` is. Calling any of its functions after the
-/// `LuaState` has been closed will cause a crash. It is safe to allow `LuaValue` objects to `deinit` after the
+/// `LuaValue` objects are only valid as long as the `LuaState` is. Calling any of its functions after the `LuaState`
+/// has been closed will trigger a `precondition` error. It is safe to allow `LuaValue` objects to `deinit` after the
 /// `LuaState` has been closed, however.
+///
+/// 
+/// Note that while `LuaValue` is `Equatable`, it does not compare the underlying values. Only two instances which have
+/// the same `luaL_ref` ref compare equal. Similarly `LuaValue` is `Hashable`, but will not return the same hash value
+/// as the underlying Lua value, in a similar way to how `AnyHashable` behaves.
 @dynamicCallable
 public class LuaValue: Equatable, Hashable, Pushable {
     var L: LuaState!

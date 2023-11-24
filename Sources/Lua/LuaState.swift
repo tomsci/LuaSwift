@@ -793,7 +793,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// If `guessType` is `false`, the placeholder types ``LuaStringRef`` and ``LuaTableRef`` are used for `string` and
     /// `table` values respectively.
     ///
-    /// Regardless of `guessType`, `LuaValue` may be used to represent values that cannot be expressed as Swift types.
+    /// Regardless of `guessType`, `LuaValue` may be used to represent values that cannot be expressed as Swift types,
+    /// for example Lua functions which are not `lua_CFunction`.
     ///
     /// Generally speaking, this API is not very useful, and you should normally use ``tovalue(_:)`` instead, when
     /// needing to do any generics-based programming.
@@ -859,17 +860,35 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * `thread` converts to `LuaState`.
     /// * `string` converts to `String`, `[UInt8]` or `Data` depending on which `T` is. To convert to `String`, the
     ///    string must be valid in the default string encoding.
-    /// * `table` converts to either an `Array` or a `Dictionary` depending on `T`. The table contents are recursively
-    ///   converted to match the type of `T`. If any element fails to cast to the appropriate subtype, then the entire
-    ///   conversion fails and returns `nil`.
+    /// * `table` converts to either an array or a dictionary depending on whether `T` is `Array<Element>` or
+    ///   `Dictionary<Key, Value>`. The table contents are recursively
+    ///   converted as if `tovalue<Element>()`, `tovalue<Key>()` and/or `tovalue<Value>()` were being called, as
+    ///   appropriate. If any element fails to cast to the appropriate subtype, then the entire conversion fails and
+    ///   returns `nil`.
     /// * `userdata` any conversion that `as?` can perform on an `Any` referring to that type.
+    /// * `function` if the function is a C function, converts to `lua_CFunction`.
     /// * The `nil` Lua value always converts to Swift `nil`, regardless of what `T` is.
     ///
-    /// If the value cannot be represented by type `T` for whatever reason, then `nil` is returned.
+    /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
+    /// called.
+    ///
+    /// If `T` or a part of `T` is insufficiently typed to resolve a `string` or `table` (ie, it is `Any` or
+    /// `AnyHashable`), then the string/table will be returned as a ``LuaValue``. Similarly if `T` is `AnyHashable` and
+    /// the resolved type is not `Hashable` (for example, it is a `lua_CFunction`), then a `LuaValue` is returned
+    /// instead.
+    ///
+    /// If the value cannot be represented by type `T` for any other reason, then `nil` is returned. This includes
+    /// numbers being out of range.
     ///
     /// Converting large tables is relatively expensive, due to the large number of dynamic casts required to correctly
-    /// infer all the types, although generally this shouldn't be an issue until hundreds of thousands of elements are
+    /// check all the types, although generally this shouldn't be an issue until hundreds of thousands of elements are
     /// involved.
+    ///
+    /// While technically an Array or Dictionary can be used as a Dictionary key providing that the Element/Key/Value
+    /// types are Hashable, this is not supported by `tovalue()` and attempting a conversion like
+    /// `tovalue<Dictionary<[String], Int>>()` will always fail and return `nil`. Calling
+    /// `tovalue<AnyHashable>()` on a `table` or `string` _will_ succeed, however, returning a `LuaValue` because
+    /// `LuaValue` is `Hashable`.
     ///
     /// ```swift
     /// L.push(123)
@@ -888,6 +907,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             // because `value as? Any` succeeds in creating an Any containing a nil (which is then wrapped in an
             // optional).
             return nil
+        } else if T.self == Any.self, let tempRef = value as? LuaTemporaryRef {
+            return tempRef.ref() as? T
         } else if let directCast = value as? T {
             return directCast
         } else if let ref = value as? LuaStringRef {
@@ -895,6 +916,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 return ref.toString() as? T
             } else if T.self == Array<UInt8>.self {
                 return ref.toData() as? T
+            } else if T.self == AnyHashable.self || T.self == LuaValue.self {
+                return ref.ref() as? T
             }
 #if !LUASWIFT_NO_FOUNDATION
             if T.self == Data.self {
@@ -902,6 +925,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             }
 #endif
         } else if let ref = value as? LuaTableRef {
+            if T.self == AnyHashable.self || T.self == LuaValue.self {
+                return ref.ref() as? T
+            }
             return ref.resolve()
         }
         return nil
@@ -2860,6 +2886,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             throw argumentError(arg, "invalid option '\(raw)' for \(String(describing: T.self))")
         }
     }
+}
 
+protocol LuaTemporaryRef {
 
+    func ref() -> LuaValue
+    
 }

@@ -1857,4 +1857,17 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(err.localizedDescription, "bad argument #1 to 'nativeFn' (invalid option 'nope' for Foo)")
         })
     }
+
+    func test_nan() {
+        L.push(Double.nan)
+        XCTAssertTrue(L.tonumber(-1)!.isNaN)
+
+        L.push(Double.infinity)
+        XCTAssertTrue(L.tonumber(-1)!.isInfinite)
+
+        L.push(-1)
+        L.push(-0.5)
+        lua_arith(L, LUA_OPPOW) // -1^(-0.5) is nan
+        XCTAssertTrue(L.tonumber(-1)!.isNaN)
+    }
 }

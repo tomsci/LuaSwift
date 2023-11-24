@@ -95,7 +95,8 @@ public enum LuaType : CInt, CaseIterable {
 extension LuaType {
     /// Returns the type as a String.
     ///
-    /// In the same format as used by [`type()`](https://www.lua.org/manual/5.4/manual.html#pdf-type) and
+    /// Returns the name of the type in the same format as used by
+    /// [`type()`](https://www.lua.org/manual/5.4/manual.html#pdf-type) and
     /// [`lua_typename()`](https://www.lua.org/manual/5.4/manual.html#lua_typename).
     public func tostring() -> String {
         switch self {
@@ -113,8 +114,9 @@ extension LuaType {
 
     /// Construct a LuaType from a C type integer.
     ///
-    /// - Parameter ctype: Must be an integer in the range `LUA_TNONE...LUA_TTHREAD`.
+    /// - Parameter ctype: The C type to convert.
     /// - Returns: A `LuaType` representing the given type, or `nil` if `ctype` is `LUA_TNONE`.
+    /// - Precondition: `ctype` must be an integer in the range `LUA_TNONE...LUA_TTHREAD`.
     public init?(ctype: CInt) {
         if ctype == LUA_TNONE {
             return nil
@@ -125,7 +127,8 @@ extension LuaType {
 
     /// Returns the type as a String.
     ///
-    /// As per ``tostring()``, but including handling `nil` (ie `LUA_TNONE`).
+    /// As per ``tostring()``, but including handling `nil` (ie `LUA_TNONE`). `LuaType.tostring(nil)` returns
+    /// "no value".
     public static func tostring(_ type: LuaType?) -> String {
         return type?.tostring() ?? "no value"
     }
@@ -193,6 +196,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Create a new `LuaState`.
     ///
+    /// Create a new `LuaState` and optionally open some or all of the standard libraries. The global functions are
+    /// always added (ie [`luaopen_base`](http://www.lua.org/manual/5.4/manual.html#pdf-luaopen_base) is always opened).
     /// Note that because `LuaState` is defined as `UnsafeMutablePointer<lua_State>`, the state is _not_ automatically
     /// destroyed when it goes out of scope. You must call ``close()``.
     ///
@@ -279,7 +284,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// `<path>/foo/bar.lua`.
     ///
     /// - Parameter path: The root directory containing .lua files. Specify `nil` to disable all module loading (except
-    ///   for any preloads configured with ``addModules(_:mode:)``.
+    ///   for any preloads configured with ``addModules(_:mode:)``).
     /// - Parameter displayPath: What to display in stacktraces instead of showing the full `path`. The default `""`
     ///   means stacktraces will contain just the Lua module names. Pass in `path` or `nil` to show the unmodified real
     ///   path.
@@ -335,7 +340,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Add built-in modules to the [preload](https://www.lua.org/manual/5.4/manual.html#pdf-package.preload) table.
     ///
-    /// Such that they can loaded by `require(name)`. The modules are not loaded until `require` is called.
+    /// Add built-in modules to the [preload](https://www.lua.org/manual/5.4/manual.html#pdf-package.preload) table,
+    /// such that they can loaded by `require(name)`. The modules are not loaded until `require` is called.
     ///
     /// See <doc:EmbedLua> for one way to produce a suitable `modules` value.
     ///
@@ -359,7 +365,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Add built-in modules to the [preload](https://www.lua.org/manual/5.4/manual.html#pdf-package.preload) table,
     /// removing any others.
     ///
-    /// Such that they can loaded by `require(name)`. The modules are not loaded until `require` is called. Any modules
+    /// Add built-in modules to the [preload](https://www.lua.org/manual/5.4/manual.html#pdf-package.preload) table,
+    /// such that they can loaded by `require(name)`. The modules are not loaded until `require` is called. Any modules
     /// previously in the preload table are removed. Note this will have no effect on modules that have already been
     /// loaded.
     ///
@@ -519,14 +526,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     func maybeGetState() -> _State? {
         push(function: stateLookupKey)
         rawget(LUA_REGISTRYINDEX)
-        var result: _State? = nil
+        defer {
+            pop()
+        }
         // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
         // safe because we know the value of StateRegistryKey does not need checking.
-        if let state: _State = unchecked_touserdata(-1) {
-            result = state
-        }
-        pop()
-        return result
+        return unchecked_touserdata(-1)
     }
 
     // MARK: - Basic stack stuff
@@ -1900,6 +1905,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             })
             rawset(-2, utf8Key: "__close")
         }
+
+        // Leaves metatable on top of the stack
     }
 
     private static let DefaultMetatableName = "LuaSwift_Default"

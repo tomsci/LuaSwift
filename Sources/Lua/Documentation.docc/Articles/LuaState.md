@@ -2,7 +2,7 @@
 
 ## Overview
 
-`LuaState` is the primary way of accessing the Lua APIs. It is technically a typealias to `UnsafeMutablePointer<lua_State>`, which is then extended to provide the Swift-friendly type-safe APIs described below.
+`LuaState` is the primary way of accessing the Lua APIs. It is implemented as a typealias to `UnsafeMutablePointer<lua_State>`, which is then extended to provide the Swift-friendly type-safe APIs described below.
 
 It can therefore be constructed either using the explicit constructor provided, or any C `lua_State` obtained from anywhere can be treated as a `LuaState` Swift object. By convention `LuaState`/`lua_State` variables are often called `L`, although that is not mandatory.
 

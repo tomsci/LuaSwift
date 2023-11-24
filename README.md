@@ -1,6 +1,6 @@
 # LuaSwift
 
-A Swift wrapper for the [Lua 5.4](https://www.lua.org/manual/5.4/) C API. All Swift APIs are added as extensions to `UnsafeMutablePointer<lua_State>`, meaning you can freely mix Lua C calls (and callbacks) with higher-level more Swift-like calls. Any Lua APIs without a dedicated `LuaState` wrapper can be accessed by importing `CLua`.
+A [Swift](https://www.swift.org) wrapper for the [Lua 5.4](https://www.lua.org/manual/5.4/) C API. All Swift APIs are added as extensions to `UnsafeMutablePointer<lua_State>`, meaning you can freely mix Lua C calls (and callbacks) with higher-level more Swift-like calls. Any Lua APIs without a dedicated `LuaState` wrapper can be accessed by importing `CLua`.
 
 Because this package mostly uses the raw C Lua paradigms (with a thin layer of Swift type-friendly wrappers on top), familiarity with the [Lua C API](https://www.lua.org/manual/5.4/manual.html#4) is strongly recommended. In particular, misusing the Lua stack or the `CLua` API will crash your program.
 
@@ -65,7 +65,7 @@ See the [LuaState documentation](https://tomsci.github.io/LuaSwift/documentation
 
 ## License
 
-LuaSwift is written and maintained by Tom Sutcliffe, with contributions from Jason Barrie Morley, and is distributed under the [MIT License](LICENSE). It includes Lua 5.4, also distributed under the MIT License. The Lua copyright and license information is reproduced below:
+LuaSwift is written and maintained by Tom Sutcliffe, with contributions from Jason Barrie Morley, and is distributed under the [MIT License](LICENSE). It includes Lua 5.4, also [distributed under the MIT License](http://www.lua.org/license.html). The Lua 5.4 copyright and license information is reproduced below:
 
 ```
 Copyright © 1994–2023 Lua.org, PUC-Rio.

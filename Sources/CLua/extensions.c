@@ -120,6 +120,10 @@ int luaswift_callclosurewrapper(lua_State *L) {
     }
 }
 
+_Bool luaswift_iscallclosurewrapper(lua_CFunction fn) {
+    return fn == luaswift_callclosurewrapper;
+}
+
 int luaswift_gettable(lua_State *L) {
     lua_gettable(L, 1);
     return 1;

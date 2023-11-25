@@ -200,6 +200,7 @@ int luaswift_loadfile(lua_State *L, const char *filename,
 
 #define LUASWIFT_CALLCLOSURE_ERROR (-2)
 int luaswift_callclosurewrapper(lua_State *L);
+_Bool luaswift_iscallclosurewrapper(lua_CFunction fn);
 int luaswift_gettable(lua_State *L);
 int luaswift_settable(lua_State *L);
 int luaswift_tostring(lua_State *L);

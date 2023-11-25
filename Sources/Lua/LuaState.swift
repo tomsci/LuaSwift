@@ -843,6 +843,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             }
         case .function:
             if let fn = lua_tocfunction(self, index) {
+                // Ugh why can't I test C functions for equality
+                if luaswift_iscallclosurewrapper(fn) {
+                    pushUpvalue(index: index, n: 1)
+                    let wrapper: LuaClosureWrapper = touserdata(-1)!
+                    pop()
+                    return wrapper.closure
+                }
                 return fn
             } else {
                 return ref(index: index)
@@ -870,8 +877,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   converted as if `tovalue<Element>()`, `tovalue<Key>()` and/or `tovalue<Value>()` were being called, as
     ///   appropriate. If any element fails to cast to the appropriate subtype, then the entire conversion fails and
     ///   returns `nil`.
-    /// * `userdata` any conversion that `as?` can perform on an `Any` referring to that type.
-    /// * `function` if the function is a C function, converts to `lua_CFunction`.
+    /// * `userdata` - providing the value was pushed via `push<U>(userdata:)`, converts to `U` or anything `U` can be
+    ///    cast to.
+    /// * `function` - if the function is a C function, converts to `lua_CFunction`. If the function was pushed with
+    ///   ``push(_:numUpvalues:toindex:)``, converts to ``LuaClosure``.
     /// * The `nil` Lua value always converts to Swift `nil`, regardless of what `T` is.
     ///
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were

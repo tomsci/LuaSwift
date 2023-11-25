@@ -1275,14 +1275,19 @@ final class LuaTests: XCTestCase {
 
     func test_tovalue_fndict() {
         L.newtable()
-        let fn: lua_CFunction = L.globals["print"].tovalue()!
-        L.push(fn)
+        L.push(L.globals["print"])
         L.push(true)
         L.rawset(-3)
         // We now have a table of [lua_CFunction : Bool] except that lua_CFunction isn't Hashable
 
         let anyanydict = L.tovalue(1, type: [AnyHashable: Any].self)!
         XCTAssertNotNil((anyanydict.keys.first as? LuaValue)?.tovalue(type: lua_CFunction.self))
+    }
+
+    func test_tovalue_luaclosure() {
+        let closure: LuaClosure = { _ in return 0 }
+        L.push(closure)
+        XCTAssertNotNil(L.tovalue(1, type: LuaClosure.self))
     }
 
 // #if !LUASWIFT_NO_FOUNDATION

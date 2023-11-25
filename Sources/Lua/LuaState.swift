@@ -2231,7 +2231,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Returns: The type of the value pushed onto the stack.
     @discardableResult
     public func getglobal(_ name: String) -> LuaType {
-        pushGlobals()
+        pushglobals()
         let t = rawget(-1, utf8Key: name)
         lua_remove(self, -2)
         return t
@@ -2246,7 +2246,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter name: The name of the global to set.
     public func setglobal(name: String) {
         precondition(gettop() > 0)
-        pushGlobals(toindex: -2)
+        pushglobals(toindex: -2)
         rawset(-2, utf8Key: name)
         pop() // globals
     }
@@ -2267,11 +2267,17 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Pushes the globals table (`_G`) onto the stack.
     ///
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
-    public func pushGlobals(toindex: CInt = -1) {
+    public func pushglobals(toindex: CInt = -1) {
         lua_pushglobaltable(self)
         if toindex != -1 {
             insert(toindex)
         }
+    }
+
+    /// Deprecated, use ``pushglobals(toindex:)-3ot28``.
+    @available(*, deprecated, renamed: "pushglobals")
+    public func pushGlobals(toindex: CInt = -1) {
+        pushglobals(toindex: toindex)
     }
 
     /// Wrapper around [`luaL_requiref()`](https://www.lua.org/manual/5.4/manual.html#luaL_requiref).
@@ -2434,7 +2440,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Equivalent to (but slightly more efficient than):
     ///
     /// ```swift
-    /// L.pushGlobals()
+    /// L.pushglobals()
     /// let globals = L.popref()
     /// ```
     ///

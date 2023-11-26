@@ -2668,12 +2668,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Load a Lua chunk from a string with ``load(string:name:)`` and execute it.
     ///
-    /// Any values returned from the file are left on the top of the stack.
+    /// Any values returned from the chunk are left on the top of the stack.
     ///
     /// - Parameter string: The Lua script to load.
     /// - Throws: ``LuaLoadError/parseError(_:)`` if the string cannot be parsed.
     public func dostring(_ string: String, name: String? = nil) throws {
-        try load(string: string)
+        try load(string: string, name: name)
         try pcall(nargs: 0, nret: LUA_MULTRET)
     }
 

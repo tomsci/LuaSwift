@@ -14,7 +14,21 @@ extension Bool: Pushable {
     }
 }
 
+// Is there a cleaner way to make all integers Pushable with extensions and where clauses?
+
 extension Int: Pushable {
+    public func push(onto L: LuaState) {
+        lua_pushinteger(L, lua_Integer(self))
+    }
+}
+
+extension Int8: Pushable {
+    public func push(onto L: LuaState) {
+        lua_pushinteger(L, lua_Integer(self))
+    }
+}
+
+extension Int16: Pushable {
     public func push(onto L: LuaState) {
         lua_pushinteger(L, lua_Integer(self))
     }
@@ -31,6 +45,22 @@ extension Int64: Pushable {
         lua_pushinteger(L, self)
     }
 }
+
+extension UInt16: Pushable {
+    public func push(onto L: LuaState) {
+        lua_pushinteger(L, lua_Integer(self))
+    }
+}
+
+extension UInt32: Pushable {
+    public func push(onto L: LuaState) {
+        lua_pushinteger(L, lua_Integer(self))
+    }
+}
+
+// Note, UInt8 and UInt64 are NOT Pushable because they cannot be represented unambiguously; UInt8 because [UInt8]
+// should not push as an array of numbers, and UInt64 because lua_Integer is a signed 64 bit value so UInt64 isn't
+// guaranteed to fit.
 
 extension lua_Number: Pushable {
     public func push(onto L: LuaState) {

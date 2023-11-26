@@ -1271,6 +1271,8 @@ final class LuaTests: XCTestCase {
         L.push(["abc": 123])
 
         XCTAssertEqual(L.tovalue(1, type: LuaValue.self)?.tostring(), "abc")
+        XCTAssertEqual(L.tovalue(2, type: LuaValue.self)?.toint(), 123)
+        XCTAssertNotNil(L.tovalue(3, type: AnyHashable.self) as? LuaValue)
     }
 
     func test_tovalue_fndict() {

@@ -915,6 +915,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// let numDict: [String : Double] = L.tovalue(-1)! // Also OK
     /// ```
     public func tovalue<T>(_ index: CInt) -> T? {
+        if T.self == LuaValue.self {
+            // There's no need to even call toany
+            return ref(index: index) as? T
+        }
+
         let value = toany(index, guessType: false)
         if value == nil {
             // Explicit check for value being nil, without it if T is Any then the result ends up being some(nil)
@@ -930,7 +935,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 return ref.toString() as? T
             } else if T.self == Array<UInt8>.self {
                 return ref.toData() as? T
-            } else if T.self == AnyHashable.self || T.self == LuaValue.self {
+            } else if T.self == AnyHashable.self {
                 return ref.ref() as? T
             }
 #if !LUASWIFT_NO_FOUNDATION
@@ -939,7 +944,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             }
 #endif
         } else if let ref = value as? LuaTableRef {
-            if T.self == AnyHashable.self || T.self == LuaValue.self {
+            if T.self == AnyHashable.self {
                 return ref.ref() as? T
             }
             return ref.resolve()

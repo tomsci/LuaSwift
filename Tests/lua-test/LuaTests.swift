@@ -74,15 +74,25 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(LuaState.ComparisonOp.le.rawValue, LUA_OPLE)
     }
 
+    let unsafeLibs = ["os", "io", "package", "debug"]
+
     func testSafeLibraries() {
         L.openLibraries(.safe)
-        let unsafeLibs = ["os", "io", "package", "debug"]
         for lib in unsafeLibs {
             let t = L.getglobal(lib)
             XCTAssertEqual(t, .nil)
             L.pop()
         }
         XCTAssertEqual(L.gettop(), 0)
+    }
+
+    func testLibraries() {
+        L.openLibraries(.all)
+        for lib in unsafeLibs {
+            let t = L.getglobal(lib)
+            XCTAssertEqual(t, .table)
+            L.pop()
+        }
     }
 
     func test_pcall() throws {
@@ -117,12 +127,14 @@ final class LuaTests: XCTestCase {
         L.push(123.456) // 4
         L.pushnil() // 5
         L.push(function: dummyFn) // 6
+        L.push(["a": 11, "b": 22, "c": 33]) // 7
         XCTAssertEqual(L.toint(1), 1234)
         XCTAssertEqual(L.toint(2), nil)
         XCTAssertEqual(L.toint(3), nil)
         XCTAssertEqual(L.toint(4), nil)
         XCTAssertEqual(L.toint(5), nil)
         XCTAssertEqual(L.toint(6), nil)
+        XCTAssertEqual(L.toint(7, key: "b"), 22)
     }
 
     func test_tonumber() {
@@ -132,13 +144,19 @@ final class LuaTests: XCTestCase {
         L.push(123.456) // 4
         L.pushnil() // 5
         L.push(function: dummyFn) // 6
+        L.push("456.789") // 7
+        L.push(["a": 11, "b": 22, "c": 33]) // 8
         let val: Double? = L.tonumber(1)
         XCTAssertEqual(val, 1234)
         XCTAssertEqual(L.tonumber(2), nil)
         XCTAssertEqual(L.tonumber(3), nil)
+        XCTAssertEqual(L.tonumber(3, convert: true), nil)
         XCTAssertEqual(L.tonumber(4), 123.456)
         XCTAssertEqual(L.tonumber(5), nil)
         XCTAssertEqual(L.toint(6), nil)
+        XCTAssertEqual(L.tonumber(7, convert: false), nil)
+        XCTAssertEqual(L.tonumber(7, convert: true), 456.789)
+        XCTAssertEqual(L.tonumber(8, key: "a"), 11.0)
     }
 
     func test_tobool() {
@@ -147,11 +165,19 @@ final class LuaTests: XCTestCase {
         L.push(false) // 3
         L.pushnil() // 4
         L.push(function: dummyFn) // 5
+        L.push(["a": false, "b": true]) // 6
         XCTAssertEqual(L.toboolean(1), true)
         XCTAssertEqual(L.toboolean(2), true)
         XCTAssertEqual(L.toboolean(3), false)
         XCTAssertEqual(L.toboolean(4), false)
         XCTAssertEqual(L.toboolean(5), true)
+        XCTAssertEqual(L.toboolean(6, key: "a"), false)
+        XCTAssertEqual(L.toboolean(6, key: "b"), true)
+        XCTAssertEqual(L.toboolean(6, key: "c"), false)
+        
+        // Test that toboolean returns false if __index errored
+        try! L.dostring("return setmetatable({}, { __index = function() error('NOPE') end })")
+        XCTAssertEqual(L.toboolean(7, key: "anything"), false)
     }
 
     func test_tostring() {
@@ -190,6 +216,18 @@ final class LuaTests: XCTestCase {
         L.setDefaultStringEncoding(.stringEncoding(.isoLatin1))
         XCTAssertEqual(L.tostring(4), "îsø") // this should now succeed
 #endif
+    }
+
+    func test_todata() {
+        let data: [UInt8] = [12, 34, 0, 56]
+        L.push(data)
+        XCTAssertEqual(L.todata(1), data)
+        XCTAssertEqual(L.tovalue(1), data)
+
+        L.newtable()
+        L.push(index: 1)
+        L.rawset(-2, key: "abc")
+        XCTAssertEqual(L.todata(2, key: "abc"), data)
     }
 
     func test_push_toindex() {
@@ -694,6 +732,21 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(val.member, "A string arg")
     }
 
+    func test_registerDefaultMetatable() {
+        struct Foo {}
+        L.registerDefaultMetatable(functions: [
+            "woop": .closure { L in
+                L.push(321)
+                return 1
+            }
+        ])
+        try! L.load(string: "obj = ...; return obj.woop()")
+        // Check that Foo gets the default metatable with a woop() fn
+        L.push(userdata: Foo())
+        try! L.pcall(nargs: 1, nret: 1)
+        XCTAssertEqual(L.tovalue(1), 321)
+    }
+
     func testClasses() throws {
         // "outer Foo"
         class Foo {
@@ -749,6 +802,33 @@ final class LuaTests: XCTestCase {
         L.push(any: Foo())
         try L.pcall(nargs: 1, nret: 0)
         XCTAssertTrue(barCalled)
+    }
+
+    func test_toany() {
+        // Things not covered by any of the other pushany tests
+
+        XCTAssertNil(L.toany(1))
+
+        L.pushnil()
+        XCTAssertNil(L.toany(1))
+        L.pop()
+
+        try! L.dostring("function foo() end")
+        L.getglobal("foo")
+        XCTAssertNotNil(L.toany(1) as? LuaValue)
+        L.pop()
+
+        lua_newthread(L)
+        XCTAssertNotNil(L.toany(1) as? LuaState)
+        L.pop()
+
+        let m = malloc(4)
+        defer {
+            free(m)
+        }
+        lua_pushlightuserdata(L, m)
+        XCTAssertEqual(L.toany(1) as? UnsafeRawPointer, UnsafeRawPointer(m))
+        L.pop()
     }
 
     func test_pushany() {
@@ -999,6 +1079,12 @@ final class LuaTests: XCTestCase {
         let _ = lua_newuserdata(L, MemoryLayout<Any>.size)
         let bad: Any? = L.touserdata(-1)
         XCTAssertNil(bad)
+
+        // Now give it a metatable, because touserdata bails early if it doesn't have one
+        L.newtable()
+        lua_setmetatable(L, -2)
+        let stillbad: Any? = L.touserdata(-1)
+        XCTAssertNil(stillbad)
     }
 
     func test_ref() {
@@ -1208,9 +1294,9 @@ final class LuaTests: XCTestCase {
 
     func test_tovalue_any_int() {
         L.push(123)
-        let anyVal: Any? = L.tovalue(-1)
+        let anyVal: Any? = L.tovalue(1)
         XCTAssertNotNil(anyVal as? Int)
-        let anyHashable: AnyHashable? = L.tovalue(-1)
+        let anyHashable: AnyHashable? = L.tovalue(1)
         XCTAssertNotNil(anyHashable as? Int)
     }
 
@@ -1290,6 +1376,13 @@ final class LuaTests: XCTestCase {
         let closure: LuaClosure = { _ in return 0 }
         L.push(closure)
         XCTAssertNotNil(L.tovalue(1, type: LuaClosure.self))
+        L.pop()
+
+        L.newtable()
+        L.push(closure)
+        L.rawset(-2, key: 1)
+        let closureArray: [LuaClosure] = L.tovalue(1)!
+        XCTAssertEqual(closureArray.count, 1)
     }
 
 // #if !LUASWIFT_NO_FOUNDATION

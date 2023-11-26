@@ -40,14 +40,14 @@ public struct LuaVer {
         return major >= 5 && minor >= 4
     }
 
-    // 5.4 constructor
+    // > 5.4.6 constructor
     init(major: CInt, minor: CInt, release: CInt) {
         self.major = major
         self.minor = minor
         self.release = release
     }
 
-    // 5.3 and earlier constructor
+    // 5.4.6 and earlier constructor
     init(major: String, minor: String, release: String) {
         self.major = CInt(major)!
         self.minor = CInt(minor)!
@@ -197,9 +197,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Create a new `LuaState`.
     ///
     /// Create a new `LuaState` and optionally open some or all of the standard libraries. The global functions are
-    /// always added (ie [`luaopen_base`](http://www.lua.org/manual/5.4/manual.html#pdf-luaopen_base) is always opened).
-    /// Note that because `LuaState` is defined as `UnsafeMutablePointer<lua_State>`, the state is _not_ automatically
-    /// destroyed when it goes out of scope. You must call ``close()``.
+    /// always added (ie [`luaopen_base`](https://www.lua.org/manual/5.4/manual.html#pdf-luaopen_base) is always
+    /// opened). Note that because `LuaState` is defined as `UnsafeMutablePointer<lua_State>`, the state is _not_
+    /// automatically destroyed when it goes out of scope. You must call ``close()``.
     ///
     /// ```swift
     /// let state = LuaState(libraries: .all)
@@ -818,7 +818,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case .boolean:
             return toboolean(index)
         case .lightuserdata:
-            return lua_topointer(self, index)
+            return lua_topointer(self, index)!
         case .number:
             if let intVal = tointeger(index) {
                 // Integers are returned type-erased (thanks to AnyHashable) meaning fewer cast restrictions in
@@ -869,7 +869,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///    providing the value has an exact double-precision representation (ie is less than 2^53). Values are never
     ///    rounded or truncated to satisfy `T`.
     /// * `boolean` converts to `Bool`.
-    /// * `thread` converts to `LuaState`.
     /// * `string` converts to `String`, `[UInt8]` or `Data` depending on which `T` is. To convert to `String`, the
     ///    string must be valid in the default string encoding.
     /// * `table` converts to either an array or a dictionary depending on whether `T` is `Array<Element>` or
@@ -881,6 +880,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///    cast to.
     /// * `function` - if the function is a C function, converts to `lua_CFunction`. If the function was pushed with
     ///   ``push(_:numUpvalues:toindex:)``, converts to ``LuaClosure``.
+    /// * `thread` converts to `LuaState`.
+    /// * `lightuserdata` converts to `UnsafeRawPointer`.
     /// * The `nil` Lua value always converts to Swift `nil`, regardless of what `T` is.
     ///
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
@@ -1449,6 +1450,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * Do not throw Swift or Lua errors
     /// * Do not capture any variables
     ///
+    /// If the above conditions do not hold, push a ``LuaClosure`` using ``push(_:numUpvalues:toindex:)`` instead.
+    ///
     /// - Parameter function: the function or closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push(function: lua_CFunction, toindex: CInt = -1) {
@@ -1623,13 +1626,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Push any value representable using `Any` onto the stack as a `userdata`.
     ///
-    /// From a lifetime perspective, this function behaves as if `val` were
+    /// From a lifetime perspective, this function behaves as if the value were
     /// assigned to another variable of type `Any`, and when the Lua userdata is
     /// garbage collected, this variable goes out of scope.
     ///
-    /// To make the object usable from Lua, declare a metatable for the type of `val` using
-    /// ``registerMetatable(for:functions:)``. Note that this function always uses the dynamic type of `val`, and not
-    /// whatever `T` is, when calculating what metatable to assign the object. Thus `push(userdata: foo)` and
+    /// To make the object usable from Lua, declare a metatable for the value's type using
+    /// ``registerMetatable(for:functions:)``. Note that this function always uses the dynamic type of the value, and
+    /// not whatever `T` is, when calculating what metatable to assign the object. Thus `push(userdata: foo)` and
     /// `push(userdata: foo as Any)` will behave identically. Pushing a value of a type which has no metatable
     /// previously registered will generate a warning, and the object will have no metamethods declared on it,
     /// except for `__gc` which is always defined in order that Swift object lifetimes are preserved.

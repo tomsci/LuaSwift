@@ -11,21 +11,21 @@ For example:
 let L = LuaState(libraries: .all)
 L.push(1234) // Integer is Pushable
 L.push(["abc", "def"]) // String is Pushable, therefore Array<String> is too
-L.setglobal("foo", "bar") // Assigns the Pushable "bar" to the global named "foo"
+L.setglobal(name: "foo", value: "bar") // Assigns the Pushable "bar" to the global named "foo"
 ```
 
-Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua - if a type needs to be represented in different ways depending on circumstances (and not simply based on its value), then it should not conform to `Pushable`.
+Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`.
 
-For the types which cannot conform to Pushable - either because their representation in Lua is ambiguous, like `[UInt8]`, or because they cannot adopt Protocols, such as `lua_CFunction` or `LuaClosure` - `LuaState` provides a custom overload of `push()` instead, for example ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku`` or ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``. For such types the "all-in-one" overloads which take a `Pushable` cannot be used, and instead they must be first pushed using the appropriate overload of `push()`, and then used via a function which takes a value from the stack:
+For the types which cannot conform to Pushable -- either because their representation in Lua is ambiguous, like `[UInt8]`, or because they cannot adopt Protocols, such as `lua_CFunction` or `LuaClosure` -- `LuaState` provides a custom overload of `push()` instead, for example ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku`` or ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``. For such types the "all-in-one" overloads which take a `Pushable` cannot be used, and instead they must be first pushed using the appropriate overload of `push()`, and then used via a function which takes a value from the stack:
 
 ```swift
 let L = LuaState(libraries: .all)
 // Push first...
 L.push(function: { L in
- print("Hello!")
- return 0
+    print("Hello!")
+    return 0
 }
 // ...then use an overload that pops a value from the stack instead of
-// taking a pushable argument.
-L.setglobal("hellofn")
+// taking a Pushable argument.
+L.setglobal(name: "hellofn")
 ```

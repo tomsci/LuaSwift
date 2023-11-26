@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Tom Sutcliffe
 // See LICENSE file for license information.
 
-/// An `Error` type representing an error thrown by Lua code.
+/// An `Error` type representing an error thrown by the Lua runtime.
 ///
 /// This type's implementation of `Pushable` pushes the underlying error object (or string).
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable {

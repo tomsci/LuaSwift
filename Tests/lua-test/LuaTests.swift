@@ -115,7 +115,7 @@ final class LuaTests: XCTestCase {
         // Put L out of scope here, to make sure err.description still works
         L.close()
         L = nil
-    
+
         XCTAssertNotNil(expectedErr)
         XCTAssertEqual(expectedErr!.description, "Deliberate error")
     }
@@ -174,7 +174,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.toboolean(6, key: "a"), false)
         XCTAssertEqual(L.toboolean(6, key: "b"), true)
         XCTAssertEqual(L.toboolean(6, key: "c"), false)
-        
+
         // Test that toboolean returns false if __index errored
         try! L.dostring("return setmetatable({}, { __index = function() error('NOPE') end })")
         XCTAssertEqual(L.toboolean(7, key: "anything"), false)
@@ -521,7 +521,7 @@ final class LuaTests: XCTestCase {
         L.push(dict)
         try L.pcall(nargs: 1, nret: 1)
         let dictValue = L.popref()
-        
+
         for (k, v) in try dictValue.pairs() {
             let key = k.tostring()
             let val = v.toint()
@@ -1970,4 +1970,57 @@ final class LuaTests: XCTestCase {
         lua_arith(L, LUA_OPPOW) // -1^(-0.5) is nan
         XCTAssertTrue(L.tonumber(-1)!.isNaN)
     }
+
+    func test_traceback() {
+        let stacktrace = """
+            [string "error 'Nope'"]:1: Nope
+            stack traceback:
+            \t[C]: in ?
+            \t[C]: in function 'error'
+            \t[string "error 'Nope'"]:1: in main chunk
+            """
+        try! L.load(string: "error 'Nope'")
+        XCTAssertThrowsError(try L.pcall()) { err in
+            guard let err = err as? LuaCallError else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(err.errorString, stacktrace.trimmingCharacters(in: .newlines))
+        }
+    }
+
+    func test_traceback_tableerr() {
+        try! L.load(string: "error({ err = 'doom' })")
+        XCTAssertThrowsError(try L.pcall()) { err in
+            guard let errVal = (err as? LuaCallError)?.errorValue else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(errVal.type, .table)
+            XCTAssertEqual(errVal["err"].tostring(), "doom")
+            // Decode it, why not
+            struct ErrStruct : Equatable, Decodable {
+                let err: String
+            }
+            let errStruct: ErrStruct? = errVal.todecodable()
+            XCTAssertEqual(errStruct, ErrStruct(err: "doom"))
+        }
+    }
+
+    func test_traceback_userdataerr() {
+        try! L.load(string: "local errObj = ...; error(errObj)")
+        struct ErrStruct : Equatable {
+            let err: Int
+        }
+        L.registerMetatable(for: ErrStruct.self, functions: [:])
+        L.push(userdata: ErrStruct(err: 1234))
+        XCTAssertThrowsError(try L.pcall(nargs: 1, nret: 0)) { err in
+            guard let errVal = (err as? LuaCallError)?.errorValue else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(errVal.tovalue(), ErrStruct(err: 1234))
+        }
+    }
+
 }

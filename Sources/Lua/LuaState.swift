@@ -60,9 +60,12 @@ public struct LuaVer {
 public let LUA_VERSION = LuaVer(major: LUASWIFT_LUA_VERSION_MAJOR, minor: LUASWIFT_LUA_VERSION_MINOR,
     release: LUASWIFT_LUA_VERSION_RELEASE)
 
-fileprivate func tracebackFn(_ L: LuaState!) -> CInt {
-    let msg = L.tostring(-1)
-    luaL_traceback(L, L, msg, 0)
+fileprivate func defaultTracebackFn(_ L: LuaState!) -> CInt {
+    if let msg = L.tostring(-1) {
+        luaL_traceback(L, L, msg, 0)
+    } else {
+        // Just return the error object as-is
+    }
     return 1
 }
 
@@ -1783,15 +1786,32 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
     /// - Precondition: The top of the stack must contain a function and `nargs` arguments.
     public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
+        try pcall(nargs: nargs, nret: nret, msgh: traceback ? defaultTracebackFn : nil)
+    }
+
+    /// Make a protected call to a Lua function.
+    ///
+    /// The function and any arguments must already be pushed to the stack in the same way as for
+    /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
+    /// and are popped from the stack by this call. Unless the function errors,
+    /// `nret` result values are then pushed to the stack.
+    ///
+    /// - Parameter nargs: The number of arguments to pass to the function.
+    /// - Parameter nret: The number of expected results. Can be ``LUA_MULTRET``
+    ///   to keep all returned values.
+    /// - Parameter msgh: An optional message handler function to be called if the function errors.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Precondition: The top of the stack must contain a function and `nargs` arguments.
+    public func pcall(nargs: CInt, nret: CInt, msgh: lua_CFunction?) throws {
         let index: CInt
-        if traceback {
+        if let msghFn = msgh {
             index = gettop() - nargs
-            push(function: tracebackFn, toindex: index)
+            push(function: msghFn, toindex: index)
         } else {
             index = 0
         }
         let err = lua_pcall(self, nargs, nret, index)
-        if traceback {
+        if msgh != nil {
             // Keep the stack balanced
             lua_remove(self, index)
         }

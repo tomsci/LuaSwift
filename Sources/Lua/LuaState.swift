@@ -80,7 +80,7 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
 ///
 /// The `rawValue` of the enum uses the same integer values as the `LUA_T...` type constants. Note that `LUA_TNONE` does
 /// not have a `LuaType` representation, and is instead represented by `nil`, ie an optional `LuaType`, in places where
-/// LUA_TNONE can occur.
+/// `LUA_TNONE` can occur.
 public enum LuaType : CInt, CaseIterable {
     // Annoyingly can't use LUA_TNIL etc here because the bridge exposes them as `var LUA_TNIL: CInt { get }`
     // which is not acceptable for an enum (which requires the rawValue to be a literal)

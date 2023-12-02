@@ -93,9 +93,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return tostring(index, encoding: .stringEncoding(encoding), convert: convert)
     }
 
-    /// Override the default string encoding.
+    /// Override the default string encoding for this state.
     ///
-    /// See ``getDefaultStringEncoding()``. If this function is not called, the default encoding is UTF-8.
+    /// If this function is not called, the default encoding is UTF-8. See also ``getDefaultStringEncoding()``.
     public func setDefaultStringEncoding(_ encoding: LuaStringEncoding) {
         getState().defaultStringEncoding = encoding
     }
@@ -104,23 +104,35 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// This is the encoding which Lua strings are assumed to be in if an explicit encoding is not supplied when
     /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-9syls`` or
-    /// ``push(string:toindex:)``. By default, it is assumed all Lua strings are (or should be) UTF-8.
+    /// ``push(string:toindex:)``.
+    ///
+    /// The default string encoding is initially UTF-8. It can be overridden on a per-state basis by calling
+    /// ``setDefaultStringEncoding(_:)``.
     public func getDefaultStringEncoding() -> LuaStringEncoding {
         return maybeGetState()?.defaultStringEncoding ?? .stringEncoding(.utf8)
     }
 
     /// Push a string onto the stack, using the specified encoding.
     ///
-    /// See also ``push(string:encoding:toindex:)-9nxec`` to use encodings other than `String.Encoding`.
+    /// See also ``push(string:encoding:toindex:)-9nxec`` to use encodings other than `String.Encoding`, or
+    /// ``push(string:toindex:)`` to use the default string encoding.
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    /// - Precondition: The string must be representable in the given encoding.
     public func push(string: String, encoding: String.Encoding, toindex: CInt = -1) {
         push(string: string, encoding: .stringEncoding(encoding), toindex: toindex)
     }
 
     /// Push a string onto the stack, using the specified encoding.
+    ///
+    /// For example, to push a string using an encoding such as Code Page 850 which is only supported by
+    /// CoreFoundation:
+    ///
+    /// ```swift
+    /// L.push(string: str, encoding: .cfStringEncoding(.dosLatin1))
+    /// ```
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.

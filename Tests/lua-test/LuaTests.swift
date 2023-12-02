@@ -581,6 +581,17 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(t.metatable?.type, .table)
     }
 
+    func test_LuaValue_equality() {
+        XCTAssertEqual(LuaValue(), LuaValue())
+        XCTAssertEqual(L.ref(any: nil), LuaValue())
+        XCTAssertNotEqual(L.ref(any: 1), L.ref(any: 1))
+        XCTAssertEqual(LuaValue().toboolean(), false)
+        XCTAssertEqual(L.ref(any: 123.456).tonumber(), 123.456)
+        XCTAssertEqual(L.ref(any: 123.0).tonumber(), 123)
+        XCTAssertEqual(L.ref(any: 123).tonumber(), 123)
+        XCTAssertEqual(L.ref(any: nil).tonumber(), nil)
+    }
+
     func test_pushuserdata() {
         struct Foo : Equatable {
             let intval: Int

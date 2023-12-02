@@ -2023,4 +2023,71 @@ final class LuaTests: XCTestCase {
         }
     }
 
+#if !LUASWIFT_NO_FOUNDATION // Foundation required for Bundle.module
+    func test_setRequireRoot() throws {
+        L.openLibraries([.package])
+        let root = Bundle.module.resourceURL!.appending(path: "testRequireRoot1").path
+        L.setRequireRoot(root)
+        try L.load(string: "return require('foo').fn")
+        try L.pcall(nargs: 0, nret: 1)
+
+        let fooinfo = L.getTopFunctionInfo()
+        XCTAssertEqual(fooinfo.source, "@foo.lua")
+        XCTAssertEqual(fooinfo.short_src, "foo.lua")
+
+        try L.load(string: "return require('nested.module').fn")
+        try L.pcall(nargs: 0, nret: 1)
+        let nestedinfo = L.getTopFunctionInfo()
+        XCTAssertEqual(nestedinfo.source, "@nested/module.lua")
+        XCTAssertEqual(nestedinfo.short_src, "nested/module.lua")
+    }
+
+    func test_setRequireRoot_displayPath() throws {
+        L.openLibraries([.package])
+        let root = Bundle.module.resourceURL!.appending(path: "testRequireRoot1").path
+        L.setRequireRoot(root, displayPath: "C:/LOLWAT")
+        try L.load(string: "return require('foo').fn")
+        try L.pcall(nargs: 0, nret: 1)
+        let info = L.getTopFunctionInfo()
+        XCTAssertEqual(info.source, "@C:/LOLWAT/foo.lua")
+        XCTAssertEqual(info.short_src, "C:/LOLWAT/foo.lua")
+    }
+
+    func test_setRequireRoot_requireMissing() {
+        L.openLibraries([.package])
+        let root = Bundle.module.resourceURL!.appending(path: "testRequireRoot1").path
+        L.setRequireRoot(root)
+        try! L.load(string: "require 'nonexistent'", name: "=(load)")
+        let expectedError = """
+            (load):1: module 'nonexistent' not found:
+            \tno field package.preload['nonexistent']
+            \tno file 'nonexistent.lua'
+            """
+        XCTAssertThrowsError(try L.pcall(nargs: 0, nret: 0, traceback: false)) { err in
+            guard let callerr = err as? LuaCallError else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(callerr.errorString, expectedError)
+        }
+    }
+
+#endif
+
+    func test_setRequireRoot_nope() {
+        L.openLibraries([.package])
+        L.setRequireRoot(nil)
+        try! L.load(string: "require 'nonexistent'", name: "=(load)")
+        let expectedError = """
+            (load):1: module 'nonexistent' not found:
+            \tno field package.preload['nonexistent']
+            """
+        XCTAssertThrowsError(try L.pcall(nargs: 0, nret: 0, traceback: false)) { err in
+            guard let callerr = err as? LuaCallError else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(callerr.errorString, expectedError)
+        }
+    }
 }

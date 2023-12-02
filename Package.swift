@@ -88,6 +88,9 @@ let package = Package(
         .testTarget(
             name: "lua-test",
             dependencies: ["Lua", "CLua"],
+            resources: [
+                .copy("testRequireRoot1")
+            ],
             swiftSettings: [
                 .define("LUASWIFT_NO_FOUNDATION", .when(platforms: [.linux]))
             ],
@@ -95,15 +98,15 @@ let package = Package(
                 .plugin(name: "EmbedLuaPlugin")
             ]
         ),
-        .testTarget(
-            name: "lua-test-nofoundation",
-            dependencies: ["Lua", "CLua"],
-            swiftSettings: [
-                .define("LUASWIFT_NO_FOUNDATION")
-            ],
-            plugins: [
-                .plugin(name: "EmbedLuaPlugin")
-            ]
-        ),
+       .testTarget(
+           name: "lua-test-nofoundation",
+           dependencies: ["Lua", "CLua"],
+           swiftSettings: [
+               .define("LUASWIFT_NO_FOUNDATION")
+           ],
+           plugins: [
+               .plugin(name: "EmbedLuaPlugin")
+           ]
+       ),
     ]
 )

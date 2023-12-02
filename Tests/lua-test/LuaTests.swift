@@ -2037,7 +2037,7 @@ final class LuaTests: XCTestCase {
 #if !LUASWIFT_NO_FOUNDATION // Foundation required for Bundle.module
     func test_setRequireRoot() throws {
         L.openLibraries([.package])
-        let root = Bundle.module.resourceURL!.appending(path: "testRequireRoot1").path
+        let root = Bundle.module.resourceURL!.appendingPathComponent("testRequireRoot1", isDirectory: false).path
         L.setRequireRoot(root)
         try L.load(string: "return require('foo').fn")
         try L.pcall(nargs: 0, nret: 1)
@@ -2055,7 +2055,7 @@ final class LuaTests: XCTestCase {
 
     func test_setRequireRoot_displayPath() throws {
         L.openLibraries([.package])
-        let root = Bundle.module.resourceURL!.appending(path: "testRequireRoot1").path
+        let root = Bundle.module.resourceURL!.appendingPathComponent("testRequireRoot1", isDirectory: false).path
         L.setRequireRoot(root, displayPath: "C:/LOLWAT")
         try L.load(string: "return require('foo').fn")
         try L.pcall(nargs: 0, nret: 1)
@@ -2066,7 +2066,7 @@ final class LuaTests: XCTestCase {
 
     func test_setRequireRoot_requireMissing() {
         L.openLibraries([.package])
-        let root = Bundle.module.resourceURL!.appending(path: "testRequireRoot1").path
+        let root = Bundle.module.resourceURL!.appendingPathComponent("testRequireRoot1", isDirectory: false).path
         L.setRequireRoot(root)
         try! L.load(string: "require 'nonexistent'", name: "=(load)")
         let expectedError = """

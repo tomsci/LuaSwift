@@ -296,7 +296,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let L = self
         // Now configure the require path
         guard getglobal("package") == .table else {
-            fatalError("Cannot use setRequireRoot if package library not opened!")
+            preconditionFailure("Cannot use setRequireRoot if package library not opened!")
         }
 
         // Set package.path even though our moduleSearcher doesn't use it
@@ -1901,7 +1901,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     private func doRegisterMetatable(typeName: String, functions: [String: MetafieldType]) {
         precondition(functions["__gc"] == nil, "__gc function for Swift userdata types is registered automatically")
         if luaL_newmetatable(self, typeName) == 0 {
-            fatalError("Metatable for type \(typeName) is already registered!")
+            preconditionFailure("Metatable for type \(typeName) is already registered!")
         }
 
         for (name, function) in functions {

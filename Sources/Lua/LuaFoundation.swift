@@ -137,13 +137,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter string: The `String` to push.
     /// - Parameter encoding: The encoding to use to encode the string data.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    /// - Precondition: The string must be representable in the given encoding.
     public func push(string: String, encoding: LuaStringEncoding, toindex: CInt = -1) {
         guard let data = string.data(using: encoding) else {
-            assertionFailure("Cannot represent string in the given encoding?!")
-            pushnil(toindex: toindex)
-            return
+            preconditionFailure("Cannot represent string in the given encoding")
         }
-        push(data, toindex: toindex)
+        push(bytes: data, toindex: toindex)
     }
 
     /// Push any type conforming to `ContiguousBytes` on to the stack, as a Lua `string`.

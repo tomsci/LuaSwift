@@ -103,3 +103,90 @@ extension UnsafeRawBufferPointer: Pushable {
         }
     }
 }
+
+/// A `Pushable` wrapper around a `lua_CFunction`.
+public struct LuaFunctionWrapper: Pushable {
+    public let function: lua_CFunction
+
+    public func push(onto L: LuaState) {
+        L.push(function: function)
+    }
+}
+
+/// A `Pushable` wrapper around a `[UInt8]`.
+public struct LuaDataArrayWrapper: Pushable {
+    public let data: [UInt8]
+
+    public func push(onto L: LuaState) {
+        L.push(data)
+    }
+}
+
+/// Internal helper class. Do not instantiate directly.
+public struct NonPushableTypesHelper: Pushable {
+    private init() {}
+    public func push(onto L: LuaState) {
+        fatalError("unreachable")
+    }
+}
+
+// It's not clear to me why the "where Self == NonPushableTypesHelper" has to exist, other than because the type system
+// needs there to be _some_ sort of concrete type to resolve ".nilValue" against.
+extension Pushable where Self == NonPushableTypesHelper {
+    /// Returns a Pushable representing the `nil` Lua value.
+    ///
+    /// This permits the use of `.nilValue` anywhere a Pushable can be specified. For example to remove `somekey`
+    /// from the table on top of the stack:
+    ///
+    /// ```swift
+    /// L.rawset(-1, key: "somekey", value: .nilValue)
+    /// ```
+    public static var nilValue: some Pushable {
+        return LuaValue.nilValue
+    }
+
+    /// Returns a Pushable representing a `lua_CFunction`.
+    ///
+    /// This permits the use of `.function(fn)` anywhere a Pushable can be specified. For example to define a global
+    /// function:
+    ///
+    /// ```swift
+    /// L.setglobal(name: "thursday", value: .function { L in
+    ///     L!.push(42)
+    ///     return 1
+    /// }
+    /// ```
+    public static func function(_ val: lua_CFunction) -> LuaFunctionWrapper {
+        // The return type should be `some Pushable`, see https://github.com/apple/swift/issues/61357
+        return LuaFunctionWrapper(function: val)
+    }
+
+    /// Returns a Pushable representing a `LuaClosure`.
+    ///
+    /// This permits the use of `.closure(fn)` anywhere a Pushable can be specified. For example to define a global
+    /// function:
+    ///
+    /// ```swift
+    /// L.setglobal(name: "thursday", value: .closure { L in
+    ///     L.push(42)
+    ///     return 1
+    /// }
+    /// ```
+    public static func closure(_ val: @escaping LuaClosure) -> LuaClosureWrapper {
+        // The return type should be `some Pushable`, see https://github.com/apple/swift/issues/61357
+        return LuaClosureWrapper(val)
+    }
+
+    /// Returns a Pushable representing a `UInt8` Array as a byte string.
+    ///
+    /// This permits the use of `.data(fn)` anywhere a Pushable can be specified. For example to define a global
+    /// string:
+    ///
+    /// ```swift
+    /// L.setglobal(name: "hello", value: .data([0x77, 0x6F, 0x72, 0x6C, 0x64]))
+    /// ```
+    public static func data(_ val: [UInt8]) -> LuaDataArrayWrapper {
+        // The return type should be `some Pushable`, see https://github.com/apple/swift/issues/61357
+        return LuaDataArrayWrapper(data: val)
+    }
+}

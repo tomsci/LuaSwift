@@ -11,7 +11,6 @@ Most basic data types, such as `String`, `Int`, `Bool`, `Array` and `Dictionary`
 For example:
 
 ```swift
-let L = LuaState(libraries: .all)
 L.push(1234) // Integer is Pushable
 L.push(["abc", "def"]) // String is Pushable, therefore Array<String> is too
 L.setglobal(name: "foo", value: "bar") // Assigns the Pushable "bar" to the global named "foo"
@@ -19,10 +18,26 @@ L.setglobal(name: "foo", value: "bar") // Assigns the Pushable "bar" to the glob
 
 Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`.
 
-For the types which cannot conform to Pushable -- either because their representation in Lua is ambiguous, like `[UInt8]`, or because they cannot adopt Protocols, such as `lua_CFunction` or `LuaClosure` -- `LuaState` provides a custom overload of `push()` instead, for example ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku`` or ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``. For such types the "all-in-one" overloads which take a `Pushable` cannot be used, and instead they must be first pushed using the appropriate overload of `push()`, and then used via a function which takes a value from the stack:
+For types like `LuaClosure` and `lua_CFunction` which conceptually should be pushable but the Swift type system does not permit to conform to `Pushable`, the helper functions ``function(_:)`` and ``closure(_:)`` are provided to allow you to write:
 
 ```swift
-let L = LuaState(libraries: .all)
+L.setglobal(name: "foo", value: .function { L in
+    print("This is a lua_CFunction used as a Pushable!")
+    return 0
+})
+```
+
+Similarly ``nilValue`` can be used to push `nil` as if it were a `Pushable`:
+
+```swift
+L.setglobal(name: "foo", value: .nilValue)
+```
+
+There is also a ``data(_:)`` helper to treat `[UInt8]` as a string of bytes.
+
+The alternative to using one of the helper functions for non-Pushable types is to use the appropriate overload of `push()` instead, for example ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku`` or ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``, then uses them via a function which takes a value from the stack:
+
+```swift
 // Push first...
 L.push(function: { L in
     print("Hello!")

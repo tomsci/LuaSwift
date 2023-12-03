@@ -733,22 +733,6 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
 }
 
-// It's not clear to me why the "where Self == LuaValue" has to exist, other than because the type system needs there
-// to be _some_ sort of concrete type to resolve ".nilValue" against.
-extension Pushable where Self == LuaValue {
-    /// Returns a Pushable representing the `nil` Lua value.
-    ///
-    /// This permits the use of `.nilValue` anywhere a Pushable can be specified. For example to remove `somekey`
-    /// from the table on top of the stack:
-    ///
-    /// ```swift
-    /// L.rawset(-1, key: "somekey", value: .nilValue)
-    /// ```
-    public static var nilValue: some Pushable {
-        return LuaValue.nilValue
-    }
-}
-
 struct UnownedLuaValue {
     unowned let val: LuaValue
 }

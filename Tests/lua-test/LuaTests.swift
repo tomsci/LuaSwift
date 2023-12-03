@@ -953,6 +953,28 @@ final class LuaTests: XCTestCase {
 #endif
     }
 
+    func test_push_helpers() throws {
+        L.setglobal(name: "foo", value: .function { L in
+            L!.push(42)
+            return 1
+        })
+        L.getglobal("foo")
+        XCTAssertEqual(try L.pcall(), 42)
+
+        L.setglobal(name: "foo", value: .closure { L in
+            L.push(123)
+            return 1
+        })
+        L.getglobal("foo")
+        XCTAssertEqual(try L.pcall(), 123)
+
+        L.setglobal(name: "hello", value: .data([0x77, 0x6F, 0x72, 0x6C, 0x64]))
+        XCTAssertEqual(L.globals["hello"].tovalue(), "world")
+
+        L.setglobal(name: "hello", value: .nilValue)
+        XCTAssertEqual(L.globals["hello"].type, .nil)
+    }
+
     func test_push_closure() throws {
         var called = false
         L.push(closure: {
@@ -1945,7 +1967,7 @@ final class LuaTests: XCTestCase {
         })
 
         L.settop(0)
-        L.setglobal(name: "nativeFn", value: LuaClosureWrapper { L in
+        L.setglobal(name: "nativeFn", value: .closure { L in
             let _: Foo = try L.checkOption(1)
             return 0
         })

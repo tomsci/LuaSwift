@@ -119,6 +119,22 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(expectedErr).description, "Deliberate error")
     }
 
+    func test_istype() {
+        L.push(1234) // 1
+        L.push(12.34) // 2
+        L.push(true) // 3
+        L.pushnil() // 4
+
+        XCTAssertTrue(L.isinteger(1))
+        XCTAssertFalse(L.isinteger(2))
+        XCTAssertFalse(L.isinteger(3))
+        XCTAssertFalse(L.isnil(3))
+        XCTAssertTrue(L.isnoneornil(4))
+        XCTAssertTrue(L.isnil(4))
+        XCTAssertFalse(L.isnone(4))
+        XCTAssertTrue(L.isnone(5))
+    }
+
     func test_toint() {
         L.push(1234) // 1
         L.push(true) // 2

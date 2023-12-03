@@ -582,6 +582,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// See [lua_isnil](https://www.lua.org/manual/5.4/manual.html#lua_isnil).
+    public func isnil(_ index: CInt) -> Bool {
+        return type(index) == .nil
+    }
+
     /// Returns true if the value is an integer.
     ///
     /// Note that this can return false even if `tointeger()` would succeed, in the case of a number which is stored

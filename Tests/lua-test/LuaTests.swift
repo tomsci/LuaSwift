@@ -116,8 +116,7 @@ final class LuaTests: XCTestCase {
         L.close()
         L = nil
 
-        XCTAssertNotNil(expectedErr)
-        XCTAssertEqual(expectedErr!.description, "Deliberate error")
+        XCTAssertEqual(try XCTUnwrap(expectedErr).description, "Deliberate error")
     }
 
     func test_toint() {
@@ -341,7 +340,7 @@ final class LuaTests: XCTestCase {
 
     }
 
-    func test_pairs() {
+    func test_pairs() throws {
         var dict = [
             "aaa": 111,
             "bbb": 222,
@@ -351,11 +350,9 @@ final class LuaTests: XCTestCase {
         for (k, v) in L.pairs(1) {
             XCTAssertTrue(k > 1)
             XCTAssertTrue(v > 1)
-            let key = L.tostring(k)
-            let val = L.toint(v)
-            XCTAssertNotNil(key)
-            XCTAssertNotNil(val)
-            let foundVal = dict.removeValue(forKey: key!)
+            let key = try XCTUnwrap(L.tostring(k))
+            let val = try XCTUnwrap(L.toint(v))
+            let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
@@ -424,8 +421,8 @@ final class LuaTests: XCTestCase {
         ]
         L.push(dict)
         try L.for_pairs(1) { k, v in
-            let key = L.tostring(k)!
-            let val = L.toint(v)!
+            let key = try XCTUnwrap(L.tostring(k))
+            let val = try XCTUnwrap(L.toint(v))
             let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
             return true
@@ -456,11 +453,9 @@ final class LuaTests: XCTestCase {
         try L.pcall(nargs: 1, nret: 1)
 
         try L.for_pairs(-1) { k, v in
-            let key = L.tostring(k)
-            let val = L.toint(v)
-            XCTAssertNotNil(key)
-            XCTAssertNotNil(val)
-            let foundVal = dict.removeValue(forKey: key!)
+            let key = try XCTUnwrap(L.tostring(k))
+            let val = try XCTUnwrap(L.toint(v))
+            let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
             return true
         }
@@ -489,11 +484,9 @@ final class LuaTests: XCTestCase {
         ]
         let dictValue = L.ref(any: dict)
         for (k, v) in try dictValue.pairs() {
-            let key = k.tostring()
-            let val = v.toint()
-            XCTAssertNotNil(key)
-            XCTAssertNotNil(val)
-            let foundVal = dict.removeValue(forKey: key!)
+            let key = try XCTUnwrap(k.tostring())
+            let val = try XCTUnwrap(v.toint())
+            let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
@@ -523,11 +516,9 @@ final class LuaTests: XCTestCase {
         let dictValue = L.popref()
 
         for (k, v) in try dictValue.pairs() {
-            let key = k.tostring()
-            let val = v.toint()
-            XCTAssertNotNil(key)
-            XCTAssertNotNil(val)
-            let foundVal = dict.removeValue(forKey: key!)
+            let key = try XCTUnwrap(k.tostring())
+            let val = try XCTUnwrap(v.toint())
+            let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
@@ -555,11 +546,9 @@ final class LuaTests: XCTestCase {
         let dictValue = L.popref()
 
         for (k, v) in try dictValue.pairs() {
-            let key = k.tostring()
-            let val = v.toint()
-            XCTAssertNotNil(key)
-            XCTAssertNotNil(val)
-            let foundVal = dict.removeValue(forKey: key!)
+            let key = try XCTUnwrap(k.tostring())
+            let val = try XCTUnwrap(v.toint())
+            let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
@@ -765,27 +754,25 @@ final class LuaTests: XCTestCase {
         }
         let f = Foo()
         XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
-        L.registerMetatable(for: Foo.self, functions: ["__call": .function { (L: LuaState!) -> CInt in
-            let f: Foo? = L.touserdata(1)
+        L.registerMetatable(for: Foo.self, functions: ["__call": .closure { L in
+            let f: Foo = try XCTUnwrap(L.touserdata(1))
             // Above would have failed if we get called with an innerfoo
-            XCTAssertNotNil(f)
-            f!.str = L.tostring(2)
+            f.str = L.tostring(2)
             return 0
         }])
         XCTAssertTrue(L.isMetatableRegistered(for: Foo.self))
         L.push(userdata: f)
 
-        if true {
+        do {
             // A different Foo ("inner Foo")
             class Foo {
                 var str: String?
             }
             XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
-            L.registerMetatable(for: Foo.self, functions: ["__call": .function { (L: LuaState!) -> CInt in
-                let f: Foo? = L.touserdata(1)
+            L.registerMetatable(for: Foo.self, functions: ["__call": .closure { L in
+                let f: Foo = try XCTUnwrap(L.touserdata(1))
                 // Above would have failed if we get called with an outerfoo
-                XCTAssertNotNil(f)
-                f!.str = L.tostring(2)
+                f.str = L.tostring(2)
                 return 0
             }])
             XCTAssertTrue(L.isMetatableRegistered(for: Foo.self))
@@ -1278,11 +1265,11 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tovalue(2), Double.pi)
     }
 
-    func test_math_pi() {
+    func test_math_pi() throws {
         // Given these are defined in completely different unrelated places, I'm slightly surprised their definitions
         // agree exactly.
         L.openLibraries([.math])
-        let mathpi: Double = L.globals["math"]["pi"].tovalue()!
+        let mathpi: Double = try XCTUnwrap(L.globals["math"]["pi"].tovalue())
         XCTAssertEqual(mathpi, Double.pi)
     }
 
@@ -1319,44 +1306,44 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual((anyHashable as? LuaValue)?.tovalue(), "abc")
     }
 
-    func test_tovalue_any_stringarray() {
+    func test_tovalue_any_stringarray() throws {
         L.push(["abc"])
-        let anyArray: Array<Any> = L.tovalue(1)!
+        let anyArray: Array<Any> = try XCTUnwrap(L.tovalue(1))
         XCTAssertEqual((anyArray[0] as? LuaValue)?.tovalue(), "abc")
         let anyHashableArray: Array<AnyHashable> = L.tovalue(1)!
         XCTAssertEqual((anyHashableArray[0] as? LuaValue)?.tovalue(), "abc")
     }
 
-    func test_tovalue_luavaluearray() {
+    func test_tovalue_luavaluearray() throws {
         L.newtable()
         L.rawset(-1, key: 1, value: 123)
         L.rawset(-1, key: 2, value: "abc")
-        let array: Array<LuaValue> = L.tovalue(1)!
+        let array: Array<LuaValue> = try XCTUnwrap(L.tovalue(1))
         XCTAssertEqual(array[0].tovalue(), 123)
         XCTAssertEqual(array[1].tovalue(), "abc")
     }
 
-    func test_tovalue_any_stringdict() {
+    func test_tovalue_any_stringdict() throws {
         L.push(["abc": "def"])
-        let anyDict: Dictionary<AnyHashable, Any> = L.tovalue(1)!
-        let (k, v) = anyDict.first!
+        let anyDict: Dictionary<AnyHashable, Any> = try XCTUnwrap(L.tovalue(1))
+        let (k, v) = try XCTUnwrap(anyDict.first)
         XCTAssertEqual((k as? LuaValue)?.tovalue(), "abc")
         XCTAssertEqual((v as? LuaValue)?.tovalue(), "def")
     }
 
-    func test_tovalue_any_stringintdict() {
+    func test_tovalue_any_stringintdict() throws {
         L.push(["abc": 123])
-        let anyDict: Dictionary<AnyHashable, Any> = L.tovalue(1)!
-        let (k, v) = anyDict.first!
+        let anyDict: Dictionary<AnyHashable, Any> = try XCTUnwrap(L.tovalue(1))
+        let (k, v) = try XCTUnwrap(anyDict.first)
         XCTAssertEqual((k as? LuaValue)?.tovalue(), "abc")
         XCTAssertEqual(v as? Int, 123)
     }
 
-    func test_tovalue_stringanydict() {
+    func test_tovalue_stringanydict() throws {
         L.newtable()
         L.rawset(-1, key: "abc", value: "def")
         L.rawset(-1, key: "123", value: 456)
-        let anyDict: Dictionary<String, Any> = L.tovalue(1)!
+        let anyDict: Dictionary<String, Any> = try XCTUnwrap(L.tovalue(1))
         XCTAssertEqual((anyDict["abc"] as? LuaValue)?.tovalue(), "def")
         XCTAssertEqual(anyDict["123"] as? Int, 456)
     }
@@ -1383,7 +1370,7 @@ final class LuaTests: XCTestCase {
         XCTAssertNotNil((anyanydict.keys.first as? LuaValue)?.tovalue(type: lua_CFunction.self))
     }
 
-    func test_tovalue_luaclosure() {
+    func test_tovalue_luaclosure() throws {
         let closure: LuaClosure = { _ in return 0 }
         L.push(closure)
         XCTAssertNotNil(L.tovalue(1, type: LuaClosure.self))
@@ -1392,7 +1379,7 @@ final class LuaTests: XCTestCase {
         L.newtable()
         L.push(closure)
         L.rawset(-2, key: 1)
-        let closureArray: [LuaClosure] = L.tovalue(1)!
+        let closureArray: [LuaClosure] = try XCTUnwrap(L.tovalue(1))
         XCTAssertEqual(closureArray.count, 1)
     }
 
@@ -1493,7 +1480,7 @@ final class LuaTests: XCTestCase {
         try L.pcall(nargs: 0, nret: 1)
         XCTAssertEqual(L.tostring(-1, key: "hello"), "world")
         L.rawget(-1, key: "foo")
-        let info = L.getTopFunctionInfo()
+        let info = L.getTopFunctionInfo(what: [.source])
         // Check we're not leaking build machine info into the function debug info
         XCTAssertEqual(info.source, "@testmodule1.lua")
         XCTAssertEqual(info.short_src, "testmodule1.lua")
@@ -1733,7 +1720,7 @@ final class LuaTests: XCTestCase {
     }
 
 #if !LUASWIFT_NO_FOUNDATION
-    func test_push_NSNumber() {
+    func test_push_NSNumber() throws {
         let n: NSNumber = 1234
         let nd: NSNumber = 1234.0
         L.push(n) // 1 - using NSNumber's Pushable
@@ -1744,10 +1731,9 @@ final class LuaTests: XCTestCase {
         let cfn: CFNumber = CFNumberCreate(nil, .doubleType, &i)
         // CF bridging is _weird_: I cannot write L.push(cfn) ie CFNumber does not directly conform to Pushable, but
         // the conversion to Pushable will always succeed, presumably because NSNumber is Pushable?
-        let cfn_pushable = cfn as? Pushable
-        XCTAssertNotNil(cfn_pushable)
+        let cfn_pushable = try XCTUnwrap(cfn as? Pushable)
         L.push(cfn as NSNumber) // 3 - CFNumber as NSNumber (Pushable)
-        L.push(cfn_pushable!) // 4 - CFNumber as Pushable
+        L.push(cfn_pushable) // 4 - CFNumber as Pushable
         L.push(any: cfn) // 5 - CFNumber as Any
         L.push(nd) // 6 - integer-representable NSNumber from a double
         L.push(ni) // 7 - non-integer-representable NSNumber
@@ -1853,11 +1839,11 @@ final class LuaTests: XCTestCase {
         XCTAssertGreaterThan(L.collectorCount(), count)
     }
 
-    func test_dump() {
+    func test_dump() throws {
         try! L.load(string: """
             return "called"
             """)
-        let data = L.dump(strip: false)!
+        let data = try XCTUnwrap(L.dump(strip: false))
         L.settop(0)
         try! L.load(data: data, name: "undumped", mode: .binary)
         try! L.pcall(nargs: 0, nret: 1)
@@ -1875,7 +1861,7 @@ final class LuaTests: XCTestCase {
         try L.pcall(nargs: 0, nret: 0)
         L.getglobal("baz")
 
-        let n = L.findUpvalue(index: -1, name: "foo")
+        let n = try XCTUnwrap(L.findUpvalue(index: -1, name: "foo"))
         XCTAssertEqual(n, 1)
         XCTAssertEqual(L.findUpvalue(index: -1, name: "bar"), 2)
         XCTAssertEqual(L.findUpvalue(index: -1, name: "nope"), nil)
@@ -1883,13 +1869,13 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(L.getUpvalue(index: -1, n: 3))
         XCTAssertEqual(L.getUpvalue(index: -1, n: 1)?.value.toint(), 123)
 
-        let updated = L.setUpvalue(index: -1, n: n!, value: "abc") // modify foo
+        let updated = L.setUpvalue(index: -1, n: n, value: "abc") // modify foo
         XCTAssertTrue(updated)
         let ret: String? = try L.pcall()
         XCTAssertEqual(ret, "abc")
 
         L.getglobal("baz")
-        L.setUpvalue(index: -1, n: n!, value: .nilValue)
+        L.setUpvalue(index: -1, n: n, value: .nilValue)
         let barRet: Int? = try L.pcall()
         XCTAssertEqual(barRet, 456)
     }
@@ -1948,9 +1934,9 @@ final class LuaTests: XCTestCase {
             case baz
         }
         L.push("foo")
-        let arg1: Foo = try! L.checkOption(1)
+        let arg1: Foo = try XCTUnwrap(L.checkOption(1))
         XCTAssertEqual(arg1, .foo)
-        let arg2: Foo = try! L.checkOption(2, default: .bar)
+        let arg2: Foo = try XCTUnwrap(L.checkOption(2, default: .bar))
         XCTAssertEqual(arg2, .bar)
 
         L.push(123)
@@ -1969,17 +1955,17 @@ final class LuaTests: XCTestCase {
         })
     }
 
-    func test_nan() {
+    func test_nan() throws {
         L.push(Double.nan)
-        XCTAssertTrue(L.tonumber(-1)!.isNaN)
+        XCTAssertTrue(try XCTUnwrap(L.tonumber(-1)).isNaN)
 
         L.push(Double.infinity)
-        XCTAssertTrue(L.tonumber(-1)!.isInfinite)
+        XCTAssertTrue(try XCTUnwrap(L.tonumber(-1)).isInfinite)
 
         L.push(-1)
         L.push(-0.5)
         lua_arith(L, LUA_OPPOW) // -1^(-0.5) is nan
-        XCTAssertTrue(L.tonumber(-1)!.isNaN)
+        XCTAssertTrue(try XCTUnwrap(L.tonumber(-1)).isNaN)
     }
 
     func test_traceback() {

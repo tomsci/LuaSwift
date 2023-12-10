@@ -102,7 +102,17 @@ int luaswift_loadfile(lua_State *L, const char *filename,
   return status;
 }
 
-// The next few functions exist because it is not safe to call lua_error() from a Swift function
+int luaswift_searcher_preload(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE);
+    if (lua_getfield(L, -1, name) == LUA_TNIL) {  /* not found? */
+        lua_pushfstring(L, "no field package.preload['%s']", name);
+        return 1;
+    } else {
+        lua_pushliteral(L, ":preload:");
+        return 2;
+    }
+}
 
 int luaswift_callclosurewrapper(lua_State *L) {
     // The function pointer for LuaClosureWrapper.callClosure is in the registry keyed by the

@@ -190,8 +190,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         /// * `utf8`
         ///
         /// Note that `package` is not a 'safe' library by this definition because it permits arbitrary DLLs to be
-        /// loaded. `package` is safe if ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)`` is called,
-        /// however.
+        /// loaded.
         public static let safe: Libraries = [.coroutine, .table, .string, .math, .utf8]
     }
 
@@ -281,7 +280,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Configure the directory to look in when loading modules with `require`.
     ///
-    /// This replaces the default system search paths, and also disables native module loading.
+    /// This replaces `package.searchers`, which has the effect of replacing the default system search paths and
+    /// disabling native module loading (via `require`). `package.cpath` is removed, and `package.path` is set to
+    /// `"<path>/?.lua"` but the value is effectively read-only; subsequently changing it will not affect the lookup
+    /// behaviour.
     ///
     /// For example `require "foo"` will look for `<path>/foo.lua`, and `require "foo.bar"` will look for
     /// `<path>/foo/bar.lua`.
@@ -289,8 +291,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter path: The root directory containing .lua files. Specify `nil` to disable all module loading (except
     ///   for any preloads configured with ``addModules(_:mode:)``).
     /// - Parameter displayPath: What to display in stacktraces instead of showing the full `path`. The default `""`
-    ///   means stacktraces will contain just the Lua module names. Pass in `path` or `nil` to show the unmodified real
-    ///   path.
+    ///   means stacktraces will contain just the relative file paths, relative to `path`. Pass in `path` or `nil` to
+    ///   show the unmodified real path.
     /// - Precondition: The `package` standard library must have been opened.
     public func setRequireRoot(_ path: String?, displayPath: String? = "") {
         let L = self
@@ -307,7 +309,19 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
         L.rawset(-2, utf8Key: "path")
 
-        L.rawget(-1, utf8Key: "searchers")
+        // Unset cpath, since we remove the searchers that use it
+        L.rawset(-1, utf8Key: "cpath", value: .nilValue)
+
+        // Previously we would modify the existing package.searchers, which was expected to look like:
+        // [1]: searcher_preload
+        // [2]: searcher_Lua
+        // [3]: searcher_C
+        // [4]: searcher_Croot
+        // Now we just replace searchers entirely, providing our own searcher_preload and searcher_Lua equivalents.
+
+        L.newtable(narr: 2)
+        L.rawset(-1, key: 1, value: .function(luaswift_searcher_preload))
+
         if let pathRoot = path {
             let searcher: LuaClosure = { L in
                 let displayPrefix = displayPath ?? pathRoot
@@ -329,16 +343,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                     return 1
                 } // Otherwise throw
             }
-            L.push(searcher)
-        } else {
-            pushnil()
+            L.rawset(-1, key: 2, value: .closure(searcher)) // 2nd searcher is the .lua lookup one
         }
-        L.rawset(-2, key: 2) // 2nd searcher is the .lua lookup one
-        pushnil()
-        L.rawset(-2, key: 3) // And prevent 3 from being used
-        pushnil()
-        L.rawset(-2, key: 4) // Ditto 4
-        pop(2) // searchers, package
+        L.rawset(-2, utf8Key: "searchers") // Pops searchers
+
+        pop(1) // package
     }
 
     /// Add built-in modules to the [preload](https://www.lua.org/manual/5.4/manual.html#pdf-package.preload) table.

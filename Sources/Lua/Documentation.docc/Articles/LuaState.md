@@ -155,7 +155,7 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 
 * LuaSwift may set registry table entries using keys that are private `lua_CFunction` pointers or strings with prefix `"LuaSwift_"`. Clients must not interfere with such entries. LuaSwift also uses `luaL_ref` internally.
 
-* To use ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)``, the `package` library must be imported and `package.searchers` must be set to its default value.
+* To use ``Lua/Swift/UnsafeMutablePointer/setRequireRoot(_:displayPath:)``, the `package` library must have been opened.
 
 * ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)`` assumes [`LUA_LOADED_TABLE`](https://www.lua.org/manual/5.4/manual.html#pdf-LUA_LOADED_TABLE) behaves in the usual way.
 

@@ -2950,6 +2950,20 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             throw argumentError(arg, "invalid option '\(raw)' for \(String(describing: T.self))")
         }
     }
+
+    /// Debugging function to dump the contents of the Lua stack.
+    ///
+    /// If no parameters are specified, prints all elements in the current stack frame using
+    /// ``tostring(_:encoding:convert:)-9syls`` with `encoding=nil` and `convert=true`.
+    ///
+    /// - Parameter from: The index to start from (default is 1, ie start from the bottom of the stack).
+    /// - Parameter to: The last index to print. The default value `nil` is the same as specifying `gettop()`, meaning
+    ///   to include elements up to and including the topmost.
+    public func printStack(from: CInt = 1, to: CInt? = nil) {
+        for i in from ... (to ?? gettop()) {
+            print("\(i): \(tostring(i, convert: true)!)")
+        }
+    }
 }
 
 protocol LuaTemporaryRef {

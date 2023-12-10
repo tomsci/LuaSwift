@@ -325,6 +325,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/getTopFunctionArguments()``
 - ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)``
 - ``Lua/Swift/UnsafeMutablePointer/getWhere(level:)``
+- ``Lua/Swift/UnsafeMutablePointer/printStack(from:to:)``
 
 ### Upvalues
 

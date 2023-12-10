@@ -1716,13 +1716,12 @@ final class LuaTests: XCTestCase {
             moo()
             """, name: "=test")
         L.push(index: 1)
-        L.push(closure: {
-            let L = self.L!
+        L.push({ L in
             info = L.getStackInfo(level: 1)
             whereStr = L.getWhere(level: 1)
             return 0
         })
-        try L.pcall(nargs:1, nret: 0)
+        try L.pcall(nargs: 1, nret: 0)
         XCTAssertEqual(info.name, "moo")
         XCTAssertEqual(info.namewhat, .global)
         XCTAssertEqual(info.what, .lua)
@@ -1743,6 +1742,44 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(fninfo.name) // a main fn won't have a name
         XCTAssertEqual(fninfo.namewhat, .other)
         XCTAssertNil(fninfo.currentline)
+    }
+
+    func test_getinfo_stripped() throws {
+        try L.load(string: """
+            fn = ...
+            function moo(arg, arg2, arg3)
+                fn()
+            end
+            moo()
+            """, name: "=test")
+        let bytecode = L.dump(strip: true)!
+        L.pop()
+        try L.load(data: bytecode, name: nil, mode: .binary)
+        var info: LuaDebug! = nil
+        L.push({ L in
+            info = L.getStackInfo(level: 1)
+            return 0
+        })
+        try L.pcall(nargs: 1, nret: 0)
+
+        XCTAssertEqual(info.name, "moo")
+        XCTAssertEqual(info.source, "=?")
+        XCTAssertEqual(info.short_src, "?")
+        // Apparently stripping removes the info that makes it possible to determine moo is a global, so it reverts to
+        // field.
+        XCTAssertEqual(info.namewhat, .field)
+        XCTAssertEqual(info.what, .lua)
+        XCTAssertEqual(info.currentline, nil)
+        // These line numbers are preeserved even through stripping, which I suppose makes sense given the docs say
+        // "If strip is true, the binary representation **may** not include all debug information about the function, to
+        // save space".
+        XCTAssertEqual(info.linedefined, 2)
+        XCTAssertEqual(info.lastlinedefined, 4)
+        XCTAssertEqual(info.nups, 1)
+        XCTAssertEqual(info.nparams, 3)
+        XCTAssertEqual(info.isvararg, false)
+        XCTAssertEqual(info.function?.type, .function)
+        XCTAssertEqual(info.validlines, [])
     }
 
     func test_isinteger() {

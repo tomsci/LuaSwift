@@ -57,21 +57,89 @@ public struct LuaDebug {
         case main
     }
 
+    /// The name of the function, if known.
+    ///
+    /// Will be `nil` if `.name` was not specified in the `what` parameter, or if no name could be determined.
     public let name: String?
+
+    /// How the name was determined.
+    ///
+    /// Will be `nil` if `.name` was not specified in the `what` parameter, or if no name could be determined.
     public let namewhat: NameType?
+
+    /// The type of the function.
+    ///
+    /// Will be `nil` if `.source` was not specified in the `what` parameter.
     public let what: FunctionType?
+
+    /// The source of the chunk that created the function.
+    ///
+    /// Will be `nil` if `.source` was not specified in the `what` parameter. If the function was loaded from a binary
+    /// chunk that did not supply a `name`, then `source` will be `"=?"` (in Lua 5.4).
     public let source: String?
+
+    /// The line number in the function which is currently being executed.
+    ///
+    /// Will be `nil` if `.currentline` was not specified in the `what` parameter, if the `LuaDebug` instance was
+    /// not created from a function on the call stack, if the function is a C function, or if the function was stripped
+    /// of debugging information.
     public let currentline: CInt?
+
+    /// The line number where the definition of the function starts.
+    ///
+    /// Will be `nil` if `.source`. was not specified in the `what` parameter, or if the function is a C function.
     public let linedefined: CInt?
+
+    /// The line number where the definition of the function ends.
+    ///
+    /// Will be `nil` if `.source`. was not specified in the `what` parameter, or if the function is a C function.
     public let lastlinedefined: CInt?
+
+    /// The number of upvalues to the function.
+    ///
+    /// Will be `nil` if `.paraminfo` was not specified in the `what` parameter.
     public let nups: Int?
+
+    /// The number of parameters to the function.
+    ///
+    /// Will be `nil` if `.paraminfo` was not specified in the `what` parameter. Will always be zero for C functions.
     public let nparams: Int?
+
+    /// Whether the function is variadic.
+    ///
+    /// Will be `nil` if `.paraminfo` was not specified in the `what` parameter. Will always be `true` for C functions.
     public let isvararg: Bool?
+
+    /// true if this function invocation was called by a tail call.
+    ///
+    /// Will be `nil` if `.istailcall` was not specified in the `what` parameter.
     public let istailcall: Bool?
+
+    /// The stack index of the first value being transferred by a hook.
+    ///
+    /// Will be `nil` if `.transfers` was not specified in the `what` parameter, the Lua version being used is older
+    /// than 5.4, or if the `LuaDebug` instance was not created from a call or return hook.
     public let ftransfer: Int?
+
+    /// The number of values being transferred.
+    ///
+    /// See ``ftransfer``. Will be `nil` if `ftransfer` is `nil`.
     public let ntransfer: Int?
+
+    /// A printable version of `source`, for error messages.
+    ///
+    /// Will be `nil` if `.source` was not specified in the `what` parameter.
     public let short_src: String?
+
+    /// The function itself, as a `LuaValue`.
+    ///
+    /// Will be `nil` if `.function` was not specified in the `what` parameter.
     public let function: LuaValue?
+
+    /// An array of line numbers which contain code that's part of this function.
+    ///
+    /// Will be `nil` if `.validlines` was not specified in the `what` parameter, or if the function is a C function.
+    /// A function stripped of debugging information currently always results in an empty array.
     public let validlines: [CInt]?
 
     public init(from ar: lua_Debug, fields: Set<WhatInfo>, state: LuaState) {
@@ -92,8 +160,8 @@ public struct LuaDebug {
             var sourceArray = Array<CChar>(UnsafeBufferPointer(start: ar.source, count: srclen))
             sourceArray.append(0) // Ensure it's null terminated
             source = String(validatingUTF8: sourceArray)
-            linedefined = ar.linedefined
-            lastlinedefined = ar.lastlinedefined
+            linedefined = ar.linedefined == -1 ? nil : ar.linedefined
+            lastlinedefined = ar.lastlinedefined == -1 ? nil : ar.lastlinedefined
             // Why on earth does Swift bridge char[] to tuple (which is _not_ a Sequence) and not Array??
             short_src = withUnsafeBytes(of: ar.short_src) { rawbuf in
                 rawbuf.withMemoryRebound(to: CChar.self) { buf in
@@ -110,7 +178,7 @@ public struct LuaDebug {
             short_src = nil
         }
 
-        if fields.contains(.currentline) {
+        if fields.contains(.currentline) && ar.currentline != -1 {
             currentline = ar.currentline
         } else {
             currentline = nil
@@ -137,7 +205,11 @@ public struct LuaDebug {
                 var ftransfer: CUnsignedShort = 0
                 var ntransfer: CUnsignedShort = 0
                 luaswift_lua_Debug_gettransfers(ptr, &ftransfer, &ntransfer)
-                return (Int(ftransfer), Int(ntransfer))
+                if ftransfer == 0 {
+                    return (nil, nil)
+                } else {
+                    return (Int(ftransfer), Int(ntransfer))
+                }
             }
         } else {
             ftransfer = nil
@@ -145,13 +217,14 @@ public struct LuaDebug {
         }
 
         if fields.contains(.validlines) {
-            var lines: [CInt] = []
+            var lines: [CInt]? = nil
             if let linesSet: [CInt: Any] = state.tovalue(-1) {
+                lines = []
                 for (k, _) in linesSet {
-                    lines.append(k)
+                    lines!.append(k)
                 }
+                lines!.sort()
             }
-            lines.sort()
             validlines = lines
             state.pop()
         } else {

@@ -1690,14 +1690,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Convert any Swift value to a Lua value and push on to the stack.
     ///
-    /// To convert the value, the following logic is applied:
+    /// To convert the value, the following logic is applied in order, stopping at the first matching clause:
     ///
     /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
-    /// * If `value` is an `NSNumber`, if it is convertible to `lua_Integer` it is pushed as such, otherwise as a
-    ///   `lua_Number`.
     /// * If `value` is `[UInt8]`, ``push(_:toindex:)-171ku`` is used.
-    /// * If `value` conforms to `ContiguousBytes`, ``push(bytes:toindex:)`` is used.
+    /// * If `value` conforms to `ContiguousBytes` (which includes `Data`), then ``push(bytes:toindex:)`` is used.
+    /// * If `value` is one of the Foundation types `NSNumber`, `NSString` or `NSData`, or is a Core Foundation type
+    ///   that is toll-free bridged to one of those types, then it is pushed as a `NSNumber`, `String`, or `Data`
+    ///   respectively.
     /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, `push(any:)` is called recursively to push
     ///   its elements.
     /// * If `value` is a `lua_CFunction`, ``push(function:toindex:)`` is used.
@@ -1724,12 +1725,16 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // NSTaggedString, __StringStorage, who knows how many others) behave to declare Pushable conformance that would
         // definitely work for all string types - this however should cover all possibilities.
         case let str as String:
-            push(str)
+            push(string: str)
         case let data as [UInt8]:
             push(data)
 #if !LUASWIFT_NO_FOUNDATION
         case let data as ContiguousBytes:
             push(bytes: data)
+        case let data as NSData:
+            // Apparently NSData subtypes don't cast with `foo as Data` but *do* with `(foo as NSData) as Data`. WTF?
+            // But using UnsafeRawBufferPointer is probably slightly more efficient than `data as Data` here.
+            push(UnsafeRawBufferPointer(start: data.bytes, count: data.length))
 #endif
         case let array as Array<Any>:
             newtable(narr: CInt(array.count))

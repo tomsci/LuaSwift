@@ -178,6 +178,9 @@ extension Data: Pushable {
 }
 
 extension NSNumber: Pushable {
+    /// Push an `NSNumber` onto the stack.
+    ///
+    /// If the value is representable as a `lua_Integer`, it is pushed as an integer, otherwise as a `number`.
     public func push(onto L: LuaState) {
         if let int = self as? lua_Integer {
             L.push(int)

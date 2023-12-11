@@ -1842,6 +1842,18 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tostring(3), ns2 as String)
     }
 
+    func test_push_NSData() {
+        let data = Data([0x68, 0x65, 0x6C, 0x6C, 0x6F])
+        let nsdata = NSData(data: data) // _NSInlineData
+        let emptyNsData = NSData()
+        L.push(nsdata as Data) // 1
+        L.push(any: nsdata) // 2
+        L.push(any: emptyNsData) // 3
+        XCTAssertEqual(L.tostring(1), "hello")
+        XCTAssertEqual(L.tostring(2), "hello")
+        XCTAssertEqual(L.tostring(3), "")
+    }
+
 #endif
 
     func test_LuaClosure_upvalues() throws {

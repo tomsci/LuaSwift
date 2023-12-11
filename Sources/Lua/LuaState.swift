@@ -37,7 +37,7 @@ public struct LuaVer {
     }
 
     public func is54orLater() -> Bool {
-        return major >= 5 && minor >= 4
+        return releaseNum >= 50400
     }
 
     // > 5.4.6 constructor
@@ -339,7 +339,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                     try L.load(file: path, displayPath: displayPath, mode: .text)
                     return 1
                 } catch LuaLoadError.fileError {
-                    L.push("no file '\(displayPath)'")
+                    let searcherErrorPrefix = LUA_VERSION.is54orLater() ? "" : "\n\t"
+                    L.push("\(searcherErrorPrefix)no file '\(displayPath)'")
                     return 1
                 } // Otherwise throw
             }

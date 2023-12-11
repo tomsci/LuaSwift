@@ -105,6 +105,7 @@ int luaswift_loadfile(lua_State *L, const char *filename,
 int luaswift_searcher_preload(lua_State *L) {
     const char *name = luaL_checkstring(L, 1);
     lua_getfield(L, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE);
+#if LUA_VERSION_NUM >= 504
     if (lua_getfield(L, -1, name) == LUA_TNIL) {  /* not found? */
         lua_pushfstring(L, "no field package.preload['%s']", name);
         return 1;
@@ -112,6 +113,12 @@ int luaswift_searcher_preload(lua_State *L) {
         lua_pushliteral(L, ":preload:");
         return 2;
     }
+#else
+    if (lua_getfield(L, -1, name) == LUA_TNIL) {
+        lua_pushfstring(L, "\n\tno field package.preload['%s']", name);
+    }
+    return 1;
+#endif
 }
 
 int luaswift_callclosurewrapper(lua_State *L) {

@@ -255,8 +255,12 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 ### Registering metatables
 
 - ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``
+- ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:synthesize:)``
+- ``Lua/Swift/UnsafeMutablePointer/addEquatableMetamethod(for:)``
+- ``Lua/Swift/UnsafeMutablePointer/addComparableMetamethods(for:)``
 - ``Lua/Swift/UnsafeMutablePointer/isMetatableRegistered(for:)``
 - ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:)``
+- ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:synthesize:)``
 
 ### Get/Set functions
 

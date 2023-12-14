@@ -76,6 +76,15 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
     return 0
 }
 
+// Convenience definitions for some metafield names
+fileprivate let __close = "__close"
+fileprivate let __eq = "__eq"
+fileprivate let __gc = "__gc"
+fileprivate let __index = "__index"
+fileprivate let __le = "__le"
+fileprivate let __lt = "__lt"
+fileprivate let __tostring = "__tostring"
+
 /// A Swift enum of the Lua types.
 ///
 /// The `rawValue` of the enum uses the same integer values as the `LUA_T...` type constants. Note that `LUA_TNONE` does
@@ -522,8 +531,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // Register a metatable for this type with a fixed name to avoid infinite recursion of getMetatableName
         // trying to call getState()
         let mtName = "LuaSwift_State"
-        doRegisterMetatable(typeName: mtName, functions: [:])
-        state.userdataMetatables.insert(lua_topointer(self, -1))
+        doRegisterMetatable(typeName: mtName, functions: [:], synthesize: [])
+        // Note, the _State metatable doesn't need to go in userdataMetatables since maybeGetState() uses
+        // unchecked_touserdata() which doesn't consult userdataMetatables.
         pop() // metatable
         push(function: stateLookupKey)
         pushuserdata(state, metatableName: mtName)
@@ -1683,7 +1693,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             } else {
                 pop()
                 print("Implicitly registering empty metatable for type \(metatableName)")
-                doRegisterMetatable(typeName: metatableName, functions: [:])
+                doRegisterMetatable(typeName: metatableName, functions: [:], synthesize: [.close])
                 getState().userdataMetatables.insert(lua_topointer(self, -1))
             }
         }
@@ -1920,8 +1930,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case closure(LuaClosure)
     }
 
-    private func doRegisterMetatable(typeName: String, functions: [String: MetafieldType]) {
-        precondition(functions["__gc"] == nil, "__gc function for Swift userdata types is registered automatically")
+    public struct SynthesizableMetamethods: OptionSet {
+        public let rawValue: Int
+        public init(rawValue: Int) {
+            self.rawValue = rawValue
+        }
+        public static let index = SynthesizableMetamethods(rawValue: 1)
+        public static let close = SynthesizableMetamethods(rawValue: 2)
+        public static let tostring = SynthesizableMetamethods(rawValue: 4)
+    }
+
+    private func doRegisterMetatable(typeName: String, functions: [String: MetafieldType], synthesize: SynthesizableMetamethods) {
+        precondition(functions[__gc] == nil, "__gc function for Swift userdata types is registered automatically")
         if luaL_newmetatable(self, typeName) == 0 {
             preconditionFailure("Metatable for type \(typeName) is already registered!")
         }
@@ -1936,9 +1956,20 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             rawset(-2, utf8Key: name)
         }
 
-        if functions["__index"] == nil {
+        if synthesize.contains(.index) {
+            precondition(functions[__index] == nil)
             push(index: -1)
-            rawset(-2, utf8Key: "__index")
+            rawset(-2, utf8Key: __index)
+        }
+
+        if synthesize.contains(.tostring) {
+            precondition(functions[__tostring] == nil)
+            push({ L in
+                let val: Any = L.touserdata(1)!
+                L.push(String(describing: val))
+                return 1
+            })
+            rawset(-2, utf8Key: __tostring)
         }
 
         push(function: { L in
@@ -1947,9 +1978,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             anyPtr.deinitialize(count: 1)
             return 0
         })
-        rawset(-2, utf8Key: "__gc")
+        rawset(-2, utf8Key: __gc)
 
-        if functions["__close"] == nil {
+        if synthesize.contains(.close) {
+            precondition(functions[__close] == nil)
             push(function: { L in
                 let rawptr = lua_touserdata(L, 1)!
                 let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
@@ -1962,7 +1994,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 }
                 return 0
             })
-            rawset(-2, utf8Key: "__close")
+            rawset(-2, utf8Key: __close)
         }
 
         // Leaves metatable on top of the stack
@@ -2011,11 +2043,39 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// // Means you can do foo.bar()
     /// ```
     ///
+    /// Alternatively an `__index` entry can be specified, which is also necessary to provide access to properties. The
+    /// above example could therefore also have been written:
+    ///
+    /// ```swift
+    /// L.registerMetatable(for: Foo.self, functions: [
+    ///     "__index": .closure { L in
+    ///         let foo: Foo = L.checkArgument(1)
+    ///         let field: String = L.checkArgument(2)
+    ///         switch field {
+    ///         case "bar":
+    ///             L.push({ L in
+    ///                 let foo: Foo = L.checkArgument(1)
+    ///                 foo.bar()
+    ///                 return 0
+    ///             })
+    ///             return 1
+    ///         default:
+    ///             L.pushnil()
+    ///             return 1
+    ///         }
+    ///     }
+    /// ])
+    /// ```
+    ///
     /// Assuming Lua 5.4 is being used, `__close` may optionally be specified in `functions` to implement custom
     /// to-be-closed behavior. If not specified, a default implementation is included, which behaves in one of two
     /// ways: if the Swift value implements ``Closable``, then it calls ``Closable/close()``; otherwise it deinits the
     /// Swift object, after which point `touserdata<T>()` will no longer return the object and will return `nil`
     /// instead.
+    ///
+    /// To disable the automatic synthesis of `__index` and/or `__close` metamethods, use
+    /// ``registerMetatable(for:functions:synthesize:)`` instead to explicitly define which metamethods (if any) should
+    /// be synthesized.
     ///
     /// All metatables are stored in the Lua registry using a key starting with `"LuaSwift_"`, to avoid conflicting with
     /// any other uses of [`luaL_newmetatable()`](https://www.lua.org/manual/5.4/manual.html#luaL_newmetatable). The
@@ -2026,14 +2086,48 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: There must not already be a metatable defined for `type`. `functions` must not contain an entry
     ///   for `__gc`.
     public func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
-        doRegisterMetatable(typeName: getMetatableName(for: type), functions: functions)
+        registerMetatable(for: type, functions: functions, synthesize: defaultSynthesizedMetamethods(for: functions))
+    }
+
+    private func defaultSynthesizedMetamethods(for functions: [String: MetafieldType]) -> SynthesizableMetamethods {
+        var synth: SynthesizableMetamethods = []
+        if functions[__index] == nil {
+            synth.insert(.index)
+        }
+        if functions[__close] == nil {
+            synth.insert(.close)
+        }
+        return synth
+    }
+
+    /// Register a metatable for values of type `T`.
+    ///
+    /// This method behaves similarly to ``registerMetatable(for:functions:)``, with the exception that the caller gets
+    /// to specify exactly what metamethods are synthesized, if any.
+    ///
+    /// * Include `.close` to synthesize a `__close` metamethod, with behaviour as described in
+    ///   ``registerMetatable(for:functions:)``. If specified, `functions` must not include a `__close` entry.
+    /// * Include `.index` to synthesize a `__index` metamethod which points to the metatable. If specified,
+    ///   `functions` must not include a `__index` entry.
+    /// * Include `.tostring` to synthesize a `__tostring` metamethod which calls `String(describing: value)`. If
+    ///   specified, `functions` must not include a `__tostring` entry.
+    ///
+    /// - Parameter type: Type to register.
+    /// - Parameter functions: map of functions to add to the metatable.
+    /// - Parameter synthesize: What metamethods (if any) to automatically provide implementations of. Note that
+    ///   `__eq`, `__lt` and `_le` metamethods require a separate call to ``addEquatableMetamethod(for:)`` or
+    ///   ``addComparableMetamethods(for:)``.
+    /// - Precondition: There must not already be a metatable defined for `type`. `functions` must not contain an entry
+    ///   for `__gc` or any of the metafields created by `synthesize`.
+    public func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType], synthesize: SynthesizableMetamethods) {
+        doRegisterMetatable(typeName: getMetatableName(for: type), functions: functions, synthesize: synthesize)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
     }
 
-    /// Returns true if ``registerMetatable(for:functions:)`` has already been called for `T`.
+    /// Returns true if `registerMetatable<T>()` has already been called for `T`.
     ///
-    /// Note, does not consider any metatable set with ``registerDefaultMetatable(functions:)``.
+    /// Note, does not consider any metatable set with `registerDefaultMetatable()`.
     public func isMetatableRegistered<T>(for type: T.Type) -> Bool {
         let name = getMetatableName(for: type)
         let t = luaL_getmetatable(self, name)
@@ -2042,17 +2136,113 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Register a metatable to be used for all types which have not had an explicit call to
-    /// ``registerMetatable(for:functions:)``.
+    /// `registerMetatable()`.
     ///
-    /// If this function is not called, a warning will be printed the first time an unregistered type is pushed. A
-    /// minimal metatable will be generated in such cases, which supports garbage collection and being closed but
-    /// exposes no other functions.
+    /// Implementations of `__index` and `__close` will be synthesized if not specified by `functions`. Call
+    /// ``registerDefaultMetatable(functions:synthesize:)`` instead to control exactly what metamethods are synthesized.
     ///
-    /// - Parameter functions: map of functions.
+    /// If `registerDefaultMetatable()` is not called, a warning will be printed the first time an unregistered type is
+    /// pushed. A minimal metatable will be generated in such cases, which supports garbage collection and being closed
+    /// but exposes no other functions.
+    ///
+    /// - Parameter functions: map of functions to add to the metatable.
     public func registerDefaultMetatable(functions: [String: MetafieldType]) {
-        doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions)
+        let synth = defaultSynthesizedMetamethods(for: functions)
+        doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions, synthesize: synth)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
+    }
+
+    /// Register a metatable to be used for all types which have not had an explicit call to
+    /// `registerMetatable()`.
+    ///
+    /// If `registerDefaultMetatable()` is not called, a warning will be printed the first time an unregistered type is
+    /// pushed. A minimal metatable will be generated in such cases, which supports garbage collection and being closed
+    /// but exposes no other functions.
+    ///
+    /// - Parameter functions: map of functions to add to the metatable.
+    /// - Parameter synthesize: What metamethods (if any) to automatically provide implementations of.
+    public func registerDefaultMetatable(functions: [String: MetafieldType], synthesize: SynthesizableMetamethods) {
+        doRegisterMetatable(typeName: Self.DefaultMetatableName, functions: functions, synthesize: synthesize)
+        getState().userdataMetatables.insert(lua_topointer(self, -1))
+        pop() // metatable
+    }
+
+    /// Add a `__eq` metamethod to the metatable of the `Equatable` type `T`.
+    ///
+    /// Assuming `registerMetatable<T>()` has already been called for type `T`, and that `T` conforms to `Equatable`,
+    /// this method will add an implementation of `__eq` to the metatable for `T` which returns true if both values are
+    /// userdatas referring to type `T`, and the Swift `==` operator returns `true`.
+    ///
+    /// - Parameter type: Type to update.
+    /// - Precondition: `registerMetatable()` must already have been called for type `T`, and there must not already
+    ///   be a `__eq` metafield defined for this type.
+    public func addEquatableMetamethod<T: Equatable>(for type: T.Type) {
+        let t = luaL_getmetatable(self, getMetatableName(for: type))
+        defer {
+            pop()
+        }
+        precondition(t == LUA_TTABLE, "registerMetatable() must already be called for type T")
+
+        let eqt = rawget(-1, utf8Key: __eq)
+        precondition(eqt == .nil, "Metatable must not already have a __eq metafield defined")
+        pop()
+
+        rawset(-1, utf8Key: __eq, value: .closure { L in
+            if let lhs: T = L.touserdata(1),
+               let rhs: T = L.touserdata(2) {
+                L.push(lhs == rhs)
+            } else {
+                L.push(false)
+            }
+            return 1
+        })
+    }
+
+    /// Add `__eq`, `__lt` and `__le` metamethods to the metatable of the `Comparable` type `T`.
+    ///
+    /// Assuming `registerMetatable<T>()` has already been called for type `T`, and that `T` conforms to `Comparable`,
+    /// this method will add implementations of `__eq`, `__lt` and `__le` to the metatable for `T`, which return true
+    /// if both values are userdatas referring to type `T`, and the relevant Swift operator (`==`, `<`, or `<=` as
+    /// appropriate) returns `true`.
+    ///
+    /// Since `Comparable` inherits `Equatable`, if you are calling
+    /// `addComparableMetamethods()` for a given type then do not also call `addEquatableMetamethod()`.
+    ///
+    /// - Parameter type: Type to update.
+    /// - Precondition: `registerMetatable()` must already have been called for type `T`, and there must not already
+    ///   be `__eq`, `__lt` or `__le` metafields defined for this type.
+    public func addComparableMetamethods<T: Comparable>(for type: T.Type) {
+        addEquatableMetamethod(for: type)
+        luaL_getmetatable(self, getMetatableName(for: type))
+        defer {
+            pop()
+        }
+        // A couple more preconditions to check in addition to those in addEquatableMetamethod
+        let typeLe = rawget(-1, utf8Key: __le)
+        let typeLt = rawget(-2, utf8Key: __lt)
+        precondition(typeLe == .nil, "Metatable must not already have a __le metafield defined")
+        precondition(typeLt == .nil, "Metatable must not already have a __lt metafield defined")
+        pop(2)
+
+        rawset(-1, utf8Key: __lt, value: .closure { L in
+            if let lhs: T = L.touserdata(1),
+               let rhs: T = L.touserdata(2) {
+                L.push(lhs < rhs)
+            } else {
+                L.push(false)
+            }
+            return 1
+        })
+        rawset(-1, utf8Key: __le, value: .closure { L in
+            if let lhs: T = L.touserdata(1),
+               let rhs: T = L.touserdata(2) {
+                L.push(lhs <= rhs)
+            } else {
+                L.push(false)
+            }
+            return 1
+        })
     }
 
     // MARK: - get/set functions

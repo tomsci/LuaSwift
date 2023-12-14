@@ -763,6 +763,84 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tovalue(1), 321)
     }
 
+    func test_addEquatableMetamethod() throws {
+        struct Foo: Equatable {
+            let member: Int
+        }
+        struct Bar: Equatable {
+            let member: Int
+        }
+        L.registerMetatable(for: Foo.self, functions: [:], synthesize: [])
+        L.addEquatableMetamethod(for: Foo.self)
+        L.registerMetatable(for: Bar.self, functions: [:], synthesize: [])
+        // Note, not calling addEquatableMetamethod for Bar
+
+        L.push(userdata: Foo(member: 111)) // 1
+        L.push(userdata: Foo(member: 111)) // 2: a different Foo but same value
+        L.push(index: 1) // 3: same object as 1
+        L.push(userdata: Foo(member: 222)) // 4: a different Foo with different value
+        L.push(userdata: Bar(member: 333)) // 5: a Bar
+        L.push(userdata: Bar(member: 333)) // 6: a different Bar but with same value
+        L.push(index: 5) // 7: same object as 5
+
+        XCTAssertTrue(try L.compare(1, 1, .eq))
+        XCTAssertTrue(try L.compare(1, 2, .eq))
+        XCTAssertTrue(try L.compare(2, 1, .eq))
+        XCTAssertTrue(try L.compare(3, 1, .eq))
+        XCTAssertFalse(try L.compare(1, 4, .eq))
+
+        XCTAssertTrue(try L.compare(5, 5, .eq)) // same object
+        XCTAssertFalse(try L.compare(5, 6, .eq)) // Because we didn't call addEquatableMetamethod for Bar
+        XCTAssertTrue(try L.compare(5, 7, .eq)) // same object
+
+        XCTAssertFalse(try L.compare(1, 5, .eq)) // A Foo and a Bar can never compare equal
+    }
+
+    func test_addComparableMetamethod() throws {
+        struct Foo: Comparable {
+            let member: Int
+            static func < (lhs: Foo, rhs: Foo) -> Bool {
+                return lhs.member < rhs.member
+            }
+        }
+        L.registerMetatable(for: Foo.self, functions: [:], synthesize: [])
+        L.addComparableMetamethods(for: Foo.self)
+
+        L.push(userdata: Foo(member: 111)) // 1
+        L.push(userdata: Foo(member: 222)) // 2
+
+        XCTAssertTrue(try L.compare(1, 1, .le))
+        XCTAssertTrue(try L.compare(1, 1, .eq))
+        XCTAssertFalse(try L.compare(1, 1, .lt))
+        XCTAssertTrue(try L.compare(1, 2, .lt))
+        XCTAssertFalse(try L.compare(2, 1, .le))
+    }
+
+    func test_synthesize_tostring() throws {
+        struct Foo {}
+        L.registerMetatable(for: Foo.self, functions: [:], synthesize: .tostring)
+        L.push(userdata: Foo())
+        let str = try XCTUnwrap(L.tostring(1, convert: true))
+        XCTAssertEqual(str, "Foo()")
+
+        struct NoTostringStruct {}
+        L.registerMetatable(for: NoTostringStruct.self, functions: [:], synthesize: [])
+        L.push(userdata: NoTostringStruct())
+        L.printStack()
+        let nonTostringStr = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertTrue(nonTostringStr.hasPrefix("LuaSwift_Type_NoTostringStruct: ")) // The default behaviour of tostring for a named userdata
+
+        struct CustomStruct: CustomStringConvertible {
+            var description: String {
+                return "woop"
+            }
+        }
+        L.registerMetatable(for: CustomStruct.self, functions: [:], synthesize: .tostring)
+        L.push(userdata: CustomStruct())
+        let customStr = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertEqual(customStr, "woop")
+    }
+
     func testClasses() throws {
         // "outer Foo"
         class Foo {

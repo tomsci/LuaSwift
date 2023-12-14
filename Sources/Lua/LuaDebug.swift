@@ -14,6 +14,13 @@ import CLua
 public struct LuaDebug {
     /// Determines what ``LuaDebug`` fields are filled in when calling
     /// ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)`` or similar.
+    ///
+    /// The following convenience variables are also available: ``Lua/Swift/Set/allNonHook``,
+    /// ``Lua/Swift/Set/allNonCall``, ``Lua/Swift/Set/allHook``. For example:
+    ///
+    /// ```swift
+    /// L.getStackInfo(level: 1, what: .allNonHook)
+    /// ```
     public enum WhatInfo: String, CaseIterable {
         /// Sets ``LuaDebug/function``.
         case function = "f"
@@ -583,6 +590,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter what: What information to retrieve.
     /// - Returns: a struct containing the requested information.
+    /// - Precondition: The value on the top of the stack must be a function.
     public func getTopFunctionInfo(what: Set<LuaDebug.WhatInfo> = .allNonCall) -> LuaDebug {
         precondition(gettop() > 0 && type(-1) == .function, "Must be a function on top of the stack")
         var ar = lua_Debug()

@@ -21,7 +21,9 @@ There is another option, which is to compile your .lua files into generated Swif
 
 This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's sources. Add and exclude Lua files with `sources` and `exclude` directives in your Target, as if they were Swift files to be compiled. This doesn't handle nested modules yet - everything is assumed to be a top-level module, currently.
 
-Pass `lua_sources` to ``Lua/Swift/UnsafeMutablePointer/addModules(_:mode:)`` when you construct your `LuaState`:
+All the included Lua files will be compiled into Lua bytecode when your project is built. Parse and syntax errors in the Lua files will cause the build to fail.
+
+Then, pass `lua_sources` to ``Lua/Swift/UnsafeMutablePointer/addModules(_:mode:)`` when you construct your `LuaState`:
 
 ```swift
 L = LuaState(libraries: .all)
@@ -48,7 +50,7 @@ let lua_sources: [String: [UInt8]] = [
 ]
 ```
 
-So if you need to load the Lua code from Swift you can access an individual module and call ``Lua/Swift/UnsafeMutablePointer/load(data:name:mode:)``:
+So if you need to load the Lua code from Swift you can access an individual module and call ``Lua/Swift/UnsafeMutablePointer/load(data:name:mode:)`` or ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)``:
 
 ```swift
 try L.load(data: lua_sources["example"]!, mode: .binary)

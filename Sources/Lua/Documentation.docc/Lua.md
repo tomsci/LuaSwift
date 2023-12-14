@@ -4,7 +4,7 @@ A framework providing Swift typesafe wrappers around the Lua C APIs.
 
 ## Overview
 
-The project is hosted here: <https://github.com/tomsci/LuaSwift>.
+This project bundles Lua 5.4 plus Swift wrapper APIs, as a Swift Package. The full Lua C API is available, as well as typesafe Swift equivalents.
 
 ```swift
 import Lua
@@ -14,6 +14,8 @@ L.getglobal("print")
 try! L.pcall("Hello world!")
 L.close()
 ``` 
+
+The project is hosted here: <https://github.com/tomsci/LuaSwift>.
 
 See <doc:LuaState> for an introduction to the framework.
 

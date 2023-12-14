@@ -35,7 +35,7 @@ L.setglobal(name: "foo", value: .nilValue)
 
 There is also a ``data(_:)`` helper to treat `[UInt8]` as a string of bytes.
 
-The alternative to using one of the helper functions for non-Pushable types is to use the appropriate overload of `push()` instead, for example ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku`` or ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``, then uses them via a function which takes a value from the stack:
+The alternative to using one of the helper functions for non-Pushable types is to use the appropriate overload of `push()` instead, for example ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-171ku`` or ``Lua/Swift/UnsafeMutablePointer/push(function:toindex:)``, then to use them via a function which takes a value from the stack:
 
 ```swift
 // Push first...

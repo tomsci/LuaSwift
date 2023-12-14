@@ -8,7 +8,7 @@ It can therefore be constructed either using the explicit constructor provided, 
 
 See <https://www.lua.org/manual/5.4/manual.html> for documentation of the underlying Lua C APIs.
 
-Note that `LuaState` pointers are _not_ reference counted, meaning the state is not automatically destroyed when it goes out of scope. You must call ``Lua/Swift/UnsafeMutablePointer/close()``.
+Note that `LuaState` is an unsafe pointer type which is _not_ reference counted, meaning the state is not automatically destroyed when it goes out of scope. You must call ``Lua/Swift/UnsafeMutablePointer/close()``.
 
 ### Using the LuaState API
 
@@ -291,6 +291,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 ### Comparison functions
 
 - ``Lua/Swift/UnsafeMutablePointer/isnone(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/isnil(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/isnoneornil(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/isinteger(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/rawequal(_:_:)``

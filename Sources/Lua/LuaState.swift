@@ -1427,6 +1427,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    /// - Precondition: The string must be representable in the default encoding (in cases where the encoding cannot
+    ///   represent all of Unicode).
     public func push(string: String, toindex: CInt = -1) {
 #if LUASWIFT_NO_FOUNDATION
         let data = Array<UInt8>(string.utf8)
@@ -1804,7 +1806,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
-    /// - Precondition: The top of the stack must contain a function and `nargs` arguments.
+    /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
     public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
         try pcall(nargs: nargs, nret: nret, msgh: traceback ? defaultTracebackFn : nil)
     }
@@ -1821,7 +1823,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   to keep all returned values.
     /// - Parameter msgh: An optional message handler function to be called if the function errors.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
-    /// - Precondition: The top of the stack must contain a function and `nargs` arguments.
+    /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
     public func pcall(nargs: CInt, nret: CInt, msgh: lua_CFunction?) throws {
         let index: CInt
         if let msghFn = msgh {
@@ -1971,10 +1973,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Register a metatable for values of type `T`.
     ///
     /// Register a metatable for values of type `T` for when they are pushed using ``push(userdata:toindex:)`` or 
-    /// ``push(any:toindex:)``. Note, attempting to register a metatable for types that are bridged to Lua types (such as
-    /// `Integer,` or `String`), will not work with values pushed with ``push(any:toindex:)`` - if you really need to do that,
-    /// they must always be pushed with ``push(userdata:toindex:)`` (at which point they cannot be used as normal Lua
-    /// numbers/strings/etc).
+    /// ``push(any:toindex:)``. Note, attempting to register a metatable for types that are bridged to Lua types (such
+    /// as `Integer,` or `String`), will not work with values pushed with ``push(any:toindex:)`` - if you really need to
+    /// do that, they must always be pushed with ``push(userdata:toindex:)`` (at which point they cannot be used as
+    /// normal Lua numbers/strings/etc).
     ///
     /// Use `.function` to specify a `lua_CFunction` directly. You can use a Swift closure in lieu of a `lua_CFunction`
     /// pointer providing it does not capture any variables, does not throw or error, and has the right signature, for
@@ -2000,8 +2002,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// ```swift
     /// L.registerMetatable(for: Foo.self, functions: [
-    ///     "bar": .function { L in
-    ///         print("This is a call to bar()!")
+    ///     "bar": .closure { L in
+    ///         let foo: Foo = L.checkArgument(1)
+    ///         foo.bar()
     ///         return 0
     ///     }
     /// ])
@@ -2019,7 +2022,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// exact name used is an internal implementation detail.
     ///
     /// - Parameter type: Type to register.
-    /// - Parameter functions: Map of functions.
+    /// - Parameter functions: map of functions to add to the metatable.
     /// - Precondition: There must not already be a metatable defined for `type`. `functions` must not contain an entry
     ///   for `__gc`.
     public func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
@@ -2101,7 +2104,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Pushes onto the stack the value `tbl[key]`. May invoke metamethods.
     ///
-    /// Where `tbl` is the table at `index` on the stack and `key` is the value on the top of the stack.
+    /// Where `tbl` is the table (or other indexable value) at `index` on the stack and `key` is the value on the top of
+    /// the stack. `key` is popped from the stack.
     ///
     /// - Parameter index: The stack index of the table.
     /// - Returns: The type of the resulting value.
@@ -2117,7 +2121,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Pushes onto the stack the value `tbl[key]`. May invoke metamethods.
     ///
-    /// Where `tbl` is the table at `index` on the stack.
+    /// Where `tbl` is the table (or other indexable value) at `index` on the stack.
     ///
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to look up in the table.
@@ -2132,13 +2136,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Look up a value `tbl[key]` and convert it to `T` using the given accessor.
     ///
-    /// Where `tbl` is the table at `index` on the stack. If an error is thrown during the table lookup, `nil` is
-    /// returned.
+    /// Where `tbl` is the table (or other indexable value) at `index` on the stack. If an error is thrown during the
+    /// table lookup, `nil` is returned.
     ///
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to look up in the table.
     /// - Parameter accessor: A function which takes a stack index and returns a `T?`.
-    /// - Returns: The resulting value.
+    /// - Returns: The resulting value, or `nil`.
     public func get<K: Pushable, T>(_ index: CInt, key: K, _ accessor: (CInt) -> T?) -> T? {
         if let _ = try? get(index, key: key) {
             let result = accessor(-1)
@@ -2151,13 +2155,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Look up a value `tbl[key]` and decode it using `todecodable<T>()`.
     ///
-    /// Where `tbl` is the table at `index` on the stack. If an error is thrown during the table lookup or decode,
-    /// `nil` is returned.
+    /// Where `tbl` is the table (or other indexable value) at `index` on the stack. If an error is thrown during the
+    /// table lookup or decode, `nil` is returned.
     ///
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to look up in the table.
-    /// - Parameter accessor: A function which takes a stack index and returns a `T?`.
-    /// - Returns: The resulting value.
+    /// - Returns: The resulting value, or `nil`.
     public func getdecodable<K: Pushable, T: Decodable>(_ index: CInt, key: K) -> T? {
         if let _ = try? get(index, key: key) {
             let result: T? = todecodable(-1)
@@ -2171,8 +2174,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
     ///
     /// Where `tbl` is the table at `index` on the stack, `val` is the value on the top of the stack, and `key` is the
-    /// value just below the top.
+    /// value just below the top. `key` and `val` are popped from the stack.
     ///
+    /// - Parameter index: The stack index of the table.
     /// - Precondition: The value at `index` must be a table.
     public func rawset(_ index: CInt) {
         precondition(type(index) == .table, "Cannot call rawset on something that isn't a table")
@@ -2181,8 +2185,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
     ///
-    /// Where `tbl` is the table at `index` on the stack, and `val` is the value on the top of the stack.
+    /// Where `tbl` is the table at `index` on the stack, and `val` is the value on the top of the stack. `val` is
+    /// popped from the stack.
     ///
+    /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to use.
     /// - Precondition: The value at `index` must be a table.
     public func rawset<K: Pushable>(_ index: CInt, key: K) {
@@ -2192,6 +2198,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         rawset(absidx)
     }
 
+    /// Performs `tbl[key] = val` using raw accesses, ie does not invoke metamethods.
+    ///
+    /// Where `tbl` is the table at `index` on the stack, and `val` is the value on the top of the stack. `val` is
+    /// popped from the stack.
+    ///
+    /// - Parameter index: The stack index of the table.
+    /// - Parameter key: The string key to use, which is always converted to a Lua string using UTF-8 encoding,
+    ///   regardless of what the default string encoding is.
+    /// - Precondition: The value at `index` must be a table.
     public func rawset(_ index: CInt, utf8Key key: String) {
         let absidx = absindex(index)
         // val on top of stack
@@ -2203,6 +2218,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Where `tbl` is the table at `index` on the stack.
     ///
+    /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to use.
     /// - Parameter value: The value to set.
     /// - Precondition: The value at `index` must be a table.
@@ -2217,7 +2233,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Where `tbl` is the table at `index` on the stack.
     ///
-    /// - Parameter key: The key to use, which will always be pushed using UTF-8 encoding.
+    /// - Parameter index: The stack index of the table.
+    /// - Parameter key: The string key to use, which is always converted to a Lua string using UTF-8 encoding,
+    ///   regardless of what the default string encoding is.
     /// - Parameter value: The value to set.
     /// - Precondition: The value at `index` must be a table.
     public func rawset<V: Pushable>(_ index: CInt, utf8Key key: String, value: V) {
@@ -2229,9 +2247,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Performs `tbl[key] = val`. May invoke metamethods.
     ///
-    /// Where `tbl` is the table at `index` on the stack, `val` is the value on the top of the stack, and `key` is the
-    /// value just below the top. `key` and `val` are popped from the stack.
+    /// Where `tbl` is the table (or other indexable value) at `index` on the stack, `val` is the value on the top of
+    /// the stack, and `key` is the value just below the top. `key` and `val` are popped from the stack.
     ///
+    /// - Parameter index: The stack index of the table.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
     public func set(_ index: CInt) throws {
         let absidx = absindex(index)
@@ -2242,8 +2261,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Performs `tbl[key] = val`. May invoke metamethods.
     ///
-    /// Where `tbl` is the table at `index` on the stack and `val` is the value on the top of the stack
+    /// Where `tbl` is the table (or other indexable value) at `index` on the stack and `val` is the value on the top of
+    /// the stack. `val` is popped from the stack.
     ///
+    /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to use.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
     public func set<K: Pushable>(_ index: CInt, key: K) throws {
@@ -2255,8 +2276,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Performs `tbl[key] = value`. May invoke metamethods.
     ///
-    /// Where `tbl` is the table at `index` on the stack.
+    /// Where `tbl` is the table (or other indexable value) at `index` on the stack.
     ///
+    /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to use.
     /// - Parameter value: The value to set.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
@@ -2517,10 +2539,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Returns the length of a value, as per the [length operator](https://www.lua.org/manual/5.4/manual.html#3.4.7).
     ///
+    /// Invokes the `__len` metamethod if the value has one.
+    ///
     /// - Parameter index: The stack index of the value.
     /// - Returns: the length, or `nil` if the value does not have a defined length or `__len` did not return an
     ///   integer.
-    /// - Throws: ``LuaCallError`` if the value had a `__len` metafield which errored.
+    /// - Throws: ``LuaCallError`` if the value had a `__len` metamethod which errored.
     public func len(_ index: CInt) throws -> lua_Integer? {
         let t = type(index)
         if t == .string {
@@ -2883,7 +2907,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Returns an `Error` suitable for throwing from a `LuaClosure` when there is a problem with an argument.
     ///
     /// This is the LuaSwift equivalent of
-    /// [`luaL_argerror()`](https://www.lua.org/manual/5.4/manual.html#luaL_argerror).
+    /// [`luaL_argerror()`](https://www.lua.org/manual/5.4/manual.html#luaL_argerror). For example:
     ///
     /// ```swift
     /// func myLuaClosure(L: LuaState) throws -> CInt {
@@ -2893,6 +2917,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///     /* rest of fn */
     /// }
     /// ```
+    ///
+    /// This will result in an error something like: `"bad argument #1 to 'myLuaClosure' (expected non-nil)"`
     ///
     /// - Parameter arg: Index of the argument which has the problem.
     /// - Parameter extramsg: More information about the problem, which is appended to the error string.
@@ -2915,10 +2941,21 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return error("bad argument #\(arg) to '\(name)' (\(extramsg))")
     }
 
-    /// Checks if an argument is of the correct type.
+    /// Checks if an function argument is of the correct type.
     ///
-    /// Throws an ``argumentError(_:_:)`` if the specified argument cannot be converted to type `T`. Argument conversion
-    /// is performed according to ``tovalue(_:)``.
+    /// For example:
+    ///
+    /// ```swift
+    /// func myclosure(_ L: LuaState) throws -> CInt {
+    ///     let arg: String = try L.checkArgument(1)
+    ///     // ...
+    /// }
+    /// ```
+    ///
+    /// - Parameter arg: Stack index of the argument.
+    /// - Returns: An instance of type `T`.
+    /// - Throws: an ``argumentError(_:_:)`` if the specified argument cannot be converted to type `T`. Argument
+    ///   conversion is performed according to ``tovalue(_:)``.
     public func checkArgument<T>(_ arg: CInt) throws -> T {
         if let val: T = tovalue(arg) {
             return val
@@ -2931,14 +2968,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// 
     /// The argument is assumed to be in the RawRepresentable's raw value type. For example, given a definition like:
     /// ```swift
-    /// enum Foo : String {
+    /// enum Foo: String {
     ///     case foo
     ///     case bar
     /// }
     /// ```
     /// then `let arg: Foo = try L.checkOption(1)` when argument 1 is the string "bar" will set `arg` to `Foo.bar`.
     ///
-    /// - Parameter arg: Index of the argument to convert.
+    /// - Parameter arg: Stack index of the argument.
     /// - Parameter default: If specified, this value is returned if the argument is none or nil. If not specified then
     ///   a nil or omitted argument will throw an error.
     /// - Returns: An instance of `T`, assuming `T(rawValue: <argval>)` succeeded.

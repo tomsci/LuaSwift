@@ -528,7 +528,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return state
         }
         let state = _State()
-        // Register a metatable for this type with a fixed name to avoid infinite recursion of getMetatableName
+        // Register a metatable for this type with a fixed name to avoid infinite recursion of makeMetatableName
         // trying to call getState()
         let mtName = "LuaSwift_State"
         doRegisterMetatable(typeName: mtName, functions: [:], synthesize: [])
@@ -1674,7 +1674,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<T>(userdata: T, toindex: CInt = -1) {
         let anyval = userdata as Any
-        let tname = getMetatableName(for: Swift.type(of: anyval))
+        let tname = makeMetatableName(for: Swift.type(of: anyval))
         pushuserdata(anyval, metatableName: tname)
         if toindex != -1 {
             insert(toindex)
@@ -1911,7 +1911,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - Registering metatables
 
-    private func getMetatableName(for type: Any.Type) -> String {
+    private func makeMetatableName(for type: Any.Type) -> String {
         let prefix = "LuaSwift_Type_" + String(describing: type)
         let state = getState()
         if state.metatableDict[prefix] == nil {
@@ -1923,6 +1923,25 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             index = state.metatableDict[prefix]!.count - 1
         }
         return index! == 0 ? prefix : "\(prefix)[\(index!)]"
+    }
+
+    /// Returns true if `registerMetatable<T>()` has already been called for `T`.
+    ///
+    /// Also returns true if a minimal metatable was created by ``push(userdata:toindex:)`` because there was no default
+    /// metatable set. Does not return true if `T` is using the default metatable created by
+    /// `registerDefaultMetatable()`.
+    public func isMetatableRegistered<T>(for type: T.Type) -> Bool {
+        let prefix = "LuaSwift_Type_" + String(describing: type)
+        if let state = maybeGetState(),
+           let typesArray = state.metatableDict[prefix],
+           let index = typesArray.firstIndex(where: { $0 == type }) {
+            let name = index == 0 ? prefix : "\(prefix)[\(index)]"
+            let t = luaL_getmetatable(self, name)
+            pop()
+            return t == LUA_TTABLE
+        } else {
+            return false
+        }
     }
 
     public enum MetafieldType {
@@ -2120,19 +2139,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: There must not already be a metatable defined for `type`. `functions` must not contain an entry
     ///   for `__gc` or any of the metafields created by `synthesize`.
     public func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType], synthesize: SynthesizableMetamethods) {
-        doRegisterMetatable(typeName: getMetatableName(for: type), functions: functions, synthesize: synthesize)
+        doRegisterMetatable(typeName: makeMetatableName(for: type), functions: functions, synthesize: synthesize)
         getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
-    }
-
-    /// Returns true if `registerMetatable<T>()` has already been called for `T`.
-    ///
-    /// Note, does not consider any metatable set with `registerDefaultMetatable()`.
-    public func isMetatableRegistered<T>(for type: T.Type) -> Bool {
-        let name = getMetatableName(for: type)
-        let t = luaL_getmetatable(self, name)
-        pop()
-        return t == LUA_TTABLE
     }
 
     /// Register a metatable to be used for all types which have not had an explicit call to
@@ -2142,7 +2151,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ``registerDefaultMetatable(functions:synthesize:)`` instead to control exactly what metamethods are synthesized.
     ///
     /// If `registerDefaultMetatable()` is not called, a warning will be printed the first time an unregistered type is
-    /// pushed. A minimal metatable will be generated in such cases, which supports garbage collection and being closed
+    /// pushed. A minimal metatable will be registered in such cases, which supports garbage collection and being closed
     /// but exposes no other functions.
     ///
     /// - Parameter functions: map of functions to add to the metatable.
@@ -2178,7 +2187,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: `registerMetatable()` must already have been called for type `T`, and there must not already
     ///   be a `__eq` metafield defined for this type.
     public func addEquatableMetamethod<T: Equatable>(for type: T.Type) {
-        let t = luaL_getmetatable(self, getMetatableName(for: type))
+        let t = luaL_getmetatable(self, makeMetatableName(for: type))
         defer {
             pop()
         }
@@ -2214,7 +2223,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   be `__eq`, `__lt` or `__le` metafields defined for this type.
     public func addComparableMetamethods<T: Comparable>(for type: T.Type) {
         addEquatableMetamethod(for: type)
-        luaL_getmetatable(self, getMetatableName(for: type))
+        luaL_getmetatable(self, makeMetatableName(for: type))
         defer {
             pop()
         }

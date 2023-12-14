@@ -126,7 +126,7 @@ public struct LuaDataArrayWrapper: Pushable {
 public struct NonPushableTypesHelper: Pushable {
     private init() {}
     public func push(onto L: LuaState) {
-        fatalError("unreachable")
+        fatalError() // will never be called
     }
 }
 

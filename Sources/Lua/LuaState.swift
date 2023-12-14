@@ -370,7 +370,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 try L.pcall(nargs: 1, nret: 1)
                 return 1
             })
-            lua_setfield(self, -2, name)
+            rawset(-2, utf8Key: name)
         }
         pop() // preload table
     }
@@ -392,7 +392,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         for (_, _) in pairs(-1) {
             pop() // Remove v
             pushnil()
-            lua_settable(self, -3)
+            rawset(-3)
         }
         pop() // preload table
         addModules(modules, mode: mode)
@@ -2475,7 +2475,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    func unref(_ ref: CInt) {
+    // Used by LuaValue.deinit
+    internal func unref(_ ref: CInt) {
         getState().luaValues[ref] = nil
         luaL_unref(self, LUA_REGISTRYINDEX, ref)
     }
@@ -2929,15 +2930,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return error("bad argument #\(arg) (\(extramsg))")
         }
 
+        let name = fninfo.name ?? "?"
         if fninfo.namewhat == .method {
             adjustedArg = arg - 1
             if adjustedArg == 0 {
-                // If namewhat is method name is definitely set (it appears)
-                return error("calling '\(fninfo.name!)' on bad self (\(extramsg)")
+                return error("calling '\(name)' on bad self (\(extramsg)")
             }
         }
 
-        let name = fninfo.name ?? "?"
         return error("bad argument #\(arg) to '\(name)' (\(extramsg))")
     }
 
@@ -3004,7 +3004,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   to include elements up to and including the topmost.
     public func printStack(from: CInt = 1, to: CInt? = nil) {
         for i in from ... (to ?? gettop()) {
-            print("\(i): \(tostring(i, convert: true)!)")
+            let desc = tostring(i, convert: true) ?? "??"
+            print("\(i): \(desc)")
         }
     }
 }

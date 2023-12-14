@@ -29,7 +29,7 @@ struct EmbedLua {
             do {
                 try L.load(file: input, displayPath:url.lastPathComponent, mode: .text)
             } catch LuaLoadError.parseError(let str) {
-                fputs(str + "\n", stderr)
+                fputs("\(str)\n", stderr)
                 exit(1)
             } catch LuaLoadError.fileError(let str) {
                 fputs("Error: " + str + "\n", stderr)

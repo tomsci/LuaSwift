@@ -1707,6 +1707,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
     /// * If `value` is `[UInt8]`, ``push(_:toindex:)-171ku`` is used.
+    /// * If `value` is `UInt8`, it is pushed as an integer. This special case is required because `Uint8` is not
+    ///   `Pushable`.
     /// * If `value` conforms to `ContiguousBytes` (which includes `Data`), then ``push(bytes:toindex:)`` is used.
     /// * If `value` is one of the Foundation types `NSNumber`, `NSString` or `NSData`, or is a Core Foundation type
     ///   that is toll-free bridged to one of those types, then it is pushed as a `NSNumber`, `String`, or `Data`
@@ -1738,6 +1740,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // definitely work for all string types - this however should cover all possibilities.
         case let str as String:
             push(string: str)
+        case let uint as UInt8:
+            push(Int(uint))
         case let data as [UInt8]:
             push(data)
 #if !LUASWIFT_NO_FOUNDATION

@@ -956,6 +956,11 @@ final class LuaTests: XCTestCase {
         let arr: [Foo]? = L.tovalue(1)
         XCTAssertEqual(arr, fooArray)
         L.pop()
+
+        let uint8: UInt8 = 123
+        L.push(any: uint8)
+        XCTAssertEqual(L.toint(-1), 123)
+        L.pop()
     }
 
     func test_pushany_table() { // This doubles as test_tovalue_table()

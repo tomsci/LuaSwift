@@ -1141,8 +1141,6 @@ final class LuaTests: XCTestCase {
             called = true
             return nil
         }
-        // The way we've set up the typing, Any? isn't actually set up as a type, so shut up the warnings here
-        L.registerMetatable(for: Optional<Any>.self, functions: [:])
 
         L.push(any: voidAnyClosure)
         try L.pcall()

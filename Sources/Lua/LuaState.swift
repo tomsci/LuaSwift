@@ -1693,7 +1693,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// To convert the value, the following logic is applied in order, stopping at the first matching clause:
     ///
-    /// * If `value` is `nil` or `Void` (ie the empty tuple), it is pushed as `nil`.
+    /// * If `value` is `nil`, `Void` (ie the empty tuple), or `.some(.none)` it is pushed as `nil`.
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
     /// * If `value` is `[UInt8]`, ``push(_:toindex:)-171ku`` is used.
     /// * If `value` is `UInt8`, it is pushed as an integer. This special case is required because `Uint8` is not
@@ -1717,10 +1717,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             pushnil(toindex: toindex)
             return
         }
-        if value as? Void != nil {
+        if value is Void {
             pushnil(toindex: toindex)
             return
         }
+
+        // It is really hard to unwrap an Optional<T> that's been stuffed into an Any... this is the only way I've found
+        // that works and lets you check if the inner value is nil. Note this can't be part of the main switch below,
+        // because _everything_ matches this case.
+        switch value {
+        case let opt as Optional<Any>:
+            if opt == nil {
+                pushnil(toindex: toindex)
+                return
+            }
+        }
+
         switch value {
         case let pushable as Pushable:
             push(pushable)

@@ -950,30 +950,29 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
 
         let value = toany(index, guessType: false)
-        if value == nil {
-            // Explicit check for value being nil, without it if T is Any then the result ends up being some(nil)
-            // because `value as? Any` succeeds in creating an Any containing a nil (which is then wrapped in an
-            // optional).
-            return nil
-        } else if T.self == Any.self, let tempRef = value as? LuaTemporaryRef {
+        if T.self == Any.self, let tempRef = value as? LuaTemporaryRef {
             return tempRef.ref() as? T
+        } else if T.self == Any.self && value == nil {
+            // Special case this because otherwise in the clause immediately following, `nil as? Any` will succeed and
+            // produce .some(nil)
+            return nil
         } else if let directCast = value as? T {
             return directCast
         } else if let ref = value as? LuaStringRef {
-            if T.self == String.self {
+            if T.self == String.self || T.self == Optional<String>.self {
                 return ref.toString() as? T
-            } else if T.self == Array<UInt8>.self {
+            } else if T.self == Array<UInt8>.self || T.self == Optional<Array<UInt8>>.self {
                 return ref.toData() as? T
-            } else if T.self == AnyHashable.self {
+            } else if T.self == AnyHashable.self || T.self == Optional<AnyHashable>.self {
                 return ref.ref() as? T
             }
 #if !LUASWIFT_NO_FOUNDATION
-            if T.self == Data.self {
+            if T.self == Data.self || T.self == Optional<Data>.self {
                 return Data(ref.toData()) as? T
             }
 #endif
         } else if let ref = value as? LuaTableRef {
-            if T.self == AnyHashable.self {
+            if T.self == AnyHashable.self || T.self == Optional<AnyHashable>.self {
                 return ref.ref() as? T
             }
             return ref.resolve()
@@ -1573,9 +1572,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
-    public func push<Arg1, Ret>(closure: @escaping (Arg1?) throws -> Ret, toindex: CInt = -1) {
+    public func push<Arg1, Ret>(closure: @escaping (Arg1) throws -> Ret, toindex: CInt = -1) {
         push({ L in
-            let arg1: Arg1? = try L.checkClosureArgument(index: 1)
+            let arg1: Arg1 = try L.checkArgument(1)
             L.push(any: try closure(arg1))
             return 1
         }, toindex: toindex)
@@ -1603,10 +1602,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
-    public func push<Arg1, Arg2, Ret>(closure: @escaping (Arg1?, Arg2?) throws -> Ret, toindex: CInt = -1) {
+    public func push<Arg1, Arg2, Ret>(closure: @escaping (Arg1, Arg2) throws -> Ret, toindex: CInt = -1) {
         push({ L in
-            let arg1: Arg1? = try L.checkClosureArgument(index: 1)
-            let arg2: Arg2? = try L.checkClosureArgument(index: 2)
+            let arg1: Arg1 = try L.checkArgument(1)
+            let arg2: Arg2 = try L.checkArgument(2)
             L.push(any: try closure(arg1, arg2))
             return 1
         }, toindex: toindex)
@@ -1634,24 +1633,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
-    public func push<Arg1, Arg2, Arg3, Ret>(closure: @escaping (Arg1?, Arg2?, Arg3?) throws -> Ret, toindex: CInt = -1) {
+    public func push<Arg1, Arg2, Arg3, Ret>(closure: @escaping (Arg1, Arg2, Arg3) throws -> Ret, toindex: CInt = -1) {
         push({ L in
-            let arg1: Arg1? = try L.checkClosureArgument(index: 1)
-            let arg2: Arg2? = try L.checkClosureArgument(index: 2)
-            let arg3: Arg3? = try L.checkClosureArgument(index: 3)
+            let arg1: Arg1 = try L.checkArgument(1)
+            let arg2: Arg2 = try L.checkArgument(2)
+            let arg3: Arg3 = try L.checkArgument(3)
             L.push(any: try closure(arg1, arg2, arg3))
             return 1
         }, toindex: toindex)
-    }
-
-    /// Helper function used by implementations of `push(closure:)`.
-    public func checkClosureArgument<T>(index: CInt) throws -> T? {
-        let val: T? = tovalue(index)
-        if val == nil && !isnoneornil(index) {
-            throw argumentError(index, "Expected \(T.self), got \(typename(index: index))")
-        } else {
-            return val
-        }
     }
 
     /// Push any value representable using `Any` onto the stack as a `userdata`.
@@ -3146,7 +3135,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Checks if an function argument is of the correct type.
     ///
-    /// For example:
+    /// If the Lua value at the given stack index is not convertible to `T` using ``tovalue(_:)``, then an error is
+    /// thrown. For example:
     ///
     /// ```swift
     /// func myclosure(_ L: LuaState) throws -> CInt {
@@ -3154,6 +3144,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // ...
     /// }
     /// ```
+    ///
+    /// This function correctly handles the case where `T` is an `Optional<BaseType>`, providing `BaseType` is not
+    /// itself an Optional, returning `.none` when the Lua value was `nil`, and erroring if the Lua value was any
+    /// other type not convertible to `BaseType`.
     ///
     /// - Parameter arg: Stack index of the argument.
     /// - Returns: An instance of type `T`.
@@ -3165,6 +3159,20 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         } else {
             throw argumentError(arg, "Expected type convertible to \(String(describing: T.self)), got \(typename(index: arg))")
         }
+    }
+
+    /// Checks if an function argument is of the correct type.
+    ///
+    /// This function behaves identically to ``checkArgument(_:)`` except for having an explicit `type:` parameter to force
+    /// the correct type where inference on the return type is not sufficient.
+    ///
+    /// - Parameter arg: Stack index of the argument.
+    /// - Parameter type: The type to convert the argument to.
+    /// - Returns: An instance of type `T`.
+    /// - Throws: an ``argumentError(_:_:)`` if the specified argument cannot be converted to type `T`. Argument
+    ///   conversion is performed according to ``tovalue(_:)``.
+    public func checkArgument<T>(_ arg: CInt, type: T.Type) throws -> T {
+        return try checkArgument(arg)
     }
 
     /// Checks if an argument can be converted to a RawRepresentable type.

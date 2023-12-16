@@ -1123,7 +1123,7 @@ final class LuaTests: XCTestCase {
         L.push(closure: c)
         XCTAssertThrowsError(try L.pcall(1234, traceback: false), "", { err in
             XCTAssertEqual((err as? LuaCallError)?.errorString,
-                           "bad argument #1 to '?' (Expected String, got number)")
+                           "bad argument #1 to '?' (Expected type convertible to Optional<String>, got number)")
         })
     }
 
@@ -1152,18 +1152,18 @@ final class LuaTests: XCTestCase {
     func test_extension_4arg_closure() throws {
         // Test that more argument overloads of push(closure:) can be implemented if required by code not in the Lua
         // package.
-        func push<Arg1, Arg2, Arg3, Arg4>(closure: @escaping (Arg1?, Arg2?, Arg3?, Arg4?) throws -> Any?) {
+        func push<Arg1, Arg2, Arg3, Arg4>(closure: @escaping (Arg1, Arg2, Arg3, Arg4) throws -> Any?) {
             L.push(LuaClosureWrapper({ L in
-                let arg1: Arg1? = try L.checkClosureArgument(index: 1)
-                let arg2: Arg2? = try L.checkClosureArgument(index: 2)
-                let arg3: Arg3? = try L.checkClosureArgument(index: 3)
-                let arg4: Arg4? = try L.checkClosureArgument(index: 4)
+                let arg1: Arg1 = try L.checkArgument(1)
+                let arg2: Arg2 = try L.checkArgument(2)
+                let arg3: Arg3 = try L.checkArgument(3)
+                let arg4: Arg4 = try L.checkArgument(4)
                 L.push(any: try closure(arg1, arg2, arg3, arg4))
                 return 1
             }))
         }
         var gotArg4: String? = nil
-        push(closure: { (arg1: Bool?, arg2: Int?, arg3: String?, arg4: String?) in
+        push(closure: { (arg1: Bool, arg2: Int?, arg3: String?, arg4: String) in
             gotArg4 = arg4
         })
         try L.pcall(true, 0, nil, "woop")
@@ -1403,6 +1403,13 @@ final class LuaTests: XCTestCase {
         L.pushnil()
         let anyNil: Any? = L.tovalue(1)
         XCTAssertNil(anyNil)
+
+        let anyHashableNil: AnyHashable? = L.tovalue(1)
+        XCTAssertNil(anyHashableNil)
+
+        let optionalAnyHashable = L.tovalue(1, type: AnyHashable?.self)
+        // This, like any request to convert nil to an optional type, should succeed
+        XCTAssertEqual(optionalAnyHashable, .some(.none))
     }
 
     // There are 2 basic Any pathways to worry about, which are tovalue<Any> and tovalue<AnyHashable>.
@@ -2256,5 +2263,37 @@ final class LuaTests: XCTestCase {
             }
             XCTAssertEqual(callerr.errorString, expectedError)
         }
+    }
+
+    func test_checkArgument() throws {
+        func pcallNoPop(_ arguments: Any?...) throws {
+            L.push(index: -1)
+            try L.pcall(arguments: arguments)
+        }
+
+        L.push({ L in
+            let _: String = try L.checkArgument(1)
+            let _: String? = try L.checkArgument(2)
+            return 0
+        })
+
+        try pcallNoPop("str", "str")
+        try pcallNoPop("str", nil)
+        XCTAssertThrowsError(try pcallNoPop(nil, nil))
+        XCTAssertThrowsError(try pcallNoPop(123, nil))
+        XCTAssertThrowsError(try pcallNoPop("str", 123))
+        L.pop()
+
+        L.push({ L in
+            let _: Int = try L.checkArgument(1)
+            let _: Int? = try L.checkArgument(2)
+            return 0
+        })
+        try pcallNoPop(123, 123)
+        try pcallNoPop(123, nil)
+        XCTAssertThrowsError(try pcallNoPop(nil, nil))
+        XCTAssertThrowsError(try pcallNoPop("str", nil))
+        XCTAssertThrowsError(try pcallNoPop(123, "str"))
+        L.pop()
     }
 }

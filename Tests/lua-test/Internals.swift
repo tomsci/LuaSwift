@@ -9,3 +9,14 @@ extension LuaValue {
         return L
     }
 }
+
+// These are to avoid deprecation warnings in the test code but still be able to test the deprecated fns
+extension LuaState {
+    public func internal_registerDefaultMetatable(functions: [String: MetafieldType]) {
+        deprecated_registerDefaultMetatable(functions: functions)
+    }
+
+    public func internal_registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
+        deprecated_registerMetatable(for: type, functions: functions)
+    }
+}

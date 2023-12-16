@@ -602,7 +602,7 @@ final class LuaTests: XCTestCase {
             let intval: Int
             let strval: String
         }
-        L.registerMetatable(for: Foo.self, functions: [:])
+        L.registerMetatable(for: Foo.self)
         let val = Foo(intval: 123, strval: "abc")
         L.push(userdata: val)
         XCTAssertEqual(L.type(1), .userdata)
@@ -629,7 +629,7 @@ final class LuaTests: XCTestCase {
         var val: DeinitChecker? = DeinitChecker { deinited += 1 }
         XCTAssertEqual(deinited, 0)
 
-        L.registerMetatable(for: DeinitChecker.self, functions: [:])
+        L.registerMetatable(for: DeinitChecker.self)
         L.push(userdata: val!)
         L.push(any: val!)
         var userdataFromPushUserdata: DeinitChecker? = L.touserdata(1)
@@ -655,7 +655,7 @@ final class LuaTests: XCTestCase {
         var val: DeinitChecker? = DeinitChecker { deinited += 1 }
         XCTAssertEqual(deinited, 0)
 
-        L.registerMetatable(for: DeinitChecker.self, functions: [:])
+        L.registerMetatable(for: DeinitChecker.self, metafields: [.close: .synthesize])
         XCTAssertEqual(L.gettop(), 0)
 
         // Avoid calling lua_toclose, to make this test still compile with Lua 5.3
@@ -694,7 +694,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(deinited, 0)
         XCTAssertEqual(closed, 0)
 
-        L.registerMetatable(for: ClosableDeinitChecker.self, functions: [:])
+        L.registerMetatable(for: ClosableDeinitChecker.self, metafields: [.close: .synthesize])
         XCTAssertEqual(L.gettop(), 0)
 
         // Avoid calling lua_toclose, to make this test still compile with Lua 5.3
@@ -727,17 +727,22 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(closed, 1)
     }
 
-    func test_registerMetatable() throws {
+    func test_legacy_registerMetatable() throws {
         class SomeClass {
             var member: String? = nil
         }
+        var barCalled = false
         XCTAssertFalse(L.isMetatableRegistered(for: SomeClass.self))
-        L.registerMetatable(for: SomeClass.self, functions: [
+        L.internal_registerMetatable(for: SomeClass.self, functions: [
             "__call": .function { (L: LuaState!) -> CInt in
                 guard let obj: SomeClass = L.touserdata(1) else {
                     fatalError("Shouldn't happen")
                 }
                 obj.member = L.tostring(2)
+                return 0
+            },
+            "bar": .closure { L in
+                barCalled = true
                 return 0
             }
         ])
@@ -746,20 +751,117 @@ final class LuaTests: XCTestCase {
         L.push(userdata: val)
         try L.pcall("A string arg")
         XCTAssertEqual(val.member, "A string arg")
+
+        try L.load(string: "foo = ...; foo.bar()")
+        L.push(any: SomeClass())
+        XCTAssertFalse(barCalled)
+        try L.pcall(nargs: 1, nret: 0)
+        XCTAssertTrue(barCalled)
     }
 
-    func test_registerDefaultMetatable() {
+    func test_registerMetatable() throws {
+        class SomeClass {
+            var member: String? = nil
+            let data: [UInt8] = [1, 2, 3]
+
+            func voidfn() {}
+            func strstr(str: String) -> String {
+                return str + "!"
+            }
+            func optstrstr(str: String?) -> String {
+                return str ?? "!"
+            }
+        }
+
+        XCTAssertFalse(L.isMetatableRegistered(for: SomeClass.self))
+        L.registerMetatable(for: SomeClass.self, fields: [
+            "member": .property(get: { $0.member }, set: { $0.member = $1 }),
+            "data": .property { $0.data },
+            "strstr": .memberfn { $0.strstr(str: $1) },
+            "optstrstr": .memberfn { $0.optstrstr(str: $1) },
+            "voidfn": .memberfn { $0.voidfn() },
+        ], metafields: [
+            .call: .function { (L: LuaState!) -> CInt in
+                guard let obj: SomeClass = L.touserdata(1) else {
+                    fatalError("Shouldn't happen")
+                }
+                obj.member = L.tostring(2)
+                return 0
+            },
+            .index: .synthesize
+        ])
+        XCTAssertTrue(L.isMetatableRegistered(for: SomeClass.self))
+
+        let val = SomeClass()
+        L.push(userdata: val)
+
+        L.push(index: 1)
+        try L.pcall("A string arg")
+        XCTAssertEqual(val.member, "A string arg")
+
+        try L.get(1, key: "member")
+        XCTAssertEqual(L.tostring(-1), "A string arg")
+        L.pop()
+
+        try L.set(1, key: "member", value: "anewval")
+        XCTAssertEqual(val.member, "anewval")
+
+        try L.get(1, key: "data")
+        XCTAssertEqual(L.todata(-1), [1, 2, 3])
+        L.pop()
+
+        try L.get(1, key: "strstr")
+        L.push(index: 1)
+        L.push("woop")
+        try L.pcall(nargs: 2, nret: 1)
+        XCTAssertEqual(L.tostring(-1), "woop!")
+        L.pop()
+
+        try L.get(1, key: "optstrstr")
+        L.push(index: 1)
+        L.pushnil()
+        try L.pcall(nargs: 2, nret: 1)
+        XCTAssertEqual(L.tostring(-1), "!")
+        L.pop()
+    }
+
+    func test_legacy_registerDefaultMetatable() throws {
         struct Foo {}
-        L.registerDefaultMetatable(functions: [
+        var called = false
+        L.internal_registerDefaultMetatable(functions: [
             "woop": .closure { L in
                 L.push(321)
                 return 1
+            },
+            "__call": .closure { L in
+                called = true
+                return 0
             }
         ])
         try! L.load(string: "obj = ...; return obj.woop()")
         // Check that Foo gets the default metatable with a woop() fn
         L.push(userdata: Foo())
-        try! L.pcall(nargs: 1, nret: 1)
+        try L.pcall(nargs: 1, nret: 1)
+        XCTAssertEqual(L.tovalue(1), 321)
+
+        L.push(userdata: Foo())
+        XCTAssertEqual(called, false)
+        try L.pcall(nargs: 0, nret: 0)
+        XCTAssertEqual(called, true)
+    }
+
+    func test_registerDefaultMetatable() throws {
+        struct Foo {}
+        L.registerDefaultMetatable(metafields: [
+            .call: .closure { L in
+                L.push(321)
+                return 1
+            }
+        ])
+        try! L.load(string: "obj = ...; return obj()")
+        // Check that Foo gets the default metatable and is callable
+        L.push(userdata: Foo())
+        try L.pcall(nargs: 1, nret: 1)
         XCTAssertEqual(L.tovalue(1), 321)
     }
 
@@ -770,9 +872,9 @@ final class LuaTests: XCTestCase {
         struct Bar: Equatable {
             let member: Int
         }
-        L.registerMetatable(for: Foo.self, functions: [:], synthesize: [])
+        L.registerMetatable(for: Foo.self)
         L.addEquatableMetamethod(for: Foo.self)
-        L.registerMetatable(for: Bar.self, functions: [:], synthesize: [])
+        L.registerMetatable(for: Bar.self)
         // Note, not calling addEquatableMetamethod for Bar
 
         L.push(userdata: Foo(member: 111)) // 1
@@ -803,7 +905,7 @@ final class LuaTests: XCTestCase {
                 return lhs.member < rhs.member
             }
         }
-        L.registerMetatable(for: Foo.self, functions: [:], synthesize: [])
+        L.registerMetatable(for: Foo.self)
         L.addComparableMetamethods(for: Foo.self)
 
         L.push(userdata: Foo(member: 111)) // 1
@@ -818,15 +920,14 @@ final class LuaTests: XCTestCase {
 
     func test_synthesize_tostring() throws {
         struct Foo {}
-        L.registerMetatable(for: Foo.self, functions: [:], synthesize: .tostring)
+        L.registerMetatable(for: Foo.self, metafields: [.tostring: .synthesize])
         L.push(userdata: Foo())
         let str = try XCTUnwrap(L.tostring(1, convert: true))
         XCTAssertEqual(str, "Foo()")
 
         struct NoTostringStruct {}
-        L.registerMetatable(for: NoTostringStruct.self, functions: [:], synthesize: [])
+        L.registerMetatable(for: NoTostringStruct.self, metafields: [:])
         L.push(userdata: NoTostringStruct())
-        L.printStack()
         let nonTostringStr = try XCTUnwrap(L.tostring(-1, convert: true))
         XCTAssertTrue(nonTostringStr.hasPrefix("LuaSwift_Type_NoTostringStruct: ")) // The default behaviour of tostring for a named userdata
 
@@ -835,7 +936,7 @@ final class LuaTests: XCTestCase {
                 return "woop"
             }
         }
-        L.registerMetatable(for: CustomStruct.self, functions: [:], synthesize: .tostring)
+        L.registerMetatable(for: CustomStruct.self, metafields: [.tostring: .synthesize])
         L.push(userdata: CustomStruct())
         let customStr = try XCTUnwrap(L.tostring(-1, convert: true))
         XCTAssertEqual(customStr, "woop")
@@ -848,7 +949,7 @@ final class LuaTests: XCTestCase {
         }
         let f = Foo()
         XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
-        L.registerMetatable(for: Foo.self, functions: ["__call": .closure { L in
+        L.registerMetatable(for: Foo.self, metafields: [.call: .closure { L in
             let f: Foo = try XCTUnwrap(L.touserdata(1))
             // Above would have failed if we get called with an innerfoo
             f.str = L.tostring(2)
@@ -863,7 +964,7 @@ final class LuaTests: XCTestCase {
                 var str: String?
             }
             XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
-            L.registerMetatable(for: Foo.self, functions: ["__call": .closure { L in
+            L.registerMetatable(for: Foo.self, metafields: [.call: .closure { L in
                 let f: Foo = try XCTUnwrap(L.touserdata(1))
                 // Above would have failed if we get called with an outerfoo
                 f.str = L.tostring(2)
@@ -879,21 +980,6 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(g.str, "innerfoo")
             XCTAssertEqual(f.str, "outerfoo")
         }
-    }
-
-    func testClosureMetafields() throws {
-        struct Foo {}
-        var barCalled = false
-        L.registerMetatable(for: Foo.self, functions: [
-            "bar": .closure { L in
-                barCalled = true
-                return 0
-            }
-        ])
-        try L.load(string: "foo = ...; foo.bar()")
-        L.push(any: Foo())
-        try L.pcall(nargs: 1, nret: 0)
-        XCTAssertTrue(barCalled)
     }
 
     func test_toany() {
@@ -943,7 +1029,7 @@ final class LuaTests: XCTestCase {
         struct Foo : Equatable {
             let val: String
         }
-        L.registerMetatable(for: Foo.self, functions: [:])
+        L.registerMetatable(for: Foo.self)
         let fooArray = [Foo(val: "a"), Foo(val: "b")]
         L.push(any: fooArray)
         XCTAssertEqual(L.type(1), .table)
@@ -1072,6 +1158,18 @@ final class LuaTests: XCTestCase {
 
         L.setglobal(name: "hello", value: .nilValue)
         XCTAssertEqual(L.globals["hello"].type, .nil)
+
+        class Foo {
+            func bar() -> Int {
+                return 42
+            }
+        }
+        L.registerMetatable(for: Foo.self, fields: [
+            "bar": .memberfn { $0.bar() }
+        ])
+        L.setglobal(name: "foo", value: .userdata(Foo()))
+        XCTAssertEqual(L.globals["foo"].type, .userdata)
+        XCTAssertEqual(try L.globals["foo"].pcall(member: "bar").toint(), 42)
     }
 
     func test_push_closure() throws {
@@ -1172,7 +1270,7 @@ final class LuaTests: XCTestCase {
         struct NonHashable {
             let nope = true
         }
-        L.registerMetatable(for: NonHashable.self, functions: [:])
+        L.registerMetatable(for: NonHashable.self)
         lua_newtable(L)
         L.push(userdata: NonHashable())
         L.push(true)
@@ -1220,7 +1318,7 @@ final class LuaTests: XCTestCase {
         // Check it can correctly keep hold of a ref to a Swift object
         var deinited = 0
         var obj: DeinitChecker? = DeinitChecker { deinited += 1 }
-        L.registerMetatable(for: DeinitChecker.self, functions: [:])
+        L.registerMetatable(for: DeinitChecker.self, metafields: [.close: .synthesize])
         ref = L.ref(any: obj!)
 
         XCTAssertIdentical(ref.toany() as? AnyObject, obj)
@@ -1262,8 +1360,8 @@ final class LuaTests: XCTestCase {
 
     func test_ref_get_complexMetatable() throws {
         struct IndexableValue {}
-        L.registerMetatable(for: IndexableValue.self, functions: [
-            "__index": .function { L in
+        L.registerMetatable(for: IndexableValue.self, metafields: [
+            .index: .function { L in
                 return 1 // Ie just return whatever the key name was
             }
         ])
@@ -1640,8 +1738,8 @@ final class LuaTests: XCTestCase {
         lua_setmetatable(L, -2)
 
         class Foo {}
-        L.registerMetatable(for: Foo.self, functions: [
-            "__len": .closure { L in
+        L.registerMetatable(for: Foo.self, metafields: [
+            .len: .closure { L in
                 L.push(42)
                 return 1
             },
@@ -1762,33 +1860,6 @@ final class LuaTests: XCTestCase {
         try L.set(-1, key: 3, value: 333)
         XCTAssertEqual(L.rawget(-1, key: 3, { L.toint($0) } ), 333)
         XCTAssertEqual(L.gettop(), 1)
-    }
-
-    // Just checking the readme example code compiles
-    func test_readme_bridge() throws {
-        class Foo {
-            let baz: String
-            init(baz: String) {
-                self.baz = baz
-            }
-            func bar() {
-                print("Foo.bar() called, baz=\(baz)")
-            }
-        }
-
-        let L = LuaState(libraries: [])
-        L.registerMetatable(for: Foo.self, functions: [
-            "bar": .closure { L in
-                // Recover the `Foo` instance from the first argument to the function
-                guard let foo: Foo = L.tovalue(1) else {
-                    throw L.error("Bad argument #1 to bar()")
-                }
-                // Call the function
-                foo.bar()
-                // Tell Lua that this function returns zero results
-                return 0
-            }
-        ])
     }
 
     func test_getinfo() throws {
@@ -2184,7 +2255,7 @@ final class LuaTests: XCTestCase {
         struct ErrStruct : Equatable {
             let err: Int
         }
-        L.registerMetatable(for: ErrStruct.self, functions: [:])
+        L.registerMetatable(for: ErrStruct.self)
         L.push(userdata: ErrStruct(err: 1234))
         XCTAssertThrowsError(try L.pcall(nargs: 1, nret: 0)) { err in
             guard let errVal = (err as? LuaCallError)?.errorValue else {

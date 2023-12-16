@@ -92,52 +92,7 @@ Therefore you can safely use different `LuaState` instances from different threa
 
 Swift structs and classes can be bridged into Lua in a type-safe and reference-counted manner, using Lua's userdata and metatable mechanisms. When the bridged Lua value is garbage collected by the Lua runtime, a reference to the Swift value is released.
 
-``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)`` is used to register a Lua metatable for a given Swift type. This defines which members the bridged object has and how to call them. A bridged type with no additional members defined will not be callable from Lua, but retains a reference to the Swift value until it is garbage collected.
-
-All bridged objects automatically gain the ability to be [closed](https://www.lua.org/manual/5.4/manual.html#3.3.8) (when using Lua 5.4 or later), that is to say that in addition to adding a `__gc` function to the type's metatable, a default `__close` function is also added. See ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)`` for more details.
-
-The example below defines a metatable for `Foo` which exposes the Swift `Foo.bar()` function by defining a "bar" closure which calls `Foo.bar()`. ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` is used to convert the Lua value back to a Swift `Foo` type. Note that by using the `.closure` type, "bar" is allowed to throw Swift errors which are converted to Lua errors. (If `.function` was used instead of `.closure`, throwing errors would not be permitted, see the discussion on ``LuaClosure``.)
-
-```swift
-import Lua
-
-class Foo {
-    let baz: String
-    init(baz: String) {
-        self.baz = baz
-    }
-    func bar() {
-        print("Foo.bar() called, baz=\(baz)")
-    }
-}
-
-let L = LuaState(libraries: [])
-L.registerMetatable(for: Foo.self, functions: [
-    "bar": .closure { L in
-        // Recover the `Foo` instance from the first argument to the function
-        let foo: Foo = try L.checkArgument(1)
-        // Call the function
-        foo.bar()
-        // Tell Lua that this function returns zero results
-        return 0
-    }
-])
-```
-
-Then pass the `Foo` instance to Lua using ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)`` or ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``:
-
-```swift
-let foo = Foo(baz: "my foo instance")
-L.push(userdata: foo)
-// Then pcall into Lua, etc
-```
-
-From Lua, the userdata object can be called as if it were a Lua object:
-
-```lua
-foo:bar()
--- Prints "Foo.bar() called, baz=my foo instance"
-```
+See <doc:BridgingSwiftToLua> for more infomation.
 
 ### Converting types using Any
 
@@ -255,12 +210,12 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 ### Registering metatables
 
 - ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``
-- ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:synthesize:)``
+- ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:fields:metafields:)``
 - ``Lua/Swift/UnsafeMutablePointer/addEquatableMetamethod(for:)``
 - ``Lua/Swift/UnsafeMutablePointer/addComparableMetamethods(for:)``
 - ``Lua/Swift/UnsafeMutablePointer/isMetatableRegistered(for:)``
 - ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:)``
-- ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:synthesize:)``
+- ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(metafields:)``
 
 ### Get/Set functions
 

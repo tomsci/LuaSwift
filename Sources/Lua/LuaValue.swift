@@ -52,8 +52,8 @@ import CLua
 /// as the underlying Lua value, in a similar way to how `AnyHashable` behaves.
 @dynamicCallable
 public class LuaValue: Equatable, Hashable, Pushable {
-    var L: LuaState!
-    let ref: CInt
+    internal var L: LuaState!
+    private let ref: CInt
 
     /// The type of the value this `LuaValue` represents.
     public let type: LuaType

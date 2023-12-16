@@ -122,6 +122,15 @@ public struct LuaDataArrayWrapper: Pushable {
     }
 }
 
+/// A `Pushable` wrapper that pushes its value as a userdata.
+public struct LuaUserdataWrapper: Pushable {
+    public let value: Any
+
+    public func push(onto L: LuaState) {
+        L.push(userdata: value)
+    }
+}    
+
 /// Internal helper class. Do not instantiate directly.
 public struct NonPushableTypesHelper: Pushable {
     private init() {}
@@ -188,5 +197,18 @@ extension Pushable where Self == NonPushableTypesHelper {
     public static func data(_ val: [UInt8]) -> LuaDataArrayWrapper {
         // The return type should be `some Pushable`, see https://github.com/apple/swift/issues/61357
         return LuaDataArrayWrapper(data: val)
+    }
+
+    /// Returns a Pushable which pushes its value using `push(userdata:)`.
+    ///
+    /// This is useful for types which have a metatable registered but do not themselves implement `Pushable` and
+    /// therefore must be pushed using ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)``. For example to define
+    /// a global value:
+    ///
+    /// ```swift
+    /// L.setglobal(name: "hello", value: .userdata(some_value))
+    /// ```
+    public static func userdata(_ val: Any) -> LuaUserdataWrapper {
+        return LuaUserdataWrapper(value: val)
     }
 }

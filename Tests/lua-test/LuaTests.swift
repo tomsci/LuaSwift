@@ -1138,6 +1138,34 @@ final class LuaTests: XCTestCase {
 #endif
     }
 
+    func test_push_tuple() throws {
+        let empty: Void = ()
+        XCTAssertEqual(L.push(tuple: empty), 0)
+        XCTAssertEqual(L.gettop(), 0)
+
+        let singleNonTuple = "hello"
+        XCTAssertEqual(L.push(tuple: singleNonTuple), 1)
+        XCTAssertEqual(L.gettop(), 1)
+        XCTAssertEqual(L.tovalue(1), "hello")
+        L.settop(0)
+
+        let pair = (123, "abc")
+        XCTAssertEqual(L.push(tuple: pair), 2)
+        XCTAssertEqual(L.gettop(), 2)
+        XCTAssertEqual(L.tovalue(1), 123)
+        XCTAssertEqual(L.tovalue(2), "abc")
+        L.settop(0)
+
+        let triple: (Int, Bool?, String) = (123, nil, "abc")
+        XCTAssertEqual(L.push(tuple: triple), 3)
+        XCTAssertEqual(L.gettop(), 3)
+        XCTAssertEqual(L.tovalue(1), 123)
+        XCTAssertEqual(L.tovalue(2, type: Bool.self), nil)
+        XCTAssertEqual(L.tovalue(3), "abc")
+        L.settop(0)
+
+    }
+
     func test_push_helpers() throws {
         L.setglobal(name: "foo", value: .function { L in
             L!.push(42)
@@ -1196,7 +1224,7 @@ final class LuaTests: XCTestCase {
             L.push("result")
             return 1
         }
-        let sresult: String? = try L.pcall()
+        var sresult: String? = try L.pcall()
         XCTAssertTrue(called)
         XCTAssertEqual(sresult, "result")
 
@@ -1223,6 +1251,38 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual((err as? LuaCallError)?.errorString,
                            "bad argument #1 to '?' (Expected type convertible to Optional<String>, got number)")
         })
+
+        L.push(closure: c)
+        sresult = try L.pcall(nil)
+        XCTAssertEqual(sresult, "no result")
+
+        // Test multiple return support
+
+        XCTAssertEqual(L.gettop(), 0)
+        L.push(closure: {})
+        try L.pcall(nargs: 0, nret: MultiRet)
+        XCTAssertEqual(L.gettop(), 0)
+
+        // One arg case is tested elsewhere, but for completeness
+        L.push(closure: { return 123 })
+        try L.pcall(nargs: 0, nret: MultiRet)
+        XCTAssertEqual(L.gettop(), 1)
+        L.settop(0)
+
+        L.push(closure: { return (123, 456) })
+        try L.pcall(nargs: 0, nret: MultiRet)
+        XCTAssertEqual(L.gettop(), 2)
+        XCTAssertEqual(L.tovalue(1), 123)
+        XCTAssertEqual(L.tovalue(2), 456)
+        L.settop(0)
+
+        L.push(closure: { return (123, "abc", Optional<String>.none) })
+        try L.pcall(nargs: 0, nret: MultiRet)
+        XCTAssertEqual(L.gettop(), 3)
+        XCTAssertEqual(L.tovalue(1), 123)
+        XCTAssertEqual(L.tovalue(2), "abc")
+        XCTAssertNil(L.tovalue(3))
+        L.settop(0)
     }
 
     func test_push_any_closure() throws {

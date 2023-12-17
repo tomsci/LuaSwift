@@ -129,24 +129,24 @@ public struct UserdataField<T> {
     /// }
     /// ```
     ///
-    /// The `inc()` function could be exposed to Lua by using `.memberfunc` with a closure like:
+    /// The `inc()` function could be exposed to Lua by using `.memberfn` with a closure like:
     ///
     /// ```swift
     /// L.registerMetatable(for: Foo.self, fields: [
-    ///     "inc": .memberfunc { $0.inc() }
+    ///     "inc": .memberfn { $0.inc() }
     /// ])
     /// ```
     ///
-    /// The Swift closure may return any value (including `Void`) which can be translated using
-    /// ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``.
+    /// The Swift closure may return any value which can be translated using
+    /// ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``. This includes returning Void (meaning the Lua function returns
+    /// no results) or returning a tuple of N values (meaning the Lua function returns N values).
     ///
     /// See ```Lua/Swift/UnsafeMutablePointer/registerMetatable(for:fields:metafields:)``.
-    public static func memberfn<Ret>(_ accessor: @escaping (T) -> Ret) -> UserdataField {
+    public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> UserdataField {
         return .closure { L in
             let obj: T = try L.checkArgument(1)
-            let result = accessor(obj)
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor(obj))
+            return nret
         }
     }
 
@@ -163,94 +163,91 @@ public struct UserdataField<T> {
     /// }
     /// ```
     ///
-    /// The `inc()` function could be exposed to Lua by using `.memberfunc` with a closure like:
+    /// The `inc()` function could be exposed to Lua by using `.memberfn` with a closure like:
     ///
     /// ```swift
     /// L.registerMetatable(for: Foo.self, fields: [
-    ///     "inc": .memberfunc { $0.inc(by: $1) }
+    ///     "inc": .memberfn { $0.inc(by: $1) }
     /// ])
     /// ```
     ///
-    /// The Swift closure may return any value (including `Void`) which can be translated using
-    /// ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``. Any argument type which can be converted from Lua using
-    /// ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` (including optionals) can be used.
+    /// The Swift closure may return any value which can be translated using
+    /// ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``. This includes returning Void (meaning the Lua function returns
+    /// no results) or returning a tuple of N values (meaning the Lua function returns N values). Any argument type
+    /// which can be converted from Lua using ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` (including optionals) can
+    /// be used.
     ///
     /// See ```Lua/Swift/UnsafeMutablePointer/registerMetatable(for:fields:metafields:)``.
-    public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) -> Ret) -> UserdataField {
+    public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> UserdataField {
         return .closure { L in
             let obj: T = try L.checkArgument(1)
             let arg1: Arg1 = try L.checkArgument(2)
-            let result = accessor(obj, arg1)
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor(obj, arg1))
+            return nret
         }
     }
 
     /// Used to define a two-argument member function in a metatable.
     ///
-    /// The Swift closure may return any value (including `Void`) which can be translated using
-    /// ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``. Any argument type which can be converted from Lua using
-    /// ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` (including optionals) can be used.
+    /// The Swift closure may return any value which can be translated using
+    /// ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``. This includes returning Void (meaning the Lua function returns
+    /// no results) or returning a tuple of N values (meaning the Lua function returns N values). Any argument type
+    /// which can be converted from Lua using ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` (including optionals) can
+    /// be used.
     ///
     /// See ```Lua/Swift/UnsafeMutablePointer/registerMetatable(for:fields:metafields:)``.
-    public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) -> Ret) -> UserdataField {
+    public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> UserdataField {
         return .closure { L in
             let obj: T = try L.checkArgument(1)
             let arg1: Arg1 = try L.checkArgument(2)
             let arg2: Arg2 = try L.checkArgument(3)
-            let result = accessor(obj, arg1, arg2)
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor(obj, arg1, arg2))
+            return nret
         }
     }
 
-    public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) -> Ret) -> UserdataField {
+    public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> UserdataField {
         return .closure { L in
             let obj: T = try L.checkArgument(1)
             let arg1: Arg1 = try L.checkArgument(2)
             let arg2: Arg2 = try L.checkArgument(3)
             let arg3: Arg3 = try L.checkArgument(4)
-            let result = accessor(obj, arg1, arg2, arg3)
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor(obj, arg1, arg2, arg3))
+            return nret
         }
     }
 
-    public static func staticfn<Ret>(_ accessor: @escaping () -> Ret) -> UserdataField {
+    public static func staticfn<Ret>(_ accessor: @escaping () throws -> Ret) -> UserdataField {
         return .closure { L in
-            let result = accessor()
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor())
+            return nret
         }
     }
 
-    public static func staticfn<Arg1, Ret>(_ accessor: @escaping (Arg1) -> Ret) -> UserdataField {
+    public static func staticfn<Arg1, Ret>(_ accessor: @escaping (Arg1) throws -> Ret) -> UserdataField {
         return .closure { L in
             let arg1: Arg1 = try L.checkArgument(1)
-            let result = accessor(arg1)
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor(arg1))
+            return nret
         }
     }
 
-    public static func staticfn<Arg1, Arg2, Ret>(_ accessor: @escaping (Arg1, Arg2) -> Ret) -> UserdataField {
+    public static func staticfn<Arg1, Arg2, Ret>(_ accessor: @escaping (Arg1, Arg2) throws -> Ret) -> UserdataField {
         return .closure { L in
             let arg1: Arg1 = try L.checkArgument(1)
             let arg2: Arg2 = try L.checkArgument(2)
-            let result = accessor(arg1, arg2)
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor(arg1, arg2))
+            return nret
         }
     }
 
-    public static func staticfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (Arg1, Arg2, Arg3) -> Ret) -> UserdataField {
+    public static func staticfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (Arg1, Arg2, Arg3) throws -> Ret) -> UserdataField {
         return .closure { L in
             let arg1: Arg1 = try L.checkArgument(1)
             let arg2: Arg2 = try L.checkArgument(2)
             let arg3: Arg3 = try L.checkArgument(3)
-            let result = accessor(arg1, arg2, arg3)
-            L.push(any: result)
-            return 1
+            let nret = L.push(tuple: try accessor(arg1, arg2, arg3))
+            return nret
         }
     }
 

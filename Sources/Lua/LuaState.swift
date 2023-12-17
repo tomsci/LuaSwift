@@ -1524,11 +1524,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Push a zero-arguments closure on to the stack as a Lua function.
     ///
-    /// The Lua function when called will call the `closure`, and convert any result to a Lua value using
-    /// ``push(any:toindex:)``. If `closure` throws an error, it will be converted to a Lua error using
-    /// ``push(error:toindex:)``.
+    /// The Lua function when called will call `closure`. If the closure throws an error, it will be converted to a
+    /// Lua error using ``push(error:toindex:)``.
     ///
-    /// If `closure` does not return a value, the Lua function will return `nil`.
+    /// The Swift closure may return any value which can be translated using ``push(tuple:)``. This includes returning
+    /// Void (meaning the Lua function returns no results) or returning a tuple of N values (meaning the Lua function
+    /// returns N values).
     ///
     /// ```swift
     /// L.push(closure: {
@@ -1537,26 +1538,31 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// L.push(closure: {
     ///     return "I am callable and return a result"
     /// })
+    /// L.push(closure: {
+    ///     return ("I return multiple results", "result #2")
+    /// })
     /// ```
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<Ret>(closure: @escaping () throws -> Ret, toindex: CInt = -1) {
         push({ L in
-            L.push(any: try closure())
-            return 1
+            let nret = L.push(tuple: try closure())
+            return nret
         }, toindex: toindex)
     }
 
     /// Push a one-argument closure on to the stack as a Lua function.
     ///
-    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using ``push(any:toindex:)``. If arguments cannot be converted, a Lua
-    /// error will be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are
-    /// filled in with `nil`.
+    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`.
+    /// If arguments cannot be converted, a Lua error will be thrown. As with standard Lua function calls, excess
+    /// arguments are discarded and any shortfall are filled in with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``. If
-    /// `closure` does not return a value, the Lua function will return `nil`.
+    /// If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``.
+    ///
+    /// The Swift closure may return any value which can be translated using ``push(tuple:)``. This includes returning
+    /// Void (meaning the Lua function returns no results) or returning a tuple of N values (meaning the Lua function
+    /// returns N values).
     ///
     /// ```swift
     /// L.push(closure: { (arg: String?) in
@@ -1566,7 +1572,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // ...
     /// })
     /// ```
-    /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
+    ///
     /// - Note: There is an ambiguity if pushing a closure which takes a `LuaState?` and returns a `CInt` if _also_
     ///   using the [trailing closure](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/closures#Trailing-Closures)
     ///   syntax - the wrong overload of `push()` will be called. To avoid this ambiguity, do not use the trailing
@@ -1577,20 +1583,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func push<Arg1, Ret>(closure: @escaping (Arg1) throws -> Ret, toindex: CInt = -1) {
         push({ L in
             let arg1: Arg1 = try L.checkArgument(1)
-            L.push(any: try closure(arg1))
-            return 1
+            let nret = L.push(tuple: try closure(arg1))
+            return nret
         }, toindex: toindex)
     }
 
     /// Push a two-argument closure on to the stack as a Lua function.
     ///
-    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using ``push(any:toindex:)``. If arguments cannot be converted, a Lua
-    /// error will be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are
-    /// filled in with `nil`.
+    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`.
+    /// If arguments cannot be converted, a Lua error will be thrown. As with standard Lua function calls, excess
+    /// arguments are discarded and any shortfall are filled in with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``. If
-    /// `closure` does not return a value, the Lua function will return `nil`.
+    /// If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``.
+    ///
+    /// The Swift closure may return any value which can be translated using ``push(tuple:)``. This includes returning
+    /// Void (meaning the Lua function returns no results) or returning a tuple of N values (meaning the Lua function
+    /// returns N values).
     ///
     /// ```swift
     /// L.push(closure: { (arg1: String?, arg2: Int?) in
@@ -1600,7 +1608,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // ...
     /// })
     /// ```
-    /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
@@ -1608,20 +1615,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push({ L in
             let arg1: Arg1 = try L.checkArgument(1)
             let arg2: Arg2 = try L.checkArgument(2)
-            L.push(any: try closure(arg1, arg2))
-            return 1
+            let nret = L.push(tuple: try closure(arg1, arg2))
+            return nret
         }, toindex: toindex)
     }
 
     /// Push a three-argument closure on to the stack as a Lua function.
     ///
-    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`,
-    /// and convert any result to a Lua value using ``push(any:toindex:)``. If arguments cannot be converted, a Lua
-    /// error will be thrown. As with standard Lua function calls, excess arguments are discarded and any shortfall are
-    /// filled in with `nil`.
+    /// The Lua function when called will call `closure`, converting its arguments to match the signature of `closure`.
+    /// If arguments cannot be converted, a Lua error will be thrown. As with standard Lua function calls, excess
+    /// arguments are discarded and any shortfall are filled in with `nil`.
     ///
-    ///  If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``. If
-    /// `closure` does not return a value, the Lua function will return `nil`.
+    /// If `closure` throws an error, it will be converted to a Lua error using ``push(error:toindex:)``.
+    ///
+    /// The Swift closure may return any value which can be translated using ``push(tuple:)``. This includes returning
+    /// Void (meaning the Lua function returns no results) or returning a tuple of N values (meaning the Lua function
+    /// returns N values).
     ///
     /// ```swift
     /// L.push(closure: { (arg1: String?, arg2: Int?, arg3: Any?) in
@@ -1631,7 +1640,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///     // ...
     /// })
     /// ```
-    /// - Note: Arguments to `closure` must all be optionals, of a type ``tovalue(_:)`` can return.
     ///
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
@@ -1640,8 +1648,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             let arg1: Arg1 = try L.checkArgument(1)
             let arg2: Arg2 = try L.checkArgument(2)
             let arg3: Arg3 = try L.checkArgument(3)
-            L.push(any: try closure(arg1, arg2, arg3))
-            return 1
+            let nret = L.push(tuple: try closure(arg1, arg2, arg3))
+            return nret
         }, toindex: toindex)
     }
 
@@ -1783,7 +1791,105 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         if toindex != -1 {
             insert(toindex)
         }
+    }
 
+    /// Push an N-tuple on to the Lua stack as N values.
+    ///
+    /// If the argument is a tuple, it is unpacked and each element is pushed on to the stack in order using
+    /// ``push(any:toindex:)``, and the number of values pushed is returned. If the argument is not a tuple, it is
+    /// pushed using ``push(any:toindex:)`` and `1` is returned.
+    ///
+    /// The empty tuple `()` (also written `Void`) results in zero values being pushed. Any optional which is nil will
+    /// result in 1 value (`nil`) being pushed. Due to limitations in the Swift type system, named tuples and tuples
+    /// with more than 10 elements are not supported (and will be pushed as a single userdata value as per the fallback
+    /// behaviour of `push(any:)`), nor are recursive tuples.
+    ///
+    /// Note this is the only `push()` function which does not always push exactly 1 value on to the stack.
+    ///
+    /// - Parameter tuple: Any value
+    /// - Returns: The number of values pushed on to the stack.
+    public func push(tuple: Any) -> CInt {
+        if tuple is () {
+            // Empty tuple, push zero values
+            return 0
+        }
+        switch tuple {
+        case let (a, b) as (Any, Any):
+            push(any: a)
+            push(any: b)
+            return 2
+        case let (a, b, c) as (Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            return 3
+        case let (a, b, c, d) as (Any, Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            push(any: d)
+            return 4
+        case let (a, b, c, d, e) as (Any, Any, Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            push(any: d)
+            push(any: e)
+            return 5
+        case let (a, b, c, d, e, f) as (Any, Any, Any, Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            push(any: d)
+            push(any: e)
+            push(any: f)
+            return 6
+        case let (a, b, c, d, e, f, g) as (Any, Any, Any, Any, Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            push(any: d)
+            push(any: e)
+            push(any: f)
+            push(any: g)
+            return 7
+        case let (a, b, c, d, e, f, g, h) as (Any, Any, Any, Any, Any, Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            push(any: d)
+            push(any: e)
+            push(any: f)
+            push(any: g)
+            push(any: h)
+            return 8
+        case let (a, b, c, d, e, f, g, h, i) as (Any, Any, Any, Any, Any, Any, Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            push(any: d)
+            push(any: e)
+            push(any: f)
+            push(any: g)
+            push(any: h)
+            push(any: i)
+            return 9
+        case let (a, b, c, d, e, f, g, h, i, j) as (Any, Any, Any, Any, Any, Any, Any, Any, Any, Any):
+            push(any: a)
+            push(any: b)
+            push(any: c)
+            push(any: d)
+            push(any: e)
+            push(any: f)
+            push(any: g)
+            push(any: h)
+            push(any: i)
+            push(any: j)
+            return 10
+        default: // Also covers the single-argument case
+            push(any: tuple)
+            return 1
+        }
     }
 
     /// Push a Swift Error on to the Lua stack.

@@ -18,7 +18,9 @@ public typealias lua_Number = CLua.lua_Number
 
 /// Special value for ``Lua/Swift/UnsafeMutablePointer/pcall(nargs:nret:traceback:)`` to indicate
 /// that all results should be returned unadjusted.
-public let LUA_MULTRET: CInt = CLua.LUA_MULTRET
+///
+/// This is identical to `LUA_MULTRET` defined in `CLua`.
+public let MultiRet: CInt = CLua.LUA_MULTRET
 
 /// Redeclaration of the underlying `lua_CFunction` type with easier-to-read types.
 public typealias lua_CFunction = @convention(c) (LuaState?) -> CInt
@@ -1816,7 +1818,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// `nret` result values are then pushed to the stack.
     ///
     /// - Parameter nargs: The number of arguments to pass to the function.
-    /// - Parameter nret: The number of expected results. Can be ``LUA_MULTRET``
+    /// - Parameter nret: The number of expected results. Can be ``MultiRet``
     ///   to keep all returned values.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
@@ -1834,7 +1836,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// `nret` result values are then pushed to the stack.
     ///
     /// - Parameter nargs: The number of arguments to pass to the function.
-    /// - Parameter nret: The number of expected results. Can be ``LUA_MULTRET``
+    /// - Parameter nret: The number of expected results. Can be ``MultiRet``
     ///   to keep all returned values.
     /// - Parameter msgh: An optional message handler function to be called if the function errors.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.

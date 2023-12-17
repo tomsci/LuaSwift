@@ -124,7 +124,7 @@ Versions older than 5.3 are sufficiently different in their API that it's not st
 
 ### Push functions toindex parameter
 
-All of the [`push()`](#push()-functions) APIs take an optional parameter `toindex` which specifies where on the stack to put the new element. This is the stack index where the element should be on return of the function, and is allowed to be relative. So `-1` means push the element onto the top of the stack (the default), `-2` means put it just below the top of the stack, `1` means put it at the bottom of the stack, etc. Existing stack elements will be moved if necessary as per [`lua_insert()`](https://www.lua.org/manual/5.4/manual.html#lua_insert).
+All of the [`push()`](#push()-functions) APIs take an optional parameter `toindex` which specifies where on the stack to put the new element. This is the stack index where the element should be on return of the function, and is allowed to be relative. So `-1` means push the element on to the top of the stack (the default), `-2` means put it just below the top of the stack, `1` means put it at the bottom of the stack, etc. Existing stack elements will be moved if necessary as per [`lua_insert()`](https://www.lua.org/manual/5.4/manual.html#lua_insert).
 
 ## Topics
 

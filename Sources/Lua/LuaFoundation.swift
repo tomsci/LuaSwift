@@ -112,7 +112,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return maybeGetState()?.defaultStringEncoding ?? .stringEncoding(.utf8)
     }
 
-    /// Push a string onto the stack, using the specified encoding.
+    /// Push a string on to the stack, using the specified encoding.
     ///
     /// See also ``push(string:encoding:toindex:)-9nxec`` to use encodings other than `String.Encoding`, or
     /// ``push(string:toindex:)`` to use the default string encoding.
@@ -125,7 +125,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push(string: string, encoding: .stringEncoding(encoding), toindex: toindex)
     }
 
-    /// Push a string onto the stack, using the specified encoding.
+    /// Push a string on to the stack, using the specified encoding.
     ///
     /// For example, to push a string using an encoding such as Code Page 850 which is only supported by
     /// CoreFoundation:
@@ -178,7 +178,7 @@ extension Data: Pushable {
 }
 
 extension NSNumber: Pushable {
-    /// Push an `NSNumber` onto the stack.
+    /// Push an `NSNumber` on to the stack.
     ///
     /// If the value is representable as a `lua_Integer`, it is pushed as an integer, otherwise as a `number`.
     public func push(onto L: LuaState) {

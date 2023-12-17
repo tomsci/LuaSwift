@@ -4,7 +4,7 @@
 import CLua
 
 public protocol Pushable {
-    /// Push this Swift value onto the stack, as a Lua type.
+    /// Push this Swift value on to the stack, as a Lua type.
     func push(onto state: LuaState)
 }
 
@@ -69,7 +69,7 @@ extension lua_Number: Pushable {
 }
 
 extension String: Pushable {
-    /// Push the string onto the Lua stack using the default string encoding.
+    /// Push the string on to the Lua stack using the default string encoding.
     public func push(onto L: LuaState) {
         L.push(string: self)
     }

@@ -4,7 +4,7 @@ Protocol adopted by any Swift type that can unambiguously be converted to a basi
 
 ## Overview
 
-Any type which conforms to `Pushable` (either due to an extension provided by the `Lua` module, or by an implementation from anywhere else) can be pushed onto the Lua stack using ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``. Several functions have convenience overloads allowing `Pushable` values to be passed in directly, shortcutting the need to push them onto the stack then refer to them by stack index, such as ``Lua/Swift/UnsafeMutablePointer/setglobal(name:value:)``.
+Any type which conforms to `Pushable` (either due to an extension provided by the `Lua` module, or by an implementation from anywhere else) can be pushed on to the Lua stack using ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``. Several functions have convenience overloads allowing `Pushable` values to be passed in directly, shortcutting the need to push them on to the stack then refer to them by stack index, such as ``Lua/Swift/UnsafeMutablePointer/setglobal(name:value:)``.
 
 Most basic data types, such as `String`, `Int`, `Bool`, `Array` and `Dictionary` are `Pushable`. In the case of `Array` and `Dictionary`, they are `Pushable` only if their element types are. It is an error to treat a `String` as `Pushable` if it is not valid in the default string encoding, see ``Lua/Swift/UnsafeMutablePointer/getDefaultStringEncoding()``.
 

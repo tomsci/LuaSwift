@@ -100,7 +100,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return L.popref()
     }
 
-    /// Pushes the value this `LuaValue` represents onto the Lua stack of `L`.
+    /// Pushes the value this `LuaValue` represents on to the Lua stack of `L`.
     ///
     /// - Note: `L` must be related to the `LuaState` used to construct the object.
     public func push(onto L: LuaState) {

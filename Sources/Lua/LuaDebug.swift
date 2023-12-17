@@ -249,7 +249,7 @@ public struct LuaDebug {
 /// A temporary object used to access information about a Lua stack frame.
 ///
 /// This type permits multiple different ways to access the local variables in the stack frame. The most basic is
-/// ``pushLocal(_:)`` which pushes the nth local onto the stack, and also returns the local name. ``findLocal(name:)``
+/// ``pushLocal(_:)`` which pushes the nth local on to the stack, and also returns the local name. ``findLocal(name:)``
 /// searches for a local of the given name and returns its index, suitable for passing to other functions which take an
 /// `n` parameter such as ``setLocal(n:value:)``.
 ///
@@ -269,7 +269,7 @@ public class LuaStackFrame {
         self.ar = ar
     }
 
-    /// Pushes the nth local value in this stack frame onto the stack.
+    /// Pushes the nth local value in this stack frame on to the stack.
     ///
     /// If `n` is larger than the number of locals in scope, then `nil` is returned and nothing is pushed onto
     /// the stack.

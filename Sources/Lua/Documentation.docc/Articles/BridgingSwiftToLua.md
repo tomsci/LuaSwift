@@ -2,7 +2,7 @@
 
 ## Overview
 
-Any Swift type can be made accessible from Lua. The process of defining what fields, methods etc should be exposed is referred to as "bridging". There are two parts to the process: firstly, defining the Lua _metatable_ for the type; and secondly, making specific value(s) of that type available to the Lua runtime, which is often referred to as "pushing" due to the first step always being to push the value onto the Lua stack. Each of these parts are covered below; before that is a brief description of how bridging is implemented.
+Any Swift type can be made accessible from Lua. The process of defining what fields, methods etc should be exposed is referred to as "bridging". There are two parts to the process: firstly, defining the Lua _metatable_ for the type; and secondly, making specific value(s) of that type available to the Lua runtime, which is often referred to as "pushing" due to the first step always being to push the value on to the Lua stack. Each of these parts are covered below; before that is a brief description of how bridging is implemented.
 
 ### Bridging implementation
 

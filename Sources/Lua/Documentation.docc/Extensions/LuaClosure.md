@@ -50,5 +50,5 @@ L.push({ L in
 ## See Also
 
 - ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``
-- ``Lua/Swift/UnsafeMutablePointer/error(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/error(_:)-swift.method``
 - ``LuaClosureWrapper``

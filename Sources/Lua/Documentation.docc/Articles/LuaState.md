@@ -209,13 +209,11 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 
 ### Registering metatables
 
-- ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``
-- ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:fields:metafields:)``
-- ``Lua/Swift/UnsafeMutablePointer/addEquatableMetamethod(for:)``
-- ``Lua/Swift/UnsafeMutablePointer/addComparableMetamethods(for:)``
+- ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``
+- ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``
 - ``Lua/Swift/UnsafeMutablePointer/isMetatableRegistered(for:)``
+- ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``
 - ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:)``
-- ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(metafields:)``
 
 ### Get/Set functions
 
@@ -307,7 +305,8 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:function:global:)``
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)``
 - ``Lua/Swift/UnsafeMutablePointer/setfuncs(_:nup:)``
-- ``Lua/Swift/UnsafeMutablePointer/error(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/error(_:)-swift.type.method``
+- ``Lua/Swift/UnsafeMutablePointer/error(_:)-swift.method``
 - ``Lua/Swift/UnsafeMutablePointer/ref(index:)``
 - ``Lua/Swift/UnsafeMutablePointer/ref(any:)``
 - ``Lua/Swift/UnsafeMutablePointer/popref()``

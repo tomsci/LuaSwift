@@ -421,6 +421,9 @@ public class LuaValue: Equatable, Hashable, Pushable {
         try self.checkValid()
         push(onto: L)
         try Self.checkTopIsNewIndexable(L)
+        defer {
+            L.pop()
+        }
         L.push(any: key)
         L.push(any: value)
         try L.set(-3)

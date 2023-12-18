@@ -580,6 +580,8 @@ final class LuaTests: XCTestCase {
         try! mt.set("foo", "bar")
         mt["__index"] = mt
 
+        XCTAssertEqual(L.gettop(), 0)
+
         XCTAssertEqual(t["foo"].tostring(), nil)
         t.metatable = mt
         XCTAssertEqual(t["foo"].tostring(), "bar")

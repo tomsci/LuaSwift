@@ -131,17 +131,16 @@ public struct LuaUserdataWrapper: Pushable {
     }
 }    
 
-/// Internal helper class. Do not instantiate directly.
-public struct NonPushableTypesHelper: Pushable {
+public struct _NonPushableTypesHelper: Pushable {
     private init() {}
     public func push(onto L: LuaState) {
         fatalError() // will never be called
     }
 }
 
-// It's not clear to me why the "where Self == NonPushableTypesHelper" has to exist, other than because the type system
+// It's not clear to me why the "where Self == _NonPushableTypesHelper" has to exist, other than because the type system
 // needs there to be _some_ sort of concrete type to resolve ".nilValue" against.
-extension Pushable where Self == NonPushableTypesHelper {
+extension Pushable where Self == _NonPushableTypesHelper {
     /// Returns a Pushable representing the `nil` Lua value.
     ///
     /// This permits the use of `.nilValue` anywhere a Pushable can be specified. For example to remove `somekey`

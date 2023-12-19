@@ -25,11 +25,10 @@ public struct LuaStringRef : LuaTemporaryRef {
     }
 
     public func guessType() -> AnyHashable {
-        if let str = L.tostring(index, convert: false) {
-            // This will fail if the string isn't valid in the default encoding
+        if let str = toString() {
             return str
         } else {
-            return L.todata(index)!
+            return toData()
         }
     }
 }

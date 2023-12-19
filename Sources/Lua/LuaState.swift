@@ -880,47 +880,45 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Attempt to convert the value at the given stack index to type `T`.
     ///
-    /// The types of value that are convertible are:
+    /// The Lua types are each handled as follows:
     /// * `number` can be converted to `lua_Number` or to any integer type providing the value can be represented
     ///    as such, based on what `T` is. A Lua integer can always be converted to a `lua_Number` (ie `Double`)
     ///    providing the value has an exact double-precision representation (ie is less than 2^53). Values are never
     ///    rounded or truncated to satisfy `T`.
     /// * `boolean` converts to `Bool`.
-    /// * `string` converts to `String`, `[UInt8]` or `Data` depending on which `T` is. To convert to `String`, the
-    ///    string must be valid in the default string encoding.
+    /// * `string` converts to `String`, `[UInt8]` or `Data` depending on what `T` is. To convert to `String`, the
+    ///    string must be valid in the default string encoding. If `T` is `Any` or `AnyHashable`, string values will
+    ///    convert to `String` if possible and to `[UInt8]` otherwise.
     /// * `table` converts to either an array or a dictionary depending on whether `T` is `Array<Element>` or
-    ///   `Dictionary<Key, Value>`. The table contents are recursively
-    ///   converted as if `tovalue<Element>()`, `tovalue<Key>()` and/or `tovalue<Value>()` were being called, as
-    ///   appropriate. If any element fails to cast to the appropriate subtype, then the entire conversion fails and
-    ///   returns `nil`.
+    ///   `Dictionary<Key, Value>`. The table contents are recursively converted as if `tovalue<Element>()`,
+    ///   `tovalue<Key>()` and/or `tovalue<Value>()` were being called, as appropriate. If any element fails to
+    ///   cast to the appropriate subtype, then the entire conversion fails and returns `nil`. If `T` is `Any`, a
+    ///   `Dictionary<AnyHashable: Any>` is always returned, regardless of whether the Lua table looks more like an
+    ///   array or a dictionary. Call ``Lua/Swift/Dictionary/luaTableToArray()`` subsequently if desired. Attempting
+    ///   to convert a table to `AnyHashable` will always return `nil`.
     /// * `userdata` - providing the value was pushed via `push<U>(userdata:)`, converts to `U` or anything `U` can be
     ///    cast to.
-    /// * `function` - if the function is a C function, converts to `lua_CFunction`. If the function was pushed with
-    ///   ``push(_:numUpvalues:toindex:)``, converts to ``LuaClosure``.
+    /// * `function` - if the function is a C function, it is represented by `lua_CFunction`. If the function was pushed
+    ///   with ``push(_:numUpvalues:toindex:)``, is represented by ``LuaClosure``. Otherwise it is represented by
+    ///   ``LuaValue``. The conversion succeeds if the represented type can be cast to `T`.
     /// * `thread` converts to `LuaState`.
     /// * `lightuserdata` converts to `UnsafeRawPointer`.
-    /// * The `nil` Lua value always converts to Swift `nil`, regardless of what `T` is.
-    ///
+    /// 
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
     /// called.
     ///
-    /// If `T` or a part of `T` is insufficiently typed to resolve a `string` or `table` (ie, it is `Any` or
-    /// `AnyHashable`), then the string/table will be returned as a ``LuaValue``. Similarly if `T` is `AnyHashable` and
-    /// the resolved type is not `Hashable` (for example, it is a `lua_CFunction`), then a `LuaValue` is returned
-    /// instead.
+    /// Converting the `nil` Lua value when `T` is `Optional<U>` always succeeds and returns `.some(.none)`. This is the
+    /// only case where the Lua `nil` value does not return `nil`. Any behavior described above like "converts to
+    /// `SomeType`" or "when `T` is `SomeType`" also applies for any level of nested `Optional` of that type, such as
+    /// `SomeType??`.
     ///
     /// If the value cannot be represented by type `T` for any other reason, then `nil` is returned. This includes
-    /// numbers being out of range.
+    /// numbers being out of range, and tables with keys whose Swift value (according to the rules of `tovalue()`) is
+    /// not `Hashable`.
     ///
     /// Converting large tables is relatively expensive, due to the large number of dynamic casts required to correctly
     /// check all the types, although generally this shouldn't be an issue until hundreds of thousands of elements are
     /// involved.
-    ///
-    /// While technically an Array or Dictionary can be used as a Dictionary key providing that the Element/Key/Value
-    /// types are Hashable, this is not supported by `tovalue()` and attempting a conversion like
-    /// `tovalue<Dictionary<[String], Int>>()` will always fail and return `nil`. Calling
-    /// `tovalue<AnyHashable>()` on a `table` or `string` _will_ succeed, however, returning a `LuaValue` because
-    /// `LuaValue` is `Hashable`.
     ///
     /// ```swift
     /// L.push(123)
@@ -932,39 +930,61 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// let dict: [String : Int] = L.tovalue(-1)! // OK
     /// let numDict: [String : Double] = L.tovalue(-1)! // Also OK
     /// ```
+    ///
+    /// > Important: The exact behaviour of `tovalue()` over the course of the 0.x versions of LuaSwift, in corner
+    /// cases such as how strings and tables should be returned from calls to `tovalue<Any>()`. Be sure to check the
+    /// current behaviour described above is as expected.
     public func tovalue<T>(_ index: CInt) -> T? {
-        if T.self == LuaValue.self {
+        let typeAcceptsAny = (opaqueValue is T)
+        let typeAcceptsAnyHashable = (opaqueHashable is T)
+        let typeAcceptsAnyOrAnyHashable = typeAcceptsAny || typeAcceptsAnyHashable
+        let typeAcceptsLuaValue = (LuaValue.nilValue is T)
+        if typeAcceptsLuaValue && !typeAcceptsAnyOrAnyHashable {
             // There's no need to even call toany
             return ref(index: index) as? T
         }
 
         let value = toany(index, guessType: false)
-        if T.self == Any.self, let tempRef = value as? LuaTemporaryRef {
-            return tempRef.ref() as? T
-        } else if T.self == Any.self && value == nil {
-            // Special case this because otherwise in the clause immediately following, `nil as? Any` will succeed and
+        if T.self == Any.self && value == nil {
+            // Special case this because otherwise in the directCast clause when T = Any, `nil as? Any` will succeed and
             // produce .some(nil)
             return nil
-        } else if let directCast = value as? T {
-            return directCast
         } else if let ref = value as? LuaStringRef {
-            if T.self == String.self || T.self == Optional<String>.self {
-                return ref.toString() as? T
-            } else if T.self == Array<UInt8>.self || T.self == Optional<Array<UInt8>>.self {
+            let typeAcceptsString = (emptyString is T)
+            if typeAcceptsString, let asString = ref.toString() {
+                // Note this means that a T=Any[Hashable] constraint will return a String for preference
+                return asString as? T
+            }
+
+            let typeAcceptsBytes = (dummyBytes is T)
+            if typeAcceptsBytes {
+                // [UInt8] is returned in preference to Data, in the case of T=Any[Hashable]
                 return ref.toData() as? T
-            } else if T.self == AnyHashable.self || T.self == Optional<AnyHashable>.self {
-                return ref.ref() as? T
             }
 #if !LUASWIFT_NO_FOUNDATION
-            if T.self == Data.self || T.self == Optional<Data>.self {
+            let typeAcceptsData = (emptyData is T)
+            if typeAcceptsData {
                 return Data(ref.toData()) as? T
             }
 #endif
         } else if let ref = value as? LuaTableRef {
-            if T.self == AnyHashable.self || T.self == Optional<AnyHashable>.self {
-                return ref.ref() as? T
+            if typeAcceptsAny {
+                if let dict: Dictionary<AnyHashable, Any> = ref.asAnyDictionary() {
+                    return dict as? T
+                } else {
+                    return nil
+                }
+            } else if typeAcceptsAnyHashable {
+                if let dict: Dictionary<AnyHashable, AnyHashable> = ref.asAnyDictionary() {
+                    return dict as? T
+                } else {
+                    return nil
+                }
+            } else {
+                return ref.resolve()
             }
-            return ref.resolve()
+        } else if let directCast = value as? T {
+            return directCast
         }
         return nil
     }

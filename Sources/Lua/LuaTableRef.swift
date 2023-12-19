@@ -20,7 +20,7 @@ public struct LuaTableRef : LuaTemporaryRef {
         return L.popref()
     }
 
-    func guessType() -> Any {
+    internal func guessType() -> Any {
         var hasIntKeys = false
         var hasNonIntKeys = false
         for (k, _) in L.pairs(index) {
@@ -56,22 +56,45 @@ public struct LuaTableRef : LuaTemporaryRef {
         }
     }
 
+    internal func asAnyDictionary<ValueType>() -> [AnyHashable: ValueType]? {
+        var result: [AnyHashable: ValueType] = [:]
+        for (k, v) in L.pairs(index) {
+            let key: AnyHashable? = L.tovalue(k)
+            let value: ValueType? = L.tovalue(v)
+            // This could still fail if there are keys that can't be hashed, return nil in that case
+            if let key, let value {
+                result[key] = value
+            } else {
+                return nil
+            }
+        }
+        return result
+    }
+
     public func resolve<T>() -> T? {
         let opt: T? = nil
-        let test = { (val: Any) -> Bool in
-            return (val as? T) != nil
-        }
         if isArrayType(opt) {
-            return doResolveArray(test: test) as? T
+            if let arr: Array<Any> = doResolveArray(test: { $0 is T }) {
+                return arr as? T
+            } else {
+                return nil
+            }
         } else {
-            return doResolveDict(test: test) as? T
+            if let dict: Dictionary<AnyHashable, Any> = doResolveDict(test: { $0 is T }) {
+                return dict as? T
+            } else {
+                return nil
+            }
         }
     }
 
-    func doResolveArray(test: (Any) -> Bool) -> Any? {
-        var testArray = Array<Any>()
+    private func doResolveArray<ElementType>(test: (Array<ElementType>) -> Bool) -> Array<ElementType>? {
+        var testArray = Array<ElementType>()
         func good(_ val: Any) -> Bool {
-            testArray.append(val)
+            guard let valAsElementType = val as? ElementType else {
+                return false
+            }
+            testArray.append(valAsElementType)
             let success = test(testArray)
             // Oddly removeLast seems to be faster than removeAll(keepingCapacity: true)
             testArray.removeLast()
@@ -106,14 +129,10 @@ public struct LuaTableRef : LuaTemporaryRef {
 
             let value = L.toany(-1, guessType: false)! // toany cannot fail on a valid non-nil index
 
-            // Check we're not about to stuff a LuaStringRef or LuaTableRef into an Any
-            // (Have to do this before the good(value) check)
-            if acceptsAny, let tempRef = value as? LuaTemporaryRef {
-                result.append(tempRef.ref())
-                continue
-            }
-
-            if good(value) {
+            // Put this case at the start so as to optimise away a couple of casts to LuaStringRef and LuaTableRef
+            // providing we know it's safe to do so, ie when acceptsAny is false so we can be sure this won't result in
+            // eg stuffing a LuaStringRef into the result.
+            if !acceptsAny && good(value) {
                 result.append(value)
                 continue
             } else if let ref = value as? LuaStringRef {
@@ -135,11 +154,11 @@ public struct LuaTableRef : LuaTemporaryRef {
                     result.append(Data(ref.toData()))
 #endif
                 case .luavalue:
-                    fatalError("Should not reach here") // Handled above
+                    fatalError() // Handled above
                 case .anyhashable:
-                    result.append(ref.ref())
-                case .dict, .array, .direct: // None of these are applicable for TypeConstraint(stringTest:)
-                    return nil
+                    result.append(ref.guessType()) // as per tovalue() docs
+                case .dict, .array, .hashableDict, .hashableArray, .direct: // None of these are applicable for TypeConstraint(stringTest:)
+                    fatalError()
                 case .none: // TypeConstraint(stringTest:) failed to find any compatible type
                     return nil
                 }
@@ -148,16 +167,28 @@ public struct LuaTableRef : LuaTemporaryRef {
                     elementType = TypeConstraint(tableTest: { good($0) })
                 }
 
-                let resolvedVal: Any?
+                let resolvedVal: ElementType?
                 switch elementType {
-                case .array:
-                    resolvedVal = ref.doResolveArray(test: { good($0) })
-                case .dict:
-                    resolvedVal = ref.doResolveDict(test: { good($0) })
+                case .array, .hashableArray:
+                    if let arr: Array<ElementType> = ref.doResolveArray(test: { good($0) }) {
+                        resolvedVal = arr as? ElementType // Can't ever fail otherwise good() wasn't doing its job
+                    } else {
+                        resolvedVal = nil
+                    }
+                case .dict, .hashableDict:
+                    if let dict: Dictionary<AnyHashable, ElementType> = ref.doResolveDict(test: { good($0) }) {
+                        resolvedVal = dict as? ElementType
+                    } else {
+                        resolvedVal = nil
+                    }
                 case .luavalue:
-                    fatalError("Should not reach here") // Handled above
+                    fatalError() // Handled above
                 case .anyhashable:
-                    resolvedVal = ref.ref()
+                    if let anyDict: [AnyHashable: ElementType] = ref.asAnyDictionary() {
+                        resolvedVal = anyDict as? ElementType
+                    } else {
+                        resolvedVal = nil
+                    }
                 case .string, .bytes, .direct: // None of these are applicable for TypeConstraint(tableTest:)
                     return nil
 #if !LUASWIFT_NO_FOUNDATION
@@ -172,32 +203,38 @@ public struct LuaTableRef : LuaTemporaryRef {
                 } else {
                     return nil
                 }
+            } else if acceptsAny {
+                result.append(value)
             } else {
                 // Nothing from toany has made T happy, give up
                 return nil
             }
         }
-        return result
+        return result as? Array<ElementType>
     }
 
-    func doResolveDict(test: (Any) -> Bool) -> Any? {
-        var testDict = Dictionary<AnyHashable, Any>()
+    private func doResolveDict<ValueType>(test: (Dictionary<AnyHashable, ValueType>) -> Bool) -> Dictionary<AnyHashable, ValueType>? {
+        var testDict = Dictionary<AnyHashable, ValueType>()
         func good(_ key: AnyHashable, _ val: Any) -> Bool {
-            testDict[key] = val
+            guard let valAsValueType = val as? ValueType else {
+                return false
+            }
+            testDict[key] = valAsValueType
             let success = test(testDict)
             testDict.removeAll(keepingCapacity: true)
             return success
         }
 
-        var result = Dictionary<AnyHashable, Any>()
+        var result = Dictionary<AnyHashable, ValueType>()
         var ktype: TypeConstraint? = nil
         var vtype: TypeConstraint? = nil
 
         for (k, v) in L.pairs(index) {
             let key = L.toany(k, guessType: false)!
             let val = L.toany(v, guessType: false)!
-            let possibleKeys = PossibleValue.makePossibles(ktype, k, key)
-            let possibleValues = PossibleValue.makePossibles(vtype, v, val)
+            let possibleKeys = PossibleValue.makePossibles(constraint: ktype, value: key, hashableTables: true)
+            let valueMustBeHashable = ValueType.self == AnyHashable.self
+            let possibleValues = PossibleValue.makePossibles(constraint: vtype, value: val, hashableTables: valueMustBeHashable)
             var found = false
             for pkey in possibleKeys {
                 for pval in possibleValues {
@@ -207,25 +244,43 @@ public struct LuaTableRef : LuaTemporaryRef {
                         assert(vtype == nil || vtype == pval.type)
                         vtype = pval.type
 
-                        guard let actualKey = pkey.actualValue(L, k, key) as? AnyHashable else {
+                        let actualKey: AnyHashable?
+                        switch pkey.type {
+                        case .hashableDict:
+                            let goodHashableKey: (Dictionary<AnyHashable, AnyHashable>) -> Bool = {
+                                return good($0, pval.testValue)
+                            }
+                            actualKey = pkey.tableRef!.doResolveDict(test: goodHashableKey)
+                        case .hashableArray:
+                            let goodHashableKey: (Array<AnyHashable>) -> Bool = {
+                                return good($0, pval.testValue)
+                            }
+                            actualKey = pkey.tableRef!.doResolveArray(test: goodHashableKey)
+                        default:
+                            actualKey = pkey.actualValue(L, k, key) as? AnyHashable
+                        }
+
+                        guard let actualKey else {
                             return nil
                         }
                         // Since LuaTableRef/LuaStringRef do not implement Hashable, we can ignore the need to resolve
                         // pkey. And pval only needs checking against LuaTableRef.
-                        let innerTest = { good(pkeyTestValue, $0) }
-                        if pval.type == .array {
-                            if let array = pval.tableRef!.doResolveArray(test: innerTest) {
-                                result[actualKey] = array
+                        switch pval.type {
+                        case .array, .hashableArray:
+                            if let array: Array<ValueType> = pval.tableRef!.doResolveArray(test: { good(pkeyTestValue, $0) }) {
+                                result[actualKey] = array as? ValueType
                                 found = true
                             }
-                        } else if pval.type == .dict {
-                            if let dict = pval.tableRef!.doResolveDict(test: innerTest) {
-                                result[actualKey] = dict
+                        case .dict, .hashableDict:
+                            if let dict: Dictionary<AnyHashable, ValueType> = pval.tableRef!.doResolveDict(test: { good(pkeyTestValue, $0) }) {
+                                result[actualKey] = dict as? ValueType
                                 found = true
                             }
-                        } else if let actualValue = pval.actualValue(L, v, val) {
-                            result[actualKey] = actualValue
-                            found = true
+                        default:
+                            if let actualValue = pval.actualValue(L, v, val) {
+                                result[actualKey] = actualValue as? ValueType
+                                found = true
+                            }
                         }
 
                         if found {
@@ -246,7 +301,7 @@ public struct LuaTableRef : LuaTemporaryRef {
         return result
     }
 
-    struct PossibleValue {
+    private struct PossibleValue {
         let type: TypeConstraint
         let stringRef: LuaStringRef? // Valid for .string .bytes .data
         let tableRef: LuaTableRef? // Valid for .array .dict
@@ -267,6 +322,8 @@ public struct LuaTableRef : LuaTemporaryRef {
             switch type {
             case .dict: self.testValue = emptyAnyDict
             case .array: self.testValue = emptyAnyArray
+            case .hashableDict: self.testValue = emptyAnyHashableDict
+            case .hashableArray: self.testValue = emptyAnyHashableArray
             case .string: self.testValue = emptyString
             case .bytes: self.testValue = dummyBytes
 #if !LUASWIFT_NO_FOUNDATION
@@ -285,28 +342,32 @@ public struct LuaTableRef : LuaTemporaryRef {
 #if !LUASWIFT_NO_FOUNDATION
             case .data: return Data(stringRef!.toData())
 #endif
-            case .array: fatalError("Can't call actualValue on an array")
-            case .dict: fatalError("Can't call actualValue on a dict")
+            case .array, .hashableArray: fatalError("Can't call actualValue on an array")
+            case .dict, .hashableDict: fatalError("Can't call actualValue on a dict")
             case .direct: return anyVal
             case .luavalue: return L.ref(index: index)
             case .anyhashable:
-                if let ref {
-                    return ref.ref()
+                if let stringRef {
+                    return stringRef.guessType()
+                } else if let tableRef {
+                    if let dict: Dictionary<AnyHashable, AnyHashable> = tableRef.asAnyDictionary() {
+                        return dict
+                    } else {
+                        return nil
+                    }
                 } else if let anyHashable = anyVal as? AnyHashable {
                     return anyHashable
                 } else {
                     // If the value is not Hashable and the type constraint is AnyHashable, then tovalue is documented
-                    // to return a LuaValue. We could define this situation to return nil instead, both have merits
-                    // but this makes casting to Dictionary slightly more useful, given that Lua dicts can use keys
-                    // which Swift Dictionaries cannot.
-                    return L.ref(index: index)
+                    // to fail the conversion.
+                    return nil
                 }
             }
         }
 
-        static func makePossibles(_ type: TypeConstraint?, _ index: CInt, _ val: Any) -> [PossibleValue] {
+        static func makePossibles(constraint type: TypeConstraint?, value: Any, hashableTables: Bool) -> [PossibleValue] {
             var result: [PossibleValue] = []
-            if let ref = val as? LuaStringRef {
+            if let ref = value as? LuaStringRef {
                 if type == nil || type == .anyhashable {
                     result.append(PossibleValue(type: .anyhashable, stringRef: ref))
                 }
@@ -324,18 +385,24 @@ public struct LuaTableRef : LuaTemporaryRef {
                 if type == nil || type == .luavalue {
                     result.append(PossibleValue(type: .luavalue)) // No need to cache the cast like with anyhashable
                 }
-            } else if let tableRef = val as? LuaTableRef {
+            } else if let tableRef = value as? LuaTableRef {
                 if type == nil || type == .anyhashable {
                     result.append(PossibleValue(type: .anyhashable, tableRef: tableRef))
                 }
                 // An array table can always be represented as a dictionary, but not vice versa, so put Dictionary first
                 // so that an untyped top-level T (which will result in the first option being chosen) at least doesn't
                 // lose information and behaves consistently.
-                if type == nil || type == .dict {
+                if (!hashableTables && type == nil) || type == .dict {
                     result.append(PossibleValue(type: .dict, tableRef: tableRef))
                 }
-                if type == nil || type == .array {
+                if (hashableTables && type == nil) || type == .hashableDict {
+                    result.append(PossibleValue(type: .hashableDict, tableRef: tableRef))
+                }
+                if (!hashableTables && type == nil) || type == .array {
                     result.append(PossibleValue(type: .array, tableRef: tableRef))
+                }
+                if (hashableTables && type == nil) || type == .hashableArray {
+                    result.append(PossibleValue(type: .hashableArray, tableRef: tableRef))
                 }
                 if type == nil || type == .luavalue {
                     result.append(PossibleValue(type: .luavalue)) // No need to cache the cast like with anyhashable
@@ -345,7 +412,7 @@ public struct LuaTableRef : LuaTemporaryRef {
                     result.append(PossibleValue(type: .anyhashable))
                 }
                 if type == nil || type == .direct {
-                    result.append(PossibleValue(type: .direct, testValue: val))
+                    result.append(PossibleValue(type: .direct, testValue: value))
                 }
                 if type == nil || type == .luavalue {
                     result.append(PossibleValue(type: .luavalue)) // No need to cache the cast like with anyhashable
@@ -356,20 +423,20 @@ public struct LuaTableRef : LuaTemporaryRef {
     }
 }
 
-fileprivate struct OpaqueType {}
-fileprivate let opaqueValue = OpaqueType()
+internal struct OpaqueType {}
+internal let opaqueValue = OpaqueType()
 
-fileprivate struct OpaqueHashableType : Hashable {}
-fileprivate let opaqueHashable = OpaqueHashableType()
+internal struct OpaqueHashableType : Hashable {}
+internal let opaqueHashable = OpaqueHashableType()
 
 fileprivate let emptyAnyArray = Array<Any>()
 fileprivate let emptyAnyDict = Dictionary<AnyHashable, Any>()
 fileprivate let emptyAnyHashableArray = Array<AnyHashable>()
 fileprivate let emptyAnyHashableDict = Dictionary<AnyHashable, AnyHashable>()
-fileprivate let emptyString = ""
-fileprivate let dummyBytes: [UInt8] = [0] // Not empty in case [] casts overly broadly
+internal let emptyString = ""
+internal let dummyBytes: [UInt8] = [0] // Not empty in case [] casts overly broadly
 #if !LUASWIFT_NO_FOUNDATION
-fileprivate let emptyData = Data()
+internal let emptyData = Data()
 #endif
 
 enum TypeConstraint {
@@ -380,8 +447,10 @@ enum TypeConstraint {
     case data // Data
 #endif
     // table types
-    case array // Array
-    case dict // Dictionary
+    case array // Array<Any>
+    case dict // Dictionary<AnyHashable, Any>
+    case hashableArray // Array<AnyHashable>
+    case hashableDict // Dictionary<AnyHashable, AnyHashable>
     // others
     case direct // A concrete type
     case anyhashable // AnyHashable (or Any, in some contexts)
@@ -411,6 +480,10 @@ extension TypeConstraint {
             self = .array
         } else if test(emptyAnyDict) {
             self = .dict
+        } else if test(emptyAnyHashableArray) {
+            self = .hashableArray
+        } else if test(emptyAnyHashableDict) {
+            self = .hashableDict
         } else {
             return nil
         }
@@ -422,5 +495,42 @@ fileprivate func isArrayType<T>(_: T?) -> Bool {
         return true
     } else {
         return false
+    }
+}
+
+extension Dictionary where Key == AnyHashable, Value == Any {
+
+    /// Convert a dictionary returned by `tovalue<Any>()` to an array, if possible.
+    ///
+    /// ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` can return Lua tables as a `Dictionary<AnyHashable, Any>` if `T`
+    /// was `Any`. If such a Dictionary contains only integer keys starting from 1 with no gaps (or is empty), this
+    /// function will convert it to an `Array<Any>` (converting the indexes from 1-based to zero-based in the process).
+    /// Any other keys present in the Dictionary will result in `nil` being returned.
+    public func luaTableToArray() -> [Any]? {
+        var intKeys: [Int] = []
+        for (k, _) in self {
+            if let intKey = k as? Int, intKey > 0 {
+                intKeys.append(intKey)
+            } else {
+                // Non integer key found, doom
+                return nil
+            }
+        }
+
+        // Now check all those integer keys are a sequence and build the result
+        intKeys.sort()
+        var result: [Any] = []
+        var i = 1
+        while i <= intKeys.count {
+            if intKeys[i-1] == i {
+                result.append(self[i]!)
+                i = i + 1
+            } else {
+                // Gap in the indexes, not a sequence
+                return nil
+            }
+        }
+
+        return result
     }
 }

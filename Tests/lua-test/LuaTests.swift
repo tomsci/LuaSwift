@@ -1564,6 +1564,110 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(optionalAnyHashable, .some(.none))
     }
 
+    func test_tovalue_optionals() {
+        L.pushnil() // 1
+        L.push(123) // 2
+        L.push("abc") // 3
+        L.push([123, 456]) // 4
+        L.push(["abc", "def"]) // 5
+
+        // The preferred representation casting nil to nested optionals is with "the greatest optional depth possible"
+        // according to https://github.com/apple/swift/blob/main/docs/DynamicCasting.md#optionals but let's check that
+        let nilint: Int? = nil
+        // One further check that these don't actually compare equal, otherwise our next check won't necessarily catch anything...
+        XCTAssertNotEqual(Optional<Optional<Optional<Int>>>.some(.some(.none)), Optional<Optional<Optional<Int>>>.some(.none))
+        // Now check as Int??? is what we expect
+        XCTAssertEqual(nilint as Int???, Optional<Optional<Optional<Int>>>.some(.some(.none)))
+
+        // Now check tovalue with nil behaves the same as `as?`
+        XCTAssertEqual(L.tovalue(1, type: Int.self), Optional<Int>.none)
+        XCTAssertEqual(L.tovalue(1, type: Int?.self), Optional<Optional<Int>>.some(.none))
+        XCTAssertEqual(L.tovalue(1, type: Int??.self), Optional<Optional<Optional<Int>>>.some(.some(.none)))
+
+        // Now check we can cast a Lua int to any depth of Optional Int
+        XCTAssertEqual(L.tovalue(2, type: Int.self), Optional<Int>.some(123))
+        XCTAssertEqual(L.tovalue(2, type: Int?.self), Optional<Optional<Int>>.some(.some(123)))
+        XCTAssertEqual(L.tovalue(2, type: Int??.self), Optional<Optional<Optional<Int>>>.some(.some(.some(123))))
+
+        // A Lua int should never succeed in casting to any level of String optional
+        XCTAssertEqual(L.tovalue(2, type: String.self), Optional<String>.none)
+        XCTAssertEqual(L.tovalue(2, type: String?.self), Optional<Optional<String>>.none)
+        XCTAssertEqual(L.tovalue(2, type: String??.self), Optional<Optional<Optional<String>>>.none)
+
+        // The same 6 checks should also hold true for string:
+
+        // Check we can cast a Lua string to any depth of Optional String
+        XCTAssertEqual(L.tovalue(3, type: String.self), Optional<String>.some("abc"))
+        XCTAssertEqual(L.tovalue(3, type: String?.self), Optional<Optional<String>>.some(.some("abc")))
+        XCTAssertEqual(L.tovalue(3, type: String??.self), Optional<Optional<Optional<String>>>.some(.some(.some("abc"))))
+
+        // A Lua string should never succeed in casting to any level of Int optional
+        XCTAssertEqual(L.tovalue(3, type: Int.self), Optional<Int>.none)
+        XCTAssertEqual(L.tovalue(3, type: Int?.self), Optional<Optional<Int>>.none)
+        XCTAssertEqual(L.tovalue(3, type: Int??.self), Optional<Optional<Optional<Int>>>.none)
+
+        // Check we can cast a Lua string to any depth of Optional [UInt8]
+        let bytes: [UInt8] = [0x61, 0x62, 0x63]
+        XCTAssertEqual(L.tovalue(3, type: [UInt8].self), Optional<[UInt8]>.some(bytes))
+        XCTAssertEqual(L.tovalue(3, type: [UInt8]?.self), Optional<Optional<[UInt8]>>.some(.some(bytes)))
+        XCTAssertEqual(L.tovalue(3, type: [UInt8]??.self), Optional<Optional<Optional<[UInt8]>>>.some(.some(.some(bytes))))
+
+        // Check we can cast a Lua string to any depth of Optional Data
+        let data = Data(bytes)
+        XCTAssertEqual(L.tovalue(3, type: Data.self), Optional<Data>.some(data))
+        XCTAssertEqual(L.tovalue(3, type: Data?.self), Optional<Optional<Data>>.some(.some(data)))
+        XCTAssertEqual(L.tovalue(3, type: Data??.self), Optional<Optional<Optional<Data>>>.some(.some(.some(data))))
+
+        // Check we can cast an array table to any depth of Optional Array
+        XCTAssertEqual(L.tovalue(4, type: Array<Int>.self), Optional<Array<Int>>.some([123, 456]))
+        XCTAssertEqual(L.tovalue(4, type: Array<Int>?.self), Optional<Optional<Array<Int>>>.some(.some([123, 456])))
+        XCTAssertEqual(L.tovalue(4, type: Array<Int>??.self), Optional<Optional<Optional<Array<Int>>>>.some(.some(.some([123, 456]))))
+
+        // An array table should never succeed in casting to any level of Dictionary optional
+        XCTAssertEqual(L.tovalue(4, type: Dictionary<String, Int>.self), Optional<Dictionary<String, Int>>.none)
+        XCTAssertEqual(L.tovalue(4, type: Dictionary<String, Int>?.self), Optional<Optional<Dictionary<String, Int>>>.none)
+        XCTAssertEqual(L.tovalue(4, type: Dictionary<String, Int>??.self), Optional<Optional<Optional<Dictionary<String, Int>>>>.none)
+    }
+
+    func test_tovalue_any() {
+        let asciiByteArray: [UInt8] = [0x64, 0x65, 0x66]
+        let nonUtf8ByteArray: [UInt8] = [0xFF, 0xFF, 0xFF]
+        let intArray = [11, 22, 33]
+        let intArrayAsDict = [1: 11, 2: 22, 3: 33]
+        let stringIntDict = ["aa": 11, "bb": 22, "cc": 33]
+        let stringArrayIntDict: Dictionary<[String], Int> = [ ["abc"]: 123 ]
+        let whatEvenIsThis: Dictionary<Dictionary<String, Dictionary<Int, Int>>, Int> = [ ["abc": [123: 456]]: 789 ]
+
+        L.push("abc") // 1
+        L.push(asciiByteArray) // 2
+        L.push(nonUtf8ByteArray) // 3
+        L.push(intArray) // 4
+        L.push(stringIntDict) // 5
+        L.push(stringArrayIntDict) // 6
+        L.push(whatEvenIsThis) // 7
+
+        // Test that string defaults to String if possible, otherwise [UInt8]
+        XCTAssertEqual(L.tovalue(1, type: Any.self) as? String, "abc")
+        XCTAssertEqual(L.tovalue(1, type: AnyHashable.self) as? String, "abc")
+        XCTAssertEqual(L.tovalue(2, type: Any.self) as? String, "def")
+        XCTAssertEqual(L.tovalue(2, type: AnyHashable.self) as? String, "def")
+        XCTAssertEqual(L.tovalue(3, type: Any.self) as? [UInt8], nonUtf8ByteArray)
+        XCTAssertEqual(L.tovalue(3, type: AnyHashable.self) as? [UInt8], nonUtf8ByteArray)
+
+        XCTAssertEqual(L.tovalue(4, type: Dictionary<AnyHashable, Any>.self) as? Dictionary<Int, Int>, intArrayAsDict)
+        XCTAssertEqual(L.tovalue(4, type: Any.self) as? Dictionary<Int, Int>, intArrayAsDict)
+        XCTAssertEqual(L.tovalue(5, type: Dictionary<AnyHashable, Any>.self) as? Dictionary<String, Int>, stringIntDict)
+        XCTAssertEqual(L.tovalue(5, type: Any.self) as? Dictionary<String, Int>, stringIntDict)
+
+
+        let tableKeyDict = L.tovalue(6, type: Dictionary<[String], Int>.self)
+        XCTAssertEqual(tableKeyDict, stringArrayIntDict)
+
+        // Yes this really is a type that has a separate code path - a Dictionary value with a AnyHashable constraint
+        let theElderValue = L.tovalue(7, type: Dictionary<Dictionary<String, Dictionary<Int, Int>>, Int>.self)
+        XCTAssertEqual(theElderValue, whatEvenIsThis)
+    }
+
     // There are 2 basic Any pathways to worry about, which are tovalue<Any> and tovalue<AnyHashable>.
     // Then there are LuaTableRef.doResolveArray and LuaTableRef.doResolveDict which necessarily don't use tovalue,
     // meaning Array<Any>, Array<AnyHashable>, Dictionary<AnyHashable, Any> and Dictionary<AnyHashable, AnyHashable>
@@ -1581,17 +1685,19 @@ final class LuaTests: XCTestCase {
     func test_tovalue_any_string() {
         L.push("abc")
         let anyVal: Any? = L.tovalue(-1)
-        XCTAssertEqual((anyVal as? LuaValue)?.tovalue(), "abc")
+        XCTAssertEqual(anyVal as? String, "abc")
         let anyHashable: AnyHashable? = L.tovalue(-1)
-        XCTAssertEqual((anyHashable as? LuaValue)?.tovalue(), "abc")
+        XCTAssertEqual(anyHashable as? String, "abc")
     }
 
     func test_tovalue_any_stringarray() throws {
-        L.push(["abc"])
+        let stringArray = ["abc"]
+        L.push(stringArray)
         let anyArray: Array<Any> = try XCTUnwrap(L.tovalue(1))
-        XCTAssertEqual((anyArray[0] as? LuaValue)?.tovalue(), "abc")
-        let anyHashableArray: Array<AnyHashable> = L.tovalue(1)!
-        XCTAssertEqual((anyHashableArray[0] as? LuaValue)?.tovalue(), "abc")
+        XCTAssertEqual(anyArray as? [String], stringArray)
+
+        let anyHashableArray: Array<AnyHashable> = try XCTUnwrap(L.tovalue(1))
+        XCTAssertEqual(anyHashableArray as? [String], stringArray)
     }
 
     func test_tovalue_luavaluearray() throws {
@@ -1605,18 +1711,27 @@ final class LuaTests: XCTestCase {
 
     func test_tovalue_any_stringdict() throws {
         L.push(["abc": "def"])
+
         let anyDict: Dictionary<AnyHashable, Any> = try XCTUnwrap(L.tovalue(1))
-        let (k, v) = try XCTUnwrap(anyDict.first)
-        XCTAssertEqual((k as? LuaValue)?.tovalue(), "abc")
-        XCTAssertEqual((v as? LuaValue)?.tovalue(), "def")
+        XCTAssertEqual(anyDict as? [String: String], ["abc": "def"])
+
+        // Check T=Any does in fact behave the same as T=Dictionary<AnyHashable, Any>
+        let anyVal: Any = try XCTUnwrap(L.tovalue(1))
+        XCTAssertTrue(type(of: anyVal) == Dictionary<AnyHashable, Any>.self)
+        XCTAssertEqual(anyVal as? [String: String], ["abc": "def"])
+
     }
 
     func test_tovalue_any_stringintdict() throws {
         L.push(["abc": 123])
+
         let anyDict: Dictionary<AnyHashable, Any> = try XCTUnwrap(L.tovalue(1))
-        let (k, v) = try XCTUnwrap(anyDict.first)
-        XCTAssertEqual((k as? LuaValue)?.tovalue(), "abc")
-        XCTAssertEqual(v as? Int, 123)
+        XCTAssertEqual(anyDict as? [String: Int], ["abc": 123])
+
+        // Check T=Any does in fact behave the same as T=Dictionary<AnyHashable, Any>
+        let anyVal: Any = try XCTUnwrap(L.tovalue(1))
+        XCTAssertTrue(type(of: anyVal) == Dictionary<AnyHashable, Any>.self)
+        XCTAssertEqual(anyVal as? [String: Int], ["abc": 123])
     }
 
     func test_tovalue_stringanydict() throws {
@@ -1624,11 +1739,11 @@ final class LuaTests: XCTestCase {
         L.rawset(-1, key: "abc", value: "def")
         L.rawset(-1, key: "123", value: 456)
         let anyDict: Dictionary<String, Any> = try XCTUnwrap(L.tovalue(1))
-        XCTAssertEqual((anyDict["abc"] as? LuaValue)?.tovalue(), "def")
+        XCTAssertEqual(anyDict["abc"] as? String, "def")
         XCTAssertEqual(anyDict["123"] as? Int, 456)
     }
 
-    func test_tovalue_luavalue() {
+    func test_tovalue_luavalue() throws {
         L.push("abc")
         L.push(123)
         L.push([123])
@@ -1636,7 +1751,10 @@ final class LuaTests: XCTestCase {
 
         XCTAssertEqual(L.tovalue(1, type: LuaValue.self)?.tostring(), "abc")
         XCTAssertEqual(L.tovalue(2, type: LuaValue.self)?.toint(), 123)
-        XCTAssertNotNil(L.tovalue(3, type: AnyHashable.self) as? LuaValue)
+
+        XCTAssertEqual(try XCTUnwrap(L.tovalue(3, type: LuaValue.self)?.type), .table)
+        let luaValueArray: [LuaValue] = try XCTUnwrap(L.tovalue(3))
+        XCTAssertEqual(luaValueArray[0].toint(), 123)
     }
 
     func test_tovalue_fndict() {
@@ -1646,8 +1764,9 @@ final class LuaTests: XCTestCase {
         L.rawset(-3)
         // We now have a table of [lua_CFunction : Bool] except that lua_CFunction isn't Hashable
 
-        let anyanydict = L.tovalue(1, type: [AnyHashable: Any].self)!
-        XCTAssertNotNil((anyanydict.keys.first as? LuaValue)?.tovalue(type: lua_CFunction.self))
+        let anyanydict = L.tovalue(1, type: [AnyHashable: Any].self)
+        // We expect this to fail due to the lua_CFunction not being Hashable
+        XCTAssertNil(anyanydict)
     }
 
     func test_tovalue_luaclosure() throws {
@@ -2420,5 +2539,30 @@ final class LuaTests: XCTestCase {
         XCTAssertThrowsError(try pcallNoPop("str", nil))
         XCTAssertThrowsError(try pcallNoPop(123, "str"))
         L.pop()
+    }
+
+    func test_luaTableToArray() {
+        let emptyDict: [AnyHashable: Any] = [:]
+        XCTAssertEqual(emptyDict.luaTableToArray() as? [Bool], [])
+
+        let dict: [AnyHashable: Any] = [1: 111, 2: 222, 3: 333]
+        XCTAssertEqual(dict.luaTableToArray() as? [Int], [111, 222, 333])
+
+        // A Lua array table shouldn't have an index 0
+        let zerodict: [AnyHashable: Any] = [0: 0, 1: 111, 2: 222, 3: 333]
+        XCTAssertNil(zerodict.luaTableToArray())
+
+        let noints: [AnyHashable: Any] = ["abc": 123, "def": 456]
+        XCTAssertNil(noints.luaTableToArray())
+
+        let gap: [AnyHashable: Any] = [1: 111, 2: 222, 4: 444]
+        XCTAssertNil(gap.luaTableToArray())
+
+        // This should succeed because AnyHashable type-erases numbers so 2.0 should be treated just like 2
+        let sneakyDouble: [AnyHashable: Any] = [1: 111, 2.0: 222, 3: 333]
+        XCTAssertEqual(sneakyDouble.luaTableToArray() as? [Int], [111, 222, 333])
+
+        let sneakyFrac: [AnyHashable: Any] = [1: 111, 2: 222, 2.5: "wat", 3: 333]
+        XCTAssertNil(sneakyFrac.luaTableToArray())
     }
 }

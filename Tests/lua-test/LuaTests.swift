@@ -1629,7 +1629,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tovalue(4, type: Dictionary<String, Int>??.self), Optional<Optional<Optional<Dictionary<String, Int>>>>.none)
     }
 
-    func test_tovalue_any() {
+    func test_tovalue_any() throws {
         let asciiByteArray: [UInt8] = [0x64, 0x65, 0x66]
         let nonUtf8ByteArray: [UInt8] = [0xFF, 0xFF, 0xFF]
         let intArray = [11, 22, 33]
@@ -1656,6 +1656,7 @@ final class LuaTests: XCTestCase {
 
         XCTAssertEqual(L.tovalue(4, type: Dictionary<AnyHashable, Any>.self) as? Dictionary<Int, Int>, intArrayAsDict)
         XCTAssertEqual(L.tovalue(4, type: Any.self) as? Dictionary<Int, Int>, intArrayAsDict)
+        XCTAssertEqual((L.tovalue(4, type: Any.self) as? Dictionary<AnyHashable, Any>)?.luaTableToArray() as? Array<Int>, intArray)
         XCTAssertEqual(L.tovalue(5, type: Dictionary<AnyHashable, Any>.self) as? Dictionary<String, Int>, stringIntDict)
         XCTAssertEqual(L.tovalue(5, type: Any.self) as? Dictionary<String, Int>, stringIntDict)
 
@@ -1666,6 +1667,11 @@ final class LuaTests: XCTestCase {
         // Yes this really is a type that has a separate code path - a Dictionary value with a AnyHashable constraint
         let theElderValue = L.tovalue(7, type: Dictionary<Dictionary<String, Dictionary<Int, Int>>, Int>.self)
         XCTAssertEqual(theElderValue, whatEvenIsThis)
+
+        // tables _can_ now be returned as AnyHashable - they will always convert to Dictionary<AnyHashable, AnyHashable>.
+        let anyHashableDict: AnyHashable = try XCTUnwrap(L.tovalue(5))
+        XCTAssertEqual(anyHashableDict as? [String: Int], stringIntDict)
+        XCTAssertEqual((L.tovalue(4, type: AnyHashable.self) as? Dictionary<AnyHashable, AnyHashable>)?.luaTableToArray() as? Array<Int>, intArray)
     }
 
     // There are 2 basic Any pathways to worry about, which are tovalue<Any> and tovalue<AnyHashable>.
@@ -2547,22 +2553,27 @@ final class LuaTests: XCTestCase {
 
         let dict: [AnyHashable: Any] = [1: 111, 2: 222, 3: 333]
         XCTAssertEqual(dict.luaTableToArray() as? [Int], [111, 222, 333])
+        XCTAssertEqual((dict as! [AnyHashable: AnyHashable]).luaTableToArray() as? [Int], [111, 222, 333])
 
         // A Lua array table shouldn't have an index 0
         let zerodict: [AnyHashable: Any] = [0: 0, 1: 111, 2: 222, 3: 333]
         XCTAssertNil(zerodict.luaTableToArray())
+        XCTAssertNil((zerodict as! [AnyHashable: AnyHashable]).luaTableToArray())
 
         let noints: [AnyHashable: Any] = ["abc": 123, "def": 456]
         XCTAssertNil(noints.luaTableToArray())
+        XCTAssertNil((noints as! [AnyHashable: AnyHashable]).luaTableToArray())
 
         let gap: [AnyHashable: Any] = [1: 111, 2: 222, 4: 444]
         XCTAssertNil(gap.luaTableToArray())
+        XCTAssertNil((gap as! [AnyHashable: AnyHashable]).luaTableToArray())
 
         // This should succeed because AnyHashable type-erases numbers so 2.0 should be treated just like 2
         let sneakyDouble: [AnyHashable: Any] = [1: 111, 2.0: 222, 3: 333]
         XCTAssertEqual(sneakyDouble.luaTableToArray() as? [Int], [111, 222, 333])
+        XCTAssertEqual((sneakyDouble as! [AnyHashable: AnyHashable]).luaTableToArray() as? [Int], [111, 222, 333])
 
         let sneakyFrac: [AnyHashable: Any] = [1: 111, 2: 222, 2.5: "wat", 3: 333]
-        XCTAssertNil(sneakyFrac.luaTableToArray())
+        XCTAssertNil((sneakyFrac as! [AnyHashable: AnyHashable]).luaTableToArray())
     }
 }

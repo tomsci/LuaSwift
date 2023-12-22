@@ -503,9 +503,12 @@ extension Dictionary where Key == AnyHashable, Value == Any {
     /// Convert a dictionary returned by `tovalue<Any>()` to an array, if possible.
     ///
     /// ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` can return Lua tables as a `Dictionary<AnyHashable, Any>` if `T`
-    /// was `Any`. If such a Dictionary contains only integer keys starting from 1 with no gaps (or is empty), this
-    /// function will convert it to an `Array<Any>` (converting the indexes from 1-based to zero-based in the process).
-    /// Any other keys present in the Dictionary will result in `nil` being returned.
+    /// was `Any` (and then the value was subsequently cast back to `Dictionary<AnyHashable, Any>`). If such a
+    /// Dictionary contains only integer keys starting from 1 with no gaps (or is empty), this function will convert it
+    /// to an `Array<Any>` (converting the indexes from 1-based to zero-based in the process). Any other keys present
+    /// in the Dictionary will result in `nil` being returned.
+    ///
+    /// This function is also defined on `Dictionary<AnyHashable, AnyHashable>`, see ``luaTableToArray()-3ngmn``.
     public func luaTableToArray() -> [Any]? {
         var intKeys: [Int] = []
         for (k, _) in self {
@@ -520,6 +523,46 @@ extension Dictionary where Key == AnyHashable, Value == Any {
         // Now check all those integer keys are a sequence and build the result
         intKeys.sort()
         var result: [Any] = []
+        var i = 1
+        while i <= intKeys.count {
+            if intKeys[i-1] == i {
+                result.append(self[i]!)
+                i = i + 1
+            } else {
+                // Gap in the indexes, not a sequence
+                return nil
+            }
+        }
+
+        return result
+    }
+}
+
+extension Dictionary where Key == AnyHashable, Value == AnyHashable {
+
+    /// Convert a dictionary returned by `tovalue<AnyHashable>()` to an array, if possible.
+    ///
+    /// ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` can return Lua tables as a `Dictionary<AnyHashable, AnyHashable>`
+    /// if `T` was `AnyHashable` (and then the value was subsequently cast back to `Dictionary<AnyHashable,
+    /// AnyHashable>`). If such a Dictionary contains only integer keys starting from 1 with no gaps (or is empty),
+    /// this function will convert it to an `Array<AnyHashable>` (converting the indexes from 1-based to zero-based in
+    /// the process). Any other keys present in the Dictionary will result in `nil` being returned.
+    ///
+    /// This function is also defined on `Dictionary<AnyHashable, Any>`, see ``luaTableToArray()-7jqqs``.
+    public func luaTableToArray() -> [AnyHashable]? {
+        var intKeys: [Int] = []
+        for (k, _) in self {
+            if let intKey = k as? Int, intKey > 0 {
+                intKeys.append(intKey)
+            } else {
+                // Non integer key found, doom
+                return nil
+            }
+        }
+
+        // Now check all those integer keys are a sequence and build the result
+        intKeys.sort()
+        var result: [AnyHashable] = []
         var i = 1
         while i <= intKeys.count {
             if intKeys[i-1] == i {

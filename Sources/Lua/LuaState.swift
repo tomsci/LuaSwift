@@ -893,9 +893,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   `Dictionary<Key, Value>`. The table contents are recursively converted as if `tovalue<Element>()`,
     ///   `tovalue<Key>()` and/or `tovalue<Value>()` were being called, as appropriate. If any element fails to
     ///   cast to the appropriate subtype, then the entire conversion fails and returns `nil`. If `T` is `Any`, a
-    ///   `Dictionary<AnyHashable: Any>` is always returned, regardless of whether the Lua table looks more like an
-    ///   array or a dictionary. Call ``Lua/Swift/Dictionary/luaTableToArray()`` subsequently if desired. Attempting
-    ///   to convert a table to `AnyHashable` will always return `nil`.
+    ///   `Dictionary<AnyHashable, Any>` is always returned, regardless of whether the Lua table looks more like an
+    ///   array or a dictionary. Call ``Lua/Swift/Dictionary/luaTableToArray()-7jqqs`` subsequently if desired.
+    ///   Similarly, if `T` is `AnyHashable`, a `Dictionary<AnyHashable, AnyHashable>` will always be returned
+    ///   (providing both key _and_ value can be converted to `AnyHashable`)
     /// * `userdata` - providing the value was pushed via `push<U>(userdata:)`, converts to `U` or anything `U` can be
     ///    cast to.
     /// * `function` - if the function is a C function, it is represented by `lua_CFunction`. If the function was pushed
@@ -931,9 +932,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// let numDict: [String : Double] = L.tovalue(-1)! // Also OK
     /// ```
     ///
-    /// > Important: The exact behaviour of `tovalue()` over the course of the 0.x versions of LuaSwift, in corner
-    /// cases such as how strings and tables should be returned from calls to `tovalue<Any>()`. Be sure to check the
-    /// current behaviour described above is as expected.
+    /// > Important: The exact behavior of `tovalue()` has varied over the course of the 0.x versions of LuaSwift, in
+    ///   corner cases such as how strings and tables should be returned from calls to `tovalue<Any>()`. Be sure to
+    ///   check that the current behavior described above is as expected.
     public func tovalue<T>(_ index: CInt) -> T? {
         let typeAcceptsAny = (opaqueValue is T)
         let typeAcceptsAnyHashable = (opaqueHashable is T)

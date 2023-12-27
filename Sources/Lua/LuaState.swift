@@ -1680,7 +1680,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter userdata: The value to push on to the Lua stack.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<T>(userdata: T, toindex: CInt = -1) {
-        let anyval = userdata as Any
+        let anyval: Any = userdata
         let tname = makeMetatableName(for: Swift.type(of: anyval))
         pushuserdata(anyval, metatableName: tname)
         if toindex != -1 {
@@ -1692,19 +1692,36 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let udata = luaswift_newuserdata(self, MemoryLayout<Any>.size)!
         let udataPtr = udata.bindMemory(to: Any.self, capacity: 1)
         udataPtr.initialize(to: val)
+        pushmetatable(name: metatableName)
+        lua_setmetatable(self, -2) // pops metatable
+    }
 
-        if luaL_getmetatable(self, metatableName) == LUA_TNIL {
+    /// Push the metatable for type `T` on to the stack.
+    ///
+    /// Pushes on to the stack the metatable that is used by ``push(userdata:toindex:)`` for dynamic type `T`. This
+    /// might be the default metatable, or an empty generated metatable if `T` has not been registered and no default
+    /// has been set.
+    ///
+    /// Normally there is no need to call this function because `push(userdata:)` takes care of it, but it can
+    /// occasionally be useful to modify the metatable after it has been created by `register(_:)`. For example, to
+    /// add a `__metatable` field.
+    public func pushMetatable<T>(for type: T.Type) {
+        let tname = makeMetatableName(for: type)
+        pushmetatable(name: tname)
+    }
+
+    private func pushmetatable(name: String) {
+        if luaL_getmetatable(self, name) == LUA_TNIL {
             pop()
             if luaL_getmetatable(self, Self.DefaultMetatableName) == LUA_TTABLE {
-                // The stack is now right for the lua_setmetatable call below
+                // All good
             } else {
                 pop()
-                print("Implicitly registering empty metatable for type \(metatableName)")
-                doRegisterMetatable(typeName: metatableName)
+                print("Implicitly registering empty metatable for type \(name)")
+                doRegisterMetatable(typeName: name)
                 getState().userdataMetatables.insert(lua_topointer(self, -1))
             }
         }
-        lua_setmetatable(self, -2) // pops metatable
     }
 
     /// Convert any Swift value to a Lua value and push on to the stack.

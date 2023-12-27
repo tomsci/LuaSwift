@@ -59,7 +59,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     public let type: LuaType
 
     // Takes ownership of an existing ref
-    init(L: LuaState, ref: CInt, type: LuaType) {
+    internal init(L: LuaState, ref: CInt, type: LuaType) {
         self.L = L
         self.type = type
         self.ref = ref
@@ -83,7 +83,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
-    static let nilValue = LuaValue()
+    internal static let nilValue = LuaValue()
 
     public static func == (lhs: LuaValue, rhs: LuaValue) -> Bool {
         return lhs.L == rhs.L && lhs.ref == rhs.ref

@@ -139,13 +139,15 @@ extension LuaType {
     }
 }
 
-/// Conforming to this protocol permits values to perform custom cleanup in response to a `__close` metamethod event.
+/// Conforming to this protocol permits values to perform custom cleanup in response to a `close` metamethod event.
 ///
 /// Types conforming to `Closable` do not need to supply a custom `close` metamethod in their call to
 /// ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``, and instead just need to pass `close: .synthesize`,
 /// which will call ``close()``.
+///
+/// See also ``Metatable`` and [`.synthesize`](doc:Metatable/CloseType/synthesize).
 public protocol Closable {
-    /// This function will be called when a userdata representing this instance is closed by a Lua `__close` event.
+    /// This function will be called when a userdata representing this instance is closed by a Lua `close` event.
     ///
     /// If a value of type `T` conforming to `Closable` is bridged into Lua using `push(userdata:)`, and
     /// `close: .synthesize` was specified in the registration of the type's metatable, then this function will be
@@ -2211,12 +2213,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Register a default (fallback) metatable.
+    ///
     /// Register a metatable to be used for all types which have not had an explicit call to
     /// `register(Metatable(...))`.
     ///
-    /// If `registerDefaultMetatable()` is not called, a warning will be printed the first time an unregistered type is
-    /// pushed. A minimal metatable will be generated in such cases, which supports garbage collection and being closed
-    /// but exposes no other functions.
+    /// If this function is not called, a warning will be printed the first time an unregistered type is pushed using
+    /// ``push(userdata:toindex:)``, and a minimal metatable will then be generated which supports garbage collection but
+    /// exposes no other functions.
     ///
     /// See also <doc:BridgingSwiftToLua#Default-metatables>.
     ///

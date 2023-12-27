@@ -108,7 +108,10 @@ public struct DefaultMetatable {
 
 /// Describes a metatable to be used in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
 ///
-/// `Metatable` is usually used in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn`` like:
+/// A metatable defines what properties and/or methods on a type used with
+/// ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)`` are accessible from Lua.
+///
+/// `Metatable` is usually used directly in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn`` like:
 /// ```swift
 /// L.register(Metatable(for: /* type */,
 ///                      fields: [ /* ... */ ],
@@ -118,19 +121,25 @@ public struct DefaultMetatable {
 /// `fields` defines all the properties and functions that the value should have in Lua. It is a dictionary of names to
 /// some form of closure, depending on the field type. It is a convenience alternative to specifying an explicit
 /// `index` metafield (see below) using type inference on the closure to avoid some of the type conversion boilerplate
-/// that would otherwise have to be written. Various helper functions are defined by ``Metatable/FieldType`` for different
-/// types of field. See <doc:BridgingSwiftToLua#Defining-a-metatable> for examples.
+/// that would otherwise have to be written. Various helper functions are defined by ``Metatable/FieldType`` for 
+/// different types of field. See <doc:BridgingSwiftToLua#Defining-a-metatable> for examples.
 ///
 /// `fields`, and all other metafields that can be specified in the constructor such as `call`, `tostring` etc, are
-/// all optional - the resulting metatable contains only the (meta)fields specified. A completely empty metatable that
+/// all optional - the resulting metatable contains only the (meta)fields specified. A completely empty metatable which
 /// does nothing except define a unique type Lua-side is perfectly valid and can be useful in some circumstances.
 ///
-/// The remaining optional parameters to the `Metafield` constructor are for defining metafields - one argument per
-/// metafield. See
-/// ``init(for:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:)``
-/// for the complete list. These correspond to all the metafields
-/// [defined by Lua](https://www.lua.org/manual/5.4/manual.html#2.4) that are valid for userdata and that aren't
-/// controlled by LuaSwift.
+/// The remaining optional parameters to the `Metatable` constructor are for defining metafields -- each argument
+/// usually defines a function which is called when the relevant Lua metamethod event occurs. Various helpers are
+/// defined to assist with this -- from `.closure { ... }` which provides the most flexibility, to `.memberfn
+/// { ... }` which uses type inference to reduce the amount of boilerplate that needs to be written, at the cost of
+/// slightly limiting expressiveness. See [`init(...)`][init] for the complete list of metafields. These correspond to
+/// all the metafields [defined by Lua](https://www.lua.org/manual/5.4/manual.html#2.4) that are valid for userdata and
+/// that aren't used internally by LuaSwift.
+///
+/// Metafield names in Swift are defined without the leading underscores used in the Lua names - so for example the
+/// `index` argument to the `Metamethod` constructor refers to the `__index` metafield in Lua.
+///
+/// [init]: doc:Metatable/init(for:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:)
 public struct Metatable<T> {
     internal let mt: [MetafieldName: InternalMetafieldValue]
     internal let unsynthesizedFields: [String: FieldType]?
@@ -267,14 +276,14 @@ public struct Metatable<T> {
         ///
         /// Specify `close: .synthesize` to create a `close` metamethod. This behaves in one of two ways, depending on
         /// whether `T` conforms to ``Closable``. If it does, then the synthesized metamethod will call
-        /// ``Closable/close()``, for example:
+        /// ``Closable/close()``, for example to make a class `Foo` closable:
         /// 
         /// ```swift
         /// class Foo: Closable {
         ///     func close() {
         ///         // Do whatever
         ///     }
-        ///     // .. rest of definition as before
+        ///     // .. rest of definition as applicable
         /// }
         /// 
         /// L.register(Metatable(for: Foo.self,
@@ -309,9 +318,34 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static var synthesize: TostringType {
-            return TostringType(value: .function { (L: LuaState!) in
         public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
+
+        /// Synthesize a `tostring` metamethod in this metatable.
+        ///
+        /// Specify `tostring: .synthesize` to create a `tostring` metamethod which uses the Swift `String(describing:)`
+        /// API to create the result. This is compatible with `CustomStringConvertible` (as well as everything else
+        /// `String(describing:)` accepts) so one way to configure a custom `tostring` metamethod is to implement
+        /// `CustomStringConvertible` and then specify `tostring: .synthesize`:
+        ///
+        /// ```swift
+        /// class Foo: CustomStringConvertible {
+        ///     var description: {
+        ///         return "MyCustomDescription"
+        ///     }
+        /// }
+        ///
+        /// // ...
+        ///
+        /// L.register(Metatable(for: Foo.self, tostring: .synthesize))
+        /// L.push(userdata: Foo())
+        /// print(L.tostring(-1, convert: true))
+        /// // Outputs "MyCustomDescription"
+        /// ```
+        ///
+        /// Implementing `CustomStringConvertible` is not _required_ to use `tostring: .synthesize` however -- the
+        /// Swift-generated `String(describing:)` implementation can equally be used instead.
+        public static var synthesize: Self {
+            return .function { (L: LuaState!) in
                 if let val: Any = L.touserdata(1) {
                     L.push(String(describing: val))
                 } else {
@@ -620,8 +654,8 @@ extension Metatable.FieldType {
     /// ```
     ///
     /// The Swift closure may return any value which can be translated using
-    /// ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``. This includes returning Void (meaning the Lua function returns
-    /// no results) or returning a tuple of N values (meaning the Lua function returns N values).
+    /// ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``. This includes returning `Void` (meaning the Lua function
+    /// returns no results) or returning a tuple of N values (meaning the Lua function returns N values).
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
     public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Metatable.FieldType {

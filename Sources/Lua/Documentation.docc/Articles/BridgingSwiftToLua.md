@@ -85,14 +85,14 @@ This could be simplified by using ``Lua/Swift/UnsafeMutablePointer/setglobal(nam
 L.setglobal(name: "foo", value: .userdata(Foo()))
 ```
 
-In Lua, there is now a global value called `foo` which has a `bar()` method that can be called on it:
+Either way, there is now a global value in Lua called `foo` which has a `bar()` method that can be called on it:
 
 ```lua
 foo:bar()
 -- Above call results in "bar() was called!" being printed
 ```
 
-To simplify pushing even further, `Foo` could be made directly ``Pushable`` for example via an extension:
+To simplify pushing even further, `Foo` could be made directly ``Pushable``, for example via an extension:
 
 ```swift
 extension Foo: Pushable {
@@ -106,9 +106,11 @@ extension Foo: Pushable {
 L.setglobal(name: "foo", value: Foo())
 ```
 
-### More advanced metatables
+## More advanced metatables
 
-The examples used above defined only a very simple metatable which bridged a single member function. One obvious addition would be to bridge properties, as well as functions. This can be done in a similar way to `memberfn`, by using ``Metatable/FieldType/property(get:set:)``. Here is an example which exposes both `Foo.bar()` and `Foo.prop`:
+### Properties
+
+The examples used above defined only a very simple metatable which bridged a single member function. One obvious addition would be to bridge properties, as well as functions. This can be done in a similar way to `memberfn`, by using [`property { ... }`](doc:Metatable/FieldType/property(get:set:)). Here is an example which exposes both `Foo.bar()` and `Foo.prop`:
 
 ```swift
 L.register(Metatable(for: Foo.self, fields: [
@@ -125,21 +127,22 @@ L.register(Metatable(for: Foo.self, fields: [
 ]))
 ```
 
+### Custom metamethods
+
 To customize the bridging above and beyond adding fields to the userdata, we can pass in custom metafields. For example, to make `Foo` callable and closable (see [to-be-closed variables](https://www.lua.org/manual/5.4/manual.html#3.3.8), we'd add `call` and `close` arguments to the `Metatable` constructor:
 
 ```swift
 L.register(Metatable(for: Foo.self,
-    call: .memberfn { obj: Foo in
+    call: .memberfn { obj in
         print("I have no idea what this should do")
     },
-    close: .memberfn { obj: Foo in
+    close: .memberfn { obj in
         // Do whatever is appropriate to obj here, eg calling a close() function
-        return 0
     }
 ))
 ```
 
-Note that `memberfn` may be used in some metamethods such as `call` (see ``Metatable/CallType/memberfn(_:)-9vogy``) and `close` (see ``Metatable/CloseType/memberfn(_:)``), just as in `fields`. Note that because those two metafields have slightly different call semantics, there is a different `memberfn` definition for each of them (there are multiple `memberfn` overloads for `call` to support passing additional arguments, whereas there aren't for `close` because the `close` metamethod never takes any arguments).
+Note that `memberfn` may be used in some metamethods such as `call` (see [`CallType.memberfn`](doc:Metatable/CallType/memberfn(_:)-9vogy)) and `close` (see [`CloseType.memberfn`](doc:Metatable/CloseType/memberfn(_:))), just as in `fields`. Note that because those two metafields have slightly different call semantics, there is a different `memberfn` definition for each of them -- there are multiple `memberfn` overloads for `call` to support passing additional arguments, whereas there aren't for `close` because the `close` metamethod never takes any arguments. `memberfn` is not available for metamethods like `add` because Lua does not guarantee that the the first argument to that metamethod is of type `Foo` (only that _one_ of the two arguments will be).
 
 Under the hood, the implementation of support for `fields` uses a synthesized `index` metafield, therefore if `fields` is non-nil then `index` must be nil or omitted. `newindex` behaves similarly if there are any read-write properties defined in `fields`.
 
@@ -219,7 +222,7 @@ L.register(Metatable(for: Foo.self, fields: [
 ]))
 ```
 
-## Member and non-member functions
+### Member and non-member functions
 
 There are two ways to define convenience function bindings in `fields`: using `.memberfn` and using `.staticfn`. Both accept a variable number of arguments and automatically perform type conversion on them. The difference is how they are expected to be called from Lua and what the first closure argument is bound to as a result.
 
@@ -246,7 +249,7 @@ If you want the Lua code to be callable without using member syntax, but for tho
 
 ## Default metatables
 
-In addition to defining metatables for individual types, you can define a default metatable using ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q`` which is used as a fallback for any type that has not had a separate `Metatable` registered for it. This is useful in situations where many related-but-distinct types of value may be pushed and it is easier to provide a single implementation of eg the `index` metamethod and introspect the value there, than it is to call `register()` with every single type.
+In addition to defining metatables for individual types, you can define a default metatable using [`register(DefaultMetatable(...))`](doc:Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q) which is used as a fallback for any type that has not had a separate `Metatable` registered for it. This is useful in situations where many related-but-distinct types of value may be pushed and it is easier to provide a single implementation of eg the `index` metamethod and introspect the value there, than it is to call `register()` with every single type.
 
 Because the default metatable is not bound to a specific type, `fields` cannot be configured in the default metatable, nor do any of the metamethods support type-inferencing overloads like `.memberfn`.
 

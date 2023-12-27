@@ -33,6 +33,7 @@ internal enum MetafieldName: String {
 internal enum InternalMetafieldValue {
     case function(lua_CFunction)
     case closure(LuaClosure)
+    case value(LuaValue)
 }
 
 /// Describes a metatable to be used in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``.
@@ -43,8 +44,9 @@ public struct DefaultMetatable {
 
     public struct FunctionType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> FunctionType { return FunctionType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> FunctionType { return FunctionType(value: .closure(c)) }
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     public init(
@@ -144,8 +146,9 @@ public struct Metatable<T> {
     /// Represents all the ways to implement various metamethods that don't use a more specific helper type.
     public struct FunctionType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> FunctionType { return FunctionType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> FunctionType { return FunctionType(value: .closure(c)) }
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `eq` metamethod.
@@ -153,29 +156,33 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> EqType { return EqType(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> EqType { return EqType(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `lt` metamethod.
     public struct LtType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> LtType { return LtType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> LtType { return LtType(value: .closure(c)) }
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `le` metamethod.
     public struct LeType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> LeType { return LeType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> LeType { return LeType(value: .closure(c)) }
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `index` metamethod.
     public struct IndexType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> IndexType { return IndexType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> IndexType { return IndexType(value: .closure(c)) }
-        public static func memberfn(_ indexfn: @escaping (T, String) throws -> Any?) -> IndexType {
-            return IndexType(value: .closure { L in
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
+        public static func memberfn(_ indexfn: @escaping (T, String) throws -> Any?) -> Self {
+            return .closure { L in
                 let obj: T = try L.checkArgument(1)
                 guard let memberName = L.tostringUtf8(2) else {
                     throw L.argumentError(2, "expected UTF-8 string member name")
@@ -183,7 +190,7 @@ public struct Metatable<T> {
                 let result = try indexfn(obj, memberName)
                 L.push(any: result)
                 return 1
-            })
+            }
         }
         // Not specifiable directly - used by impl of fields
         internal static func synthesize(fields: [String: FieldType]) -> InternalMetafieldValue {
@@ -200,6 +207,8 @@ public struct Metatable<T> {
                     L.push(function: fn)
                 case .closure(let closure):
                     L.push(closure)
+                case .value(let value):
+                    L.push(value)
                 case .none:
                     L.pushnil()
                 }
@@ -211,9 +220,10 @@ public struct Metatable<T> {
     /// Represents all the ways to implement a `newindex` metamethod.
     public struct NewIndexType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> NewIndexType { return NewIndexType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> NewIndexType { return NewIndexType(value: .closure(c)) }
-        public static func memberfn(_ newindexfn: @escaping (T, String, LuaValue) throws -> Void) -> NewIndexType {
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
+        public static func memberfn(_ newindexfn: @escaping (T, String, LuaValue) throws -> Void) -> Self {
             return .closure { L in
                 let obj: T = try L.checkArgument(1)
                 guard let memberName = L.tostringUtf8(2) else {
@@ -229,49 +239,29 @@ public struct Metatable<T> {
     /// Represents all the ways to implement a `call` metamethod.
     public struct CallType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> CallType { return CallType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> CallType { return CallType(value: .closure(c)) }
-        public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> CallType {
-            return CallType(value: .closure { L in
-                let obj: T = try L.checkArgument(1)
-                let nret = L.push(tuple: try accessor(obj))
-                return nret
-            })
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
+        public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Self {
+            return .closure(Metatable.memberfn0(accessor))
         }
-        public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> CallType {
-            return CallType(value: .closure { L in
-                let obj: T = try L.checkArgument(1)
-                let arg1: Arg1 = try L.checkArgument(2)
-                let nret = L.push(tuple: try accessor(obj, arg1))
-                return nret
-            })
+        public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> Self {
+            return .closure(Metatable.memberfn1(accessor))
         }
-        public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> CallType {
-            return CallType(value: .closure { L in
-                let obj: T = try L.checkArgument(1)
-                let arg1: Arg1 = try L.checkArgument(2)
-                let arg2: Arg2 = try L.checkArgument(3)
-                let nret = L.push(tuple: try accessor(obj, arg1, arg2))
-                return nret
-            })
+        public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> Self {
+            return .closure(Metatable.memberfn2(accessor))
         }
-        public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> CallType {
-            return CallType(value: .closure { L in
-                let obj: T = try L.checkArgument(1)
-                let arg1: Arg1 = try L.checkArgument(2)
-                let arg2: Arg2 = try L.checkArgument(3)
-                let arg3: Arg3 = try L.checkArgument(4)
-                let nret = L.push(tuple: try accessor(obj, arg1, arg2, arg3))
-                return nret
-            })
+        public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> Self {
+            return .closure(Metatable.memberfn3(accessor))
         }
     }
 
     /// Represents all the ways to implement a `close` metamethod.
     public struct CloseType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> CloseType { return CloseType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> CloseType { return CloseType(value: .closure(c)) }
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
 
         /// Synthesize a `close` metamethod in this metatable.
         ///
@@ -295,8 +285,8 @@ public struct Metatable<T> {
         /// If `T` does _not_ conform to `Closable`, then  `close: .synthesize` will create a metamethod which
         /// deinits the Swift value, which will leave the object unusable from Lua after the variable is closed. This
         /// may be problematic for some scenarios, hence it is recommended such types should implement `Closable`.
-        public static var synthesize: CloseType {
-            return CloseType(value: .function { L in
+        public static var synthesize: Self {
+            return .function { L in
                 let rawptr = lua_touserdata(L, 1)!
                 let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
                 if let closable = anyPtr.pointee as? Closable {
@@ -307,24 +297,21 @@ public struct Metatable<T> {
                     anyPtr.initialize(to: false)
                 }
                 return 0
-            })
+            }
         }
-        public static func memberfn(_ accessor: @escaping (T) throws -> Void) -> CloseType {
-            return CloseType(value: .closure { L in
-                let obj: T = try L.checkArgument(1)
-                try accessor(obj)
-                return 0
-            })
+        public static func memberfn(_ accessor: @escaping (T) throws -> Void) -> Self {
+            return .closure(Metatable.memberfn0(accessor))
         }
     }
 
     /// Represents all the ways to implement a `tostring` metamethod.
     public struct TostringType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> TostringType { return TostringType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> TostringType { return TostringType(value: .closure(c)) }
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
         public static var synthesize: TostringType {
             return TostringType(value: .function { (L: LuaState!) in
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
                 if let val: Any = L.touserdata(1) {
                     L.push(String(describing: val))
                 } else {
@@ -334,7 +321,45 @@ public struct Metatable<T> {
                     L.push(utf8String: "\(typeName): nil")
                 }
                 return 1
-            })
+            }
+        }
+    }
+
+    private static func memberfn0<Ret>(_ accessor: @escaping (T) throws -> Ret) -> LuaClosure {
+        return { L in
+            let obj: T = try L.checkArgument(1)
+            let nret = L.push(tuple: try accessor(obj))
+            return nret
+        }
+    }
+
+    private static func memberfn1<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> LuaClosure {
+        return { L in
+            let obj: T = try L.checkArgument(1)
+            let arg1: Arg1 = try L.checkArgument(2)
+            let nret = L.push(tuple: try accessor(obj, arg1))
+            return nret
+        }
+    }
+
+    private static func memberfn2<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> LuaClosure {
+        return { L in
+            let obj: T = try L.checkArgument(1)
+            let arg1: Arg1 = try L.checkArgument(2)
+            let arg2: Arg2 = try L.checkArgument(3)
+            let nret = L.push(tuple: try accessor(obj, arg1, arg2))
+            return nret
+        }
+    }
+
+    private static func memberfn3<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> LuaClosure {
+        return { L in
+            let obj: T = try L.checkArgument(1)
+            let arg1: Arg1 = try L.checkArgument(2)
+            let arg2: Arg2 = try L.checkArgument(3)
+            let arg3: Arg3 = try L.checkArgument(4)
+            let nret = L.push(tuple: try accessor(obj, arg1, arg2, arg3))
+            return nret
         }
     }
 
@@ -503,6 +528,7 @@ extension Metatable.LeType where T: Comparable {
 internal enum InternalUserdataField {
     case function(lua_CFunction)
     case closure(LuaClosure)
+    case value(LuaValue)
     case property(LuaClosure)
     case rwproperty(LuaClosure, LuaClosure)
 }
@@ -568,6 +594,10 @@ extension Metatable.FieldType {
         return Metatable.FieldType(value: .closure(closure))
     }
 
+    public static func value(_ value: LuaValue) -> Metatable.FieldType {
+        return Metatable.FieldType(value: .value(value))
+    }
+
     /// Used to define a zero-arguments member function in a metatable.
     ///
     /// For example, given a class like:
@@ -595,11 +625,7 @@ extension Metatable.FieldType {
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
     public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let obj: T = try L.checkArgument(1)
-            let nret = L.push(tuple: try accessor(obj))
-            return nret
-        }
+        return .closure(Metatable.memberfn0(accessor))
     }
 
     /// Used to define a one-argument member function in a metatable.
@@ -631,12 +657,7 @@ extension Metatable.FieldType {
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
     public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let obj: T = try L.checkArgument(1)
-            let arg1: Arg1 = try L.checkArgument(2)
-            let nret = L.push(tuple: try accessor(obj, arg1))
-            return nret
-        }
+        return .closure(Metatable.memberfn1(accessor))
     }
 
     /// Used to define a two-argument member function in a metatable.
@@ -649,24 +670,11 @@ extension Metatable.FieldType {
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
     public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let obj: T = try L.checkArgument(1)
-            let arg1: Arg1 = try L.checkArgument(2)
-            let arg2: Arg2 = try L.checkArgument(3)
-            let nret = L.push(tuple: try accessor(obj, arg1, arg2))
-            return nret
-        }
+        return .closure(Metatable.memberfn2(accessor))
     }
 
     public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let obj: T = try L.checkArgument(1)
-            let arg1: Arg1 = try L.checkArgument(2)
-            let arg2: Arg2 = try L.checkArgument(3)
-            let arg3: Arg3 = try L.checkArgument(4)
-            let nret = L.push(tuple: try accessor(obj, arg1, arg2, arg3))
-            return nret
-        }
+        return .closure(Metatable.memberfn3(accessor))
     }
 
     public static func staticfn<Ret>(_ accessor: @escaping () throws -> Ret) -> Metatable.FieldType {

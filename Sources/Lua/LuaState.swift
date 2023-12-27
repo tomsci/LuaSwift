@@ -2083,6 +2083,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                     push(function: cfunction)
                 case .closure(let closure):
                     push(LuaClosureWrapper(closure))
+                case .value(let value):
+                    push(value)
                 }
                 rawset(-2, utf8Key: name.rawValue)
             }
@@ -2183,6 +2185,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 push(function: function)
             case .closure(let closure):
                 push(closure)
+            case .value(let value):
+                push(value)
             case .property(_), .rwproperty(_, _):
                 fatalError() // By definition cannot hit this
             }

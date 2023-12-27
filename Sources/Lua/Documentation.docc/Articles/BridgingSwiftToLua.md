@@ -12,7 +12,7 @@ Bridged values on the other hand are represented in Lua using the `userdata` Lua
 
 As described so far, the `userdata` plays nicely with Lua and Swift object lifetimes and memory management, but does not allow you to do anything useful with it from Lua other than controlling when it goes out of scope. This is where defining a metatable comes in.
 
-### Defining a metatable
+## Defining a metatable
 
 A metatable is how you define what Swift properties and methods are accessible or callable from Lua. More information about what metatables are is available [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#2.4). You must define a metatable for each type you intend to bridge into Lua - the Swift runtime is not dynamic enough to do much of this automatically. The way you do this is by making a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn`` passing in a ``Metatable`` object describing the Swift type in question, the fields you want to make visible in Lua, and any custom metamethods you want to define.
 
@@ -29,7 +29,7 @@ class Foo {
 }
 ```
 
-We need to therefore call `register()` with a `Metatable` whose `fields` containing a ``Metatable/FieldType/closure(_:)`` called `bar` (which will become the Lua `bar()` member function) which calls the Swift `bar()` function. Here we are assuming the Lua API should be a member function called as `foo:bar()`, therefore the `Foo` userdata will be argument 1. We recover the original Swift `Foo` instance by calling ``Lua/Swift/UnsafeMutablePointer/touserdata(_:)``. We also use ``Lua/Swift/UnsafeMutablePointer/checkArgument(_:)`` to raise a Lua error if the arguments were not correct.
+We need to therefore call `register()` with a `Metatable` whose `fields` containing a ``Metatable/FieldType/closure(_:)`` called `bar` (which will become the Lua `bar()` member function) which calls the Swift `bar()` function. Here we are assuming the Lua API should be a member function called as `foo:bar()`, therefore the `Foo` userdata will be argument 1. We recover the original Swift `Foo` instance by calling ``Lua/Swift/UnsafeMutablePointer/checkArgument(_:)``.
 
 Since we are not making any customizations to the metatable (other than to add fields) we can omit all the other arguments to the `Metatable` constructor.
 
@@ -49,7 +49,7 @@ L.register(Metatable(for: Foo.self, fields: [
 ]))
 ```
 
-All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` (using a ``lua_CFunction`` or ``LuaClosure`` respectively), but this can require quite bit of boilerplate, for example in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like ``Metatable/FieldType/memberfn(_:)-3vudd`` instead of ``Metatable/FieldType/closure(_:)``, which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
+All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` or `.value(myValue)` (using a ``lua_CFunction`` or ``LuaClosure`` or ``LuaValue`` respectively), but this can require quite bit of boilerplate, for example in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-3vudd) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
 
 ```swift
 L.register(Metatable(for: Foo.self, fields: [
@@ -69,7 +69,7 @@ L.register(Metatable(for: Foo.self, fields: [
 
 Any arguments to the closure are type-checked using using `L.checkArgument<ArgumentType>()`. Anything which exceeds the type inference abilities of `memberfn` can always be written explicitly using `closure`. The full list of helpers that can be used to define fields is defined in ``Metatable/FieldType``. Note there are multiple overloads of `memberfn` to accommodate different numbers of arguments.
 
-### Pushing values into Lua
+## Pushing values into Lua
 
 Having defined a metatable for our type, we can use ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)`` or ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` to push instances of it on to the Lua stack, at which point we can assign it to a variable just like any other Lua value. Using the example `Foo` class described above, and assuming our Lua code expects a single global value called `foo` to be defined, we could use ``Lua/Swift/UnsafeMutablePointer/setglobal(name:)``:
 

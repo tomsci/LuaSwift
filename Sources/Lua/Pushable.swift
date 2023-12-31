@@ -159,8 +159,8 @@ extension Pushable where Self == _NonPushableTypesHelper {
     /// function:
     ///
     /// ```swift
-    /// L.setglobal(name: "thursday", value: .function { L in
-    ///     L!.push(42)
+    /// L.setglobal(name: "thursday", value: .function { (L: LuaState!) in
+    ///     L.push(42)
     ///     return 1
     /// }
     /// ```

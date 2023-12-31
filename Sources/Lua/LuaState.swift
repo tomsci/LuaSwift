@@ -1584,10 +1584,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<Ret>(closure: @escaping () throws -> Ret, toindex: CInt = -1) {
-        push({ L in
-            let nret = L.push(tuple: try closure())
-            return nret
-        }, toindex: toindex)
+        push(Self.makeClosure(closure), toindex: toindex)
     }
 
     /// Push a one-argument closure on to the stack as a Lua function.
@@ -1619,11 +1616,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<Arg1, Ret>(closure: @escaping (Arg1) throws -> Ret, toindex: CInt = -1) {
-        push({ L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let nret = L.push(tuple: try closure(arg1))
-            return nret
-        }, toindex: toindex)
+        push(Self.makeClosure(closure), toindex: toindex)
     }
 
     /// Push a two-argument closure on to the stack as a Lua function.
@@ -1650,12 +1643,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<Arg1, Arg2, Ret>(closure: @escaping (Arg1, Arg2) throws -> Ret, toindex: CInt = -1) {
-        push({ L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let arg2: Arg2 = try L.checkArgument(2)
-            let nret = L.push(tuple: try closure(arg1, arg2))
-            return nret
-        }, toindex: toindex)
+        push(Self.makeClosure(closure), toindex: toindex)
     }
 
     /// Push a three-argument closure on to the stack as a Lua function.
@@ -1682,13 +1670,47 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter closure: The closure to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<Arg1, Arg2, Arg3, Ret>(closure: @escaping (Arg1, Arg2, Arg3) throws -> Ret, toindex: CInt = -1) {
-        push({ L in
+        push(Self.makeClosure(closure), toindex: toindex)
+    }
+
+    internal static func makeClosure<Ret>(_ closure: @escaping () throws -> Ret) -> LuaClosure {
+        return { L in
+            return L.push(tuple: try closure())
+        }
+    }
+
+    internal static func makeClosure<Arg1, Ret>(_ closure: @escaping (Arg1) throws -> Ret) -> LuaClosure {
+        return { L in
+            let arg1: Arg1 = try L.checkArgument(1)
+            return L.push(tuple: try closure(arg1))
+        }
+    }
+
+    internal static func makeClosure<Arg1, Arg2, Ret>(_ closure: @escaping (Arg1, Arg2) throws -> Ret) -> LuaClosure {
+        return { L in
+            let arg1: Arg1 = try L.checkArgument(1)
+            let arg2: Arg2 = try L.checkArgument(2)
+            return L.push(tuple: try closure(arg1, arg2))
+        }
+    }
+
+    internal static func makeClosure<Arg1, Arg2, Arg3, Ret>(_ closure: @escaping (Arg1, Arg2, Arg3) throws -> Ret) -> LuaClosure {
+        return { L in
             let arg1: Arg1 = try L.checkArgument(1)
             let arg2: Arg2 = try L.checkArgument(2)
             let arg3: Arg3 = try L.checkArgument(3)
-            let nret = L.push(tuple: try closure(arg1, arg2, arg3))
-            return nret
-        }, toindex: toindex)
+            return L.push(tuple: try closure(arg1, arg2, arg3))
+        }
+    }
+
+    internal static func makeClosure<Arg1, Arg2, Arg3, Arg4, Ret>(_ closure: @escaping (Arg1, Arg2, Arg3, Arg4) throws -> Ret) -> LuaClosure {
+        return { L in
+            let arg1: Arg1 = try L.checkArgument(1)
+            let arg2: Arg2 = try L.checkArgument(2)
+            let arg3: Arg3 = try L.checkArgument(3)
+            let arg4: Arg4 = try L.checkArgument(4)
+            return L.push(tuple: try closure(arg1, arg2, arg3, arg4))
+        }
     }
 
     /// Push any value representable using `Any` on to the stack as a `userdata`.

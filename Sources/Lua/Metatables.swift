@@ -252,16 +252,16 @@ public struct Metatable<T> {
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
         public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
         public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Self {
-            return .closure(Metatable.memberfn0(accessor))
+            return .closure(LuaState.makeClosure(accessor))
         }
         public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> Self {
-            return .closure(Metatable.memberfn1(accessor))
+            return .closure(LuaState.makeClosure(accessor))
         }
         public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> Self {
-            return .closure(Metatable.memberfn2(accessor))
+            return .closure(LuaState.makeClosure(accessor))
         }
         public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> Self {
-            return .closure(Metatable.memberfn3(accessor))
+            return .closure(LuaState.makeClosure(accessor))
         }
     }
 
@@ -309,7 +309,7 @@ public struct Metatable<T> {
             }
         }
         public static func memberfn(_ accessor: @escaping (T) throws -> Void) -> Self {
-            return .closure(Metatable.memberfn0(accessor))
+            return .closure(LuaState.makeClosure(accessor))
         }
     }
 
@@ -356,44 +356,6 @@ public struct Metatable<T> {
                 }
                 return 1
             }
-        }
-    }
-
-    private static func memberfn0<Ret>(_ accessor: @escaping (T) throws -> Ret) -> LuaClosure {
-        return { L in
-            let obj: T = try L.checkArgument(1)
-            let nret = L.push(tuple: try accessor(obj))
-            return nret
-        }
-    }
-
-    private static func memberfn1<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> LuaClosure {
-        return { L in
-            let obj: T = try L.checkArgument(1)
-            let arg1: Arg1 = try L.checkArgument(2)
-            let nret = L.push(tuple: try accessor(obj, arg1))
-            return nret
-        }
-    }
-
-    private static func memberfn2<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> LuaClosure {
-        return { L in
-            let obj: T = try L.checkArgument(1)
-            let arg1: Arg1 = try L.checkArgument(2)
-            let arg2: Arg2 = try L.checkArgument(3)
-            let nret = L.push(tuple: try accessor(obj, arg1, arg2))
-            return nret
-        }
-    }
-
-    private static func memberfn3<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> LuaClosure {
-        return { L in
-            let obj: T = try L.checkArgument(1)
-            let arg1: Arg1 = try L.checkArgument(2)
-            let arg2: Arg2 = try L.checkArgument(3)
-            let arg3: Arg3 = try L.checkArgument(4)
-            let nret = L.push(tuple: try accessor(obj, arg1, arg2, arg3))
-            return nret
         }
     }
 
@@ -659,7 +621,7 @@ extension Metatable.FieldType {
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
     public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Metatable.FieldType {
-        return .closure(Metatable.memberfn0(accessor))
+        return .closure(LuaState.makeClosure(accessor))
     }
 
     /// Used to define a one-argument member function in a metatable.
@@ -691,7 +653,7 @@ extension Metatable.FieldType {
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
     public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> Metatable.FieldType {
-        return .closure(Metatable.memberfn1(accessor))
+        return .closure(LuaState.makeClosure(accessor))
     }
 
     /// Used to define a two-argument member function in a metatable.
@@ -704,44 +666,26 @@ extension Metatable.FieldType {
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
     public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> Metatable.FieldType {
-        return .closure(Metatable.memberfn2(accessor))
+        return .closure(LuaState.makeClosure(accessor))
     }
 
     public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> Metatable.FieldType {
-        return .closure(Metatable.memberfn3(accessor))
+        return .closure(LuaState.makeClosure(accessor))
     }
 
     public static func staticfn<Ret>(_ accessor: @escaping () throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let nret = L.push(tuple: try accessor())
-            return nret
-        }
+        return .closure(LuaState.makeClosure(accessor))
     }
 
     public static func staticfn<Arg1, Ret>(_ accessor: @escaping (Arg1) throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let nret = L.push(tuple: try accessor(arg1))
-            return nret
-        }
+        return .closure(LuaState.makeClosure(accessor))
     }
 
     public static func staticfn<Arg1, Arg2, Ret>(_ accessor: @escaping (Arg1, Arg2) throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let arg2: Arg2 = try L.checkArgument(2)
-            let nret = L.push(tuple: try accessor(arg1, arg2))
-            return nret
-        }
+        return .closure(LuaState.makeClosure(accessor))
     }
 
     public static func staticfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (Arg1, Arg2, Arg3) throws -> Ret) -> Metatable.FieldType {
-        return .closure { L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let arg2: Arg2 = try L.checkArgument(2)
-            let arg3: Arg3 = try L.checkArgument(3)
-            let nret = L.push(tuple: try accessor(arg1, arg2, arg3))
-            return nret
-        }
+        return .closure(LuaState.makeClosure(accessor))
     }
 }

@@ -33,18 +33,7 @@ let package = Package(
             ],
             resources: [],
             swiftSettings: [
-                .define("LUASWIFT_NO_FOUNDATION", .when(platforms: [.linux]))
-            ]
-        ),
-        // This target exists to ensure the LUASWIFT_NO_FOUNDATION code always compiles, and to support lua-test-nofoundation
-        .target(
-            name: "Lua-NoFoundation",
-            dependencies: [
-                "CLua",
-            ],
-            resources: [],
-            swiftSettings: [
-                .define("LUASWIFT_NO_FOUNDATION")
+                // .define("LUASWIFT_NO_FOUNDATION")
             ]
         ),
         .target(
@@ -92,21 +81,11 @@ let package = Package(
                 .copy("testRequireRoot1")
             ],
             swiftSettings: [
-                .define("LUASWIFT_NO_FOUNDATION", .when(platforms: [.linux]))
+                // .define("LUASWIFT_NO_FOUNDATION")
             ],
             plugins: [
                 .plugin(name: "EmbedLuaPlugin")
             ]
         ),
-       .testTarget(
-           name: "lua-test-nofoundation",
-           dependencies: ["Lua", "CLua"],
-           swiftSettings: [
-               .define("LUASWIFT_NO_FOUNDATION")
-           ],
-           plugins: [
-               .plugin(name: "EmbedLuaPlugin")
-           ]
-       ),
     ]
 )

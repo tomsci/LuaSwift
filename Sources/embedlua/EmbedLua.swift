@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import Foundation
@@ -12,9 +12,15 @@ struct EmbedLua {
             exit(1)
         }
         let output = CommandLine.arguments[1]
-        var inputs: [String] = []
+        var inputs: [URL] = []
         for i in 2 ..< CommandLine.arguments.count {
-            inputs.append(CommandLine.arguments[i])
+            inputs.append(URL(fileURLWithPath: CommandLine.arguments[i], isDirectory: false))
+        }
+
+        var dirsWithLuaFiles: Set<URL> = []
+        for input in inputs {
+            let dirName = input.deletingLastPathComponent()
+            dirsWithLuaFiles.insert(dirName)
         }
 
         let L = LuaState(libraries: [])
@@ -22,12 +28,18 @@ struct EmbedLua {
             L.close()
         }
         var result = "let lua_sources: [String: [UInt8]] = ["
-        for input in inputs {
-            let url = URL(fileURLWithPath: input)
-            let baseName = url.deletingPathExtension().lastPathComponent
+        for url in inputs {
+            let (moduleName, displayPath) = getModuleName(url, dirsWithLuaFiles: dirsWithLuaFiles)
+
+            if url.lastPathComponent == "_.lua" {
+                // We don't include these in lua_sources, providing the file is empty.
+                if (try? Data(contentsOf: url).count) == 0 {
+                    continue
+                }
+            }
 
             do {
-                try L.load(file: input, displayPath:url.lastPathComponent, mode: .text)
+                try L.load(file: url.path, displayPath: displayPath, mode: .text)
             } catch LuaLoadError.parseError(let str) {
                 fputs("\(str)\n", stderr)
                 exit(1)
@@ -39,8 +51,8 @@ struct EmbedLua {
             }
 
             let data = L.dump()!
-            result.append("\n    // From \(input)")
-            result.append("\n    \"\(baseName)\": \(escape(data)),")
+            result.append("\n    // From \(url.path)")
+            result.append("\n    \"\(moduleName)\": \(escape(data)),")
 
         }
         if inputs.count == 0 {
@@ -62,5 +74,36 @@ struct EmbedLua {
         }
         result.append("    ]")
         return result.joined(separator: "\n")
+    }
+
+    static func getModuleName(_ url: URL, dirsWithLuaFiles: Set<URL>) -> (moduleName: String, displayPath: String) {
+        var parts: [String] = []
+        var currentPath = url
+        while !currentPath.path.isEmpty {
+            let part = currentPath.lastPathComponent
+            let parent = currentPath.deletingLastPathComponent()
+            if !dirsWithLuaFiles.contains(parent) {
+                break
+            } else {
+                parts.insert(part, at: 0)
+                currentPath = parent
+                // And go round again
+            }
+        }
+        let displayPath = parts.joined(separator: "/")
+        parts[parts.count - 1] = removeExtension(parts.last!)
+        let moduleName = parts.joined(separator: ".")
+        return (moduleName: moduleName, displayPath: displayPath)
+    }
+
+    static func removeExtension(_ path: String) -> String {
+        // Can't believe it's easier to write this myself than it is to use frameworks - URL is too clunky and too
+        // determined to resolve the path against the actual filesystem
+        let parts = path.split(separator: ".", omittingEmptySubsequences: false)
+        if parts.count <= 1 || path.starts(with: ".") {
+            return path
+        } else {
+            return parts[0 ..< parts.count - 1].joined(separator: ".")
+        }
     }
 }

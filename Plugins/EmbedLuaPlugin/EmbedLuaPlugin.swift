@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe, Jason Morley
+// Copyright (c) 2023-2024 Tom Sutcliffe, Jason Morley
 // See LICENSE file for license information.
 
 import PackagePlugin
@@ -9,9 +9,9 @@ struct EmbedLuaPlugin: BuildToolPlugin {
         guard let target = target as? SourceModuleTarget else {
             return []
         }
-        // let inputPath = target.directory
-        let inputFiles = target.sourceFiles(withSuffix: "lua")
+        let inputFiles = target.sourceFiles(withSuffix: ".lua")
             .map { $0.path }
+        // debugPrint("inputs: inputFiles)")
         let outputPath = context.pluginWorkDirectory.appending("LuaSources.swift")
         return [.buildCommand(displayName: "Generating \(outputPath.lastComponent) from Lua sources",
                               executable: try context.tool(named: "embedlua").path,

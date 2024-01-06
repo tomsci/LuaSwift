@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import XCTest
@@ -1889,6 +1889,47 @@ final class LuaTests: XCTestCase {
         // Check we're not leaking build machine info into the function debug info
         XCTAssertEqual(info.source, "@testmodule1.lua")
         XCTAssertEqual(info.short_src, "testmodule1.lua")
+    }
+
+    func test_nested_lua_sources() throws {
+        L.openLibraries([.package])
+        L.setModules(lua_sources)
+
+        func checkModule(_ name: String) throws {
+            XCTAssertNotNil(lua_sources[name])
+            try L.load(string: "return require('\(name)')")
+            try L.pcall(nargs: 0, nret: 1)
+            XCTAssertEqual(L.tostring(-1, key: "name"), name)
+            L.rawget(-1, key: "fn")
+            let info = L.getTopFunctionInfo(what: [.source])
+            // Check we're not leaking build machine info into the function debug info
+            let expectedDisplayName = name.replacingOccurrences(of: ".", with: "/") + ".lua"
+            XCTAssertEqual(info.source, "@\(expectedDisplayName)")
+            XCTAssertEqual(info.short_src, expectedDisplayName)
+        }
+
+        try checkModule("nesttest.module")
+        try checkModule("nesttest.awk%ward")
+        try checkModule("nesttest.subdir.sub2.module")
+    }
+
+    func test_flattened_lua_sources() throws {
+        L.openLibraries([.package])
+
+        var new_sources: [String: [UInt8]] = [:]
+        for (k, v) in lua_sources {
+            let modName = String(k.split(separator: ".").last!)
+            new_sources[modName] = v
+        }
+        L.setModules(new_sources)
+
+        func checkModule(_ name: String) throws {
+            try L.load(string: "return require('\(name)')")
+            try L.pcall(nargs: 0, nret: 1)
+            XCTAssertEqual(L.tostring(-1, key: "name")?.hasSuffix(name), true)
+        }
+
+        try checkModule("awk%ward")
     }
 
     func test_lua_sources_requiref() throws {

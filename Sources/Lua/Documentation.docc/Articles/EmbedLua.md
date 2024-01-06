@@ -19,7 +19,7 @@ There is another option, which is to compile your .lua files into generated Swif
     )
 ```
 
-This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's sources. Add and exclude Lua files with `sources` and `exclude` directives in your Target, as if they were Swift files to be compiled. This doesn't handle nested modules yet - everything is assumed to be a top-level module, currently.
+This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's sources. Add and exclude Lua files with `sources` and `exclude` directives in your Target, as if they were Swift files to be compiled. The module name is derived from the Lua file name plus heuristics based on what other Lua files are being built (see <doc:#Nested-modules>, below). Note that module names are case sensitive when using `EmbedLuaPlugin`, regardless of the behavior of any underlying filesystem.
 
 All the included Lua files will be compiled into Lua bytecode when your project is built. Parse and syntax errors in the Lua files will cause the build to fail.
 
@@ -61,4 +61,66 @@ try L.pcall(nargs: 0, nret: 0) // Or nret: 1 if the file returns a table of modu
 try L.requiref(name: "example") {
     try L.load(data: lua_sources["example"]!, mode: .binary)
 }
+```
+
+> Note: When adding additional Lua files to a project, you may have to run `File -> Packages -> Reset Package Cache` and then clean the project, in order for the new files to be noticed by the build system.
+
+## Nested modules
+
+`EmbedLuaPlugin` supports generating a hierarchy of modules, that is modules in subdirectories which are included using dot-separated syntax such as `require("dir.subdir.modulename")`. It does this by looking at all the Lua sources which are included, and for each of them looking at the file's parent directories and seeing if those directories also contain any other Lua sources. If so, that module is considered to be nested. For example, consider a project directory like this:
+
+```
+ProjectDir/Sources/MyTarget/
+|- MySwiftCode.swift
+|- DirA/
+|  |- firstmod.lua
+|- DirB/
+|  |- secondmod.lua
+```
+
+In other words there are 2 Lua files located at `ProjectDir/Sources/MyTarget/DirA/firstmod.lua` and `ProjectDir/Sources/MyTarget/DirB/secondmod.lua`. Both `firstmod` and `secondmod` are considered top-level modules because the parent directory (in both cases, `ProjectDir/Sources/MyTarget`) does not itself contain any Lua files which are being compiled. Therefore they would be included by writing something like `require "firstmod"` and/or `require "secondmod"`.
+
+Now, consider the case where there _is_ a Lua file in the parent directory:
+
+```
+ProjectDir/Sources/MyTarget/
+|- MySwiftCode.swift
+|- topmod.lua
+|- DirA/
+|  |- firstmod.lua
+|- DirB/
+|  |- secondmod.lua
+```
+
+This will produce a `lua_sources` like this:
+
+```swift
+let lua_sources: [String: [UInt8]] = [
+    "topmod": [
+        /* ...data... */
+    ],
+    "DirA.firstmod": [
+        /* ...data... */
+    ],
+    "DirB.secondmod": [
+        /* ...data... */
+    ],
+]
+```
+
+Now, `firstmod.lua` and `secondmod.lua` are considered to be nested because of the presence of `topmod.lua` in their parent directory, and would need to be included using `require "DirA.firstmod"` or similar. The same logic applies for any level of nesting - each directory in the hierarchy must contain at least one Lua file to avoid terminating the hierarchy. As a convenience, if a zero-length file named `_.lua` exists it will count for the purposes of establishing the hierarchy, but will not appear in `lua_sources`.
+
+Note that `EmbedLuaPlugin` does not treat nested `init.lua` files specially - to have a module `foo` and a module `foo.bar`, the files must be structured as `dir/foo.lua` and `dir/foo/bar.lua`.
+
+## Custom module names
+
+If the default behavior of `EmbedLuaPlugin` does not fit exactly the module naming behavior that your project needs, one option is to transform `lua_sources` before passing it to `addModules(_:)` or `setModules(_:)`. For example, to make all modules top-level regardless of their location in the filesystem, you could do:
+
+```swift
+var new_sources: [String: [UInt8]] = [:]
+for (k, v) in lua_sources {
+    let flatName = String(k.split(separator: ".").last!)
+    new_sources[flatName] = v
+}
+L.setModules(new_sources)
 ```

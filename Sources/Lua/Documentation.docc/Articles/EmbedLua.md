@@ -19,6 +19,8 @@ There is another option, which is to compile your .lua files into generated Swif
     )
 ```
 
+In a non-Swift-package Xcode project, instead go to the "Build Phases" tab of the target and click the "+" under "Run Build Tool Plug-ins", and select "LuaSwift -> EmbedLuaPlugin".
+
 This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's sources. Add and exclude Lua files with `sources` and `exclude` directives in your Target, as if they were Swift files to be compiled. The module name is derived from the Lua file name plus heuristics based on what other Lua files are being built (see <doc:#Nested-modules>, below). Note that module names are case sensitive when using `EmbedLuaPlugin`, regardless of the behavior of any underlying filesystem.
 
 All the included Lua files will be compiled into Lua bytecode when your project is built. Parse and syntax errors in the Lua files will cause the build to fail.

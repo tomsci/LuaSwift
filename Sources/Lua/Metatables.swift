@@ -546,17 +546,17 @@ extension Metatable.FieldType {
     /// The `prop` property could be (readonly) exposed to Lua with:
     ///
     /// ```swift
-    /// L.registerMetatable(for: Foo.self, fields: [
+    /// L.register(Metatable(for: Foo.self, fields: [
     ///     "prop": .property { $0.prop }
-    /// ])
+    /// ]))
     /// ```
     ///
     /// To make it so `prop` can be assigned to from Lua, specify both `get:` and `set:` closures:
     ///
     /// ```swift
-    /// L.registerMetatable(for: Foo.self, fields: [
+    /// L.register(Metatable(for: Foo.self, fields: [
     ///     "prop": .property(get: { $0.prop }, set: { $0.prop = $1 })
-    /// ])
+    /// ]))
     /// ```
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
@@ -610,9 +610,9 @@ extension Metatable.FieldType {
     /// The `inc()` function could be exposed to Lua by using `.memberfn` with a closure like:
     ///
     /// ```swift
-    /// L.registerMetatable(for: Foo.self, fields: [
+    /// L.register(Metatable(for: Foo.self, fields: [
     ///     "inc": .memberfn { $0.inc() }
-    /// ])
+    /// ]))
     /// ```
     ///
     /// The Swift closure may return any value which can be translated using
@@ -640,9 +640,9 @@ extension Metatable.FieldType {
     /// The `inc()` function could be exposed to Lua by using `.memberfn` with a closure like:
     ///
     /// ```swift
-    /// L.registerMetatable(for: Foo.self, fields: [
+    /// L.register(Metatable(for: Foo.self, fields: [
     ///     "inc": .memberfn { $0.inc(by: $1) }
-    /// ])
+    /// ]))
     /// ```
     ///
     /// The Swift closure may return any value which can be translated using

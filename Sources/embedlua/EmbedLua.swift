@@ -23,14 +23,8 @@ struct EmbedLua {
             dirsWithLuaFiles.insert(dirName)
         }
 
-        let L = LuaState(libraries: [])
-        defer {
-            L.close()
-        }
-        var result = "let lua_sources: [String: [UInt8]] = ["
+        var moduleNameMap: [String: (displayPath: String, url: URL)] = [:]
         for url in inputs {
-            let (moduleName, displayPath) = getModuleName(url, dirsWithLuaFiles: dirsWithLuaFiles)
-
             if url.lastPathComponent == "_.lua" {
                 // We don't include these in lua_sources, providing the file is empty.
                 if (try? Data(contentsOf: url).count) == 0 {
@@ -38,16 +32,32 @@ struct EmbedLua {
                 }
             }
 
+            let (moduleName, displayPath) = getModuleName(url, dirsWithLuaFiles: dirsWithLuaFiles)
+            moduleNameMap[moduleName] = (displayPath: displayPath, url: url)
+        }
+
+        let sortedModules = moduleNameMap.keys.sorted()
+
+        let L = LuaState(libraries: [])
+        defer {
+            L.close()
+        }
+        var result = "let lua_sources: [String: [UInt8]] = ["
+        for moduleName in sortedModules {
+            let (displayPath, url) = moduleNameMap[moduleName]!
             do {
                 try L.load(file: url.path, displayPath: displayPath, mode: .text)
             } catch LuaLoadError.parseError(let str) {
-                fputs("\(str)\n", stderr)
+                let error = rewriteError(error: str, displayPath: displayPath, url: url)
+                fputs("\(error)\n", stderr)
+
                 exit(1)
             } catch LuaLoadError.fileError(let str) {
-                fputs("Error: " + str + "\n", stderr)
+                let error = rewriteError(error: str, displayPath: displayPath, url: url)
+                fputs("\(error)\n", stderr)
                 exit(1)
             } catch {
-                fatalError("Unhandled error \(error)")
+                fatalError("error: Unhandled error \(error)")
             }
 
             let data = L.dump()!
@@ -104,6 +114,20 @@ struct EmbedLua {
             return path
         } else {
             return parts[0 ..< parts.count - 1].joined(separator: ".")
+        }
+    }
+
+    static func rewriteError(error: String, displayPath: String, url: URL) -> String {
+        // Lua uses
+        //     DISPLAYNAME:LINENUM: ERRTEXT
+        // And we need
+        //     FILENAME:LINENUM:CHARPOS: error: ERRTEXT
+        // in order for xcode to inline the error correctly.
+        let parts = error.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false)
+        if parts.count == 3 && parts[0] == displayPath {
+            return "\(url.path):\(parts[1]):1: error:\(parts[2])"
+        } else {
+            return error.replacingOccurrences(of: displayPath, with: url.path)
         }
     }
 }

@@ -19,11 +19,11 @@ There is another option, which is to compile your .lua files into generated Swif
     )
 ```
 
-In a non-Swift-package Xcode project, instead go to the "Build Phases" tab of the target and click the "+" under "Run Build Tool Plug-ins", and select "LuaSwift -> EmbedLuaPlugin".
-
 This will add a constant called `lua_sources` to your target which contains the compiled Lua bytecode of every `.lua` file in your target's sources. Add and exclude Lua files with `sources` and `exclude` directives in your Target, as if they were Swift files to be compiled. The module name is derived from the Lua file name plus heuristics based on what other Lua files are being built (see <doc:#Nested-modules>, below). Note that module names are case sensitive when using `EmbedLuaPlugin`, regardless of the behavior of any underlying filesystem.
 
-All the included Lua files will be compiled into Lua bytecode when your project is built. Parse and syntax errors in the Lua files will cause the build to fail.
+> Tip: In a non-Swift-package Xcode project, instead go to the "Build Phases" tab of the target and click the "+" under "Run Build Tool Plug-ins", and select "LuaSwift -> EmbedLuaPlugin". To avoid warnings from the build system, you may want to collect all the Lua sources into a separate "Copy Files" build phase, rather than leaving the Lua files in the "Compile Sources" phase like you (effectively) do with a SwiftPM project. Using a Copy Files build phase with "Destination: Products Directory" and "Subpath: dummyCopyLocationForLuaFiles" is an effective workaround. The `lua_sources` file is added to the project automatically and does not need to be managed manually.
+
+All the included Lua files will be compiled into Lua bytecode when your project is built. Parse and syntax errors in the Lua files will show as clickable errors in the Xcode build log.
 
 Then, pass `lua_sources` to ``Lua/Swift/UnsafeMutablePointer/addModules(_:mode:)`` when you construct your `LuaState`:
 
@@ -65,7 +65,7 @@ try L.requiref(name: "example") {
 }
 ```
 
-> Note: When adding additional Lua files to a project, you may have to run `File -> Packages -> Reset Package Cache` and then clean the project, in order for the new files to be noticed by the build system.
+> Note: When adding additional Lua files to a SwiftPM project, you may have to run `File -> Packages -> Reset Package Cache` and then clean the project, in order for the new files to be noticed by the build system.
 
 ## Nested modules
 

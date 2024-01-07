@@ -43,28 +43,37 @@ struct EmbedLua {
             L.close()
         }
         var result = "let lua_sources: [String: [UInt8]] = ["
+        var didError = false
         for moduleName in sortedModules {
             let (displayPath, url) = moduleNameMap[moduleName]!
+            var loadError: String? = nil
             do {
                 try L.load(file: url.path, displayPath: displayPath, mode: .text)
             } catch LuaLoadError.parseError(let str) {
-                let error = rewriteError(error: str, displayPath: displayPath, url: url)
-                fputs("\(error)\n", stderr)
-
-                exit(1)
+                loadError = str
             } catch LuaLoadError.fileError(let str) {
-                let error = rewriteError(error: str, displayPath: displayPath, url: url)
-                fputs("\(error)\n", stderr)
-                exit(1)
+                loadError = str
             } catch {
-                fatalError("error: Unhandled error \(error)")
+                // Shouldn't happen, but...
+                loadError = "Unhandled error \(error)"
+            }
+
+            if let loadError {
+                let errorString = rewriteError(error: loadError, displayPath: displayPath, url: url)
+                fputs("\(errorString)\n", stderr)
+                didError = true
+                continue
             }
 
             let data = L.dump()!
             result.append("\n    // From \(url.path)")
             result.append("\n    \"\(moduleName)\": \(escape(data)),")
-
         }
+
+        if didError {
+            exit(1)
+        }
+
         if inputs.count == 0 {
             result.append(":]")
         } else {

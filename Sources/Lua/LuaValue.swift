@@ -100,6 +100,12 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return L.popref()
     }
 
+    /// Load a Lua chunk from memory, without executing it, and return it as a `LuaValue`.
+    public static func load(_ L: LuaState, _ string: String, name: String? = nil) throws -> LuaValue {
+        try L.load(string: string, name: name)
+        return L.popref()
+    }
+
     /// Pushes the value this `LuaValue` represents on to the Lua stack of `L`.
     ///
     /// - Note: `L` must be related to the `LuaState` used to construct the object.
@@ -734,6 +740,19 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return try L.compare(-2, -1, op)
     }
 
+    /// Assuming the value is a function, dump it as a binary chunk.
+    ///
+    /// Dumps the function represented by this object as a binary chunk.
+    ///
+    /// - Parameter strip: Whether to strip debug information.
+    /// - Returns: The binary chunk, or nil if the value is not a Lua function.
+    public func dump(strip: Bool = false) -> [UInt8]? {
+        L.push(self)
+        defer {
+            L.pop()
+        }
+        return L.dump(strip: strip)
+    }
 }
 
 struct UnownedLuaValue {

@@ -599,6 +599,18 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.ref(any: nil).tonumber(), nil)
     }
 
+    func test_LuaValue_dump() throws {
+        let val = try LuaValue.load(L, "return 42")
+        let result: Int? = try val().tovalue()
+        XCTAssertEqual(result, 42)
+        XCTAssertEqual(L.gettop(), 0)
+
+        let bytes = try XCTUnwrap(val.dump())
+        try L.load(data: bytes, name: nil, mode: .binary)
+        try L.pcall(nargs: 0, nret: 1)
+        XCTAssertEqual(L.toint(-1), 42)
+    }
+
     func test_pushuserdata() {
         struct Foo : Equatable {
             let intval: Int

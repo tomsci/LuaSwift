@@ -906,7 +906,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * `boolean` converts to `Bool`.
     /// * `string` converts to `String`, `[UInt8]` or `Data` depending on what `T` is. To convert to `String`, the
     ///    string must be valid in the default string encoding. If `T` is `Any` or `AnyHashable`, string values will
-    ///    convert to `String` if possible and to `[UInt8]` otherwise.
+    ///    be converted to `String` if possible (given the default string encoding) and to `[UInt8]` otherwise.
     /// * `table` converts to either an array or a dictionary depending on whether `T` is `Array<Element>` or
     ///   `Dictionary<Key, Value>`. The table contents are recursively converted as if `tovalue<Element>()`,
     ///   `tovalue<Key>()` and/or `tovalue<Value>()` were being called, as appropriate. If any element fails to
@@ -914,7 +914,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   `Dictionary<AnyHashable, Any>` is always returned, regardless of whether the Lua table looks more like an
     ///   array or a dictionary. Call ``Lua/Swift/Dictionary/luaTableToArray()-7jqqs`` subsequently if desired.
     ///   Similarly, if `T` is `AnyHashable`, a `Dictionary<AnyHashable, AnyHashable>` will always be returned
-    ///   (providing both key _and_ value can be converted to `AnyHashable`)
+    ///   (providing both key and value can be converted to `AnyHashable`).
     /// * `userdata` - providing the value was pushed via `push<U>(userdata:)`, converts to `U` or anything `U` can be
     ///    cast to.
     /// * `function` - if the function is a C function, it is represented by `lua_CFunction`. If the function was pushed
@@ -942,12 +942,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```swift
     /// L.push(123)
     /// let intVal: Int = L.tovalue(-1)! // OK
-    /// let doubleVal: Double: L.tovalue(-1)! // OK
+    /// let doubleVal: Double = L.tovalue(-1)! // OK
     /// let smallInt: Int8 = L.tovalue(-1)! // Also OK (since 123 fits in a Int8)
     ///
     /// L.push(["abc": 123, "def": 456])
-    /// let dict: [String : Int] = L.tovalue(-1)! // OK
-    /// let numDict: [String : Double] = L.tovalue(-1)! // Also OK
+    /// let dict: [String: Int] = L.tovalue(-1)! // OK
+    /// let numDict: [String: Double] = L.tovalue(-1)! // Also OK
     /// ```
     ///
     /// > Important: The exact behavior of `tovalue()` has varied over the course of the 0.x versions of LuaSwift, in
@@ -1783,7 +1783,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` is `nil`, `Void` (ie the empty tuple), or `.some(.none)` it is pushed as `nil`.
     /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
     /// * If `value` is `[UInt8]`, ``push(_:toindex:)-171ku`` is used.
-    /// * If `value` is `UInt8`, it is pushed as an integer. This special case is required because `Uint8` is not
+    /// * If `value` is `UInt8`, it is pushed as an integer. This special case is required because `UInt8` is not
     ///   `Pushable`.
     /// * If `value` conforms to `ContiguousBytes` (which includes `Data`), then ``push(bytes:toindex:)`` is used.
     /// * If `value` is one of the Foundation types `NSNumber`, `NSString` or `NSData`, or is a Core Foundation type
@@ -2736,7 +2736,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// ```swift
     /// L.push(any: val)
-    /// return L.popref()
+    /// let ref = L.popref()
     /// ```
     ///
     /// - Parameter any: The value to convert

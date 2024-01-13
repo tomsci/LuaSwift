@@ -112,7 +112,15 @@ let lua_sources: [String: [UInt8]] = [
 
 Now, `firstmod.lua` and `secondmod.lua` are considered to be nested because of the presence of `topmod.lua` in their parent directory, and would need to be included using `require "DirA.firstmod"` or similar. The same logic applies for any level of nesting - each directory in the hierarchy must contain at least one Lua file to avoid terminating the hierarchy. As a convenience, if a zero-length file named `_.lua` exists it will count for the purposes of establishing the hierarchy, but will not appear in `lua_sources`.
 
-Note that `EmbedLuaPlugin` does not treat nested `init.lua` files specially - to have a module `foo` and a module `foo.bar`, the files must be structured as `dir/foo.lua` and `dir/foo/bar.lua`.
+Note that `EmbedLuaPlugin` does not treat nested `init.lua` files specially - to have a module `foo` and a module `foo.bar`, the files must be structured as `dir/foo.lua` and `dir/foo/bar.lua`. You could emulate init.lua support by making an additional call to addModules something like this:
+
+```swift
+L.addModules([
+    "foo": try! LuaValue.load(L, "return require('foo.init')").dump()
+])
+```
+
+Or equally you could transform `lua_sources`, see below, to rename `foo.init` to `foo`.
 
 ## Custom module names
 

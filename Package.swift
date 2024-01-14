@@ -52,6 +52,7 @@ let package = Package(
             sources: [
                 "lua",
                 "extensions.c",
+                "loadfile.c",
             ],
             publicHeadersPath: "include",
             cSettings: [

@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 #ifndef clua_bridge_h
@@ -199,8 +199,14 @@ int luaswift_loadfile(lua_State *L, const char *filename,
                       const char *mode);
 
 #define LUASWIFT_CALLCLOSURE_ERROR (-2)
+#define LUASWIFT_CALLCLOSURE_PCALLK (-3)
+#define LUASWIFT_CALLCLOSURE_CALLK (-4)
+#define LUASWIFT_CALLCLOSURE_YIELD (-5)
+
 int luaswift_callclosurewrapper(lua_State *L);
 _Bool luaswift_iscallclosurewrapper(lua_CFunction fn);
+int luaswift_continuation_regkey(lua_State *L);
+
 int luaswift_gettable(lua_State *L);
 int luaswift_settable(lua_State *L);
 int luaswift_tostring(lua_State *L);

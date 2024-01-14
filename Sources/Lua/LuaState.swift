@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 #if !LUASWIFT_NO_FOUNDATION
@@ -76,6 +76,13 @@ internal func defaultTracebackFn(_ L: LuaState!) -> CInt {
 // function instead as the registry key we stash the State in, because we _can_ reliably generate file-unique
 // lua_CFunctions.
 fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
+    return 0
+}
+
+internal func gcUserdata(_ L: LuaState!) -> CInt {
+    let rawptr = lua_touserdata(L, 1)!
+    let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
+    anyPtr.deinitialize(count: 1)
     return 0
 }
 
@@ -537,6 +544,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // While we're here, register ClosureWrapper
         // Are we doing too much non-deferred initialization in getState() now?
         register(Metatable(for: LuaClosureWrapper.self))
+        register(Metatable(for: LuaContinuationWrapper.self))
 
         return state
     }
@@ -1991,6 +1999,23 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Pushes the thread represented by `self` onto the stack.
+    ///
+    /// Pushes the thread represented by `self` onto its stack. Note that `LuaState` also conforms to `Pushable` so
+    /// can be pushed that way as well:
+    ///
+    /// ```swift
+    /// L.pushthread()
+    /// // Equivalent to
+    /// L.push(L)
+    /// ```
+    ///
+    /// - Returns: `true` if this thread is the main thread of its state.
+    @discardableResult
+    public func pushthread() -> Bool {
+        return lua_pushthread(self) == 1
+    }
+
     // MARK: - Calling into Lua
 
     /// Make a protected call to a Lua function.
@@ -2034,7 +2059,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             index = 0
         }
         let err = lua_pcall(self, nargs, nret, index)
-        if msgh != nil {
+        if index != 0 {
             // Keep the stack balanced
             lua_remove(self, index)
         }
@@ -2104,6 +2129,176 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return result
     }
 
+    /// Make a protected call to a Lua function which is allowed to yield.
+    ///
+    /// Like ``pcallk(nargs:nret:traceback:continuation:)`` but allowing a custom message handler function to be
+    /// specified.
+    public func pcallk(nargs: CInt, nret: CInt, msgh: lua_CFunction?, continuation: @escaping LuaPcallContinuation) -> CInt {
+        setupContinuationParams(nargs: nargs, nret: nret, msgh: msgh, continuation: continuation)
+
+        // The actual lua_pcallk() call is done from handleClosureResult() (called from luaswift_callclosurewrapper)
+        // so as to have fully unwound the Swift stack frame back to a C context. That way we don't have to worry about
+        // longjmps exiting Swift stack frames. And we use another magic return value to indicate this.
+        return LUASWIFT_CALLCLOSURE_PCALLK
+    }
+
+    private func setupContinuationParams(nargs: CInt, nret: CInt, msgh: lua_CFunction?, continuation: @escaping LuaPcallContinuation) {
+        checkstack(4)
+        let fnPos = gettop() - nargs
+        let wrapper = LuaContinuationWrapper(continuation)
+        push(userdata: wrapper, toindex: fnPos)
+        if let msgh {
+            push(function: msgh, toindex: fnPos)
+        } else {
+            pushnil(toindex: fnPos)
+        }
+        push(nargs)
+        push(nret)
+        // stack is now: msgh, continuation, fn, [args...], nargs, nret
+
+        // Check that the continuation registry val is set up
+        rawset(LUA_REGISTRYINDEX, key: .function(luaswift_continuation_regkey), value: .function(LuaClosureWrapper.callContinuation))
+    }
+
+    /// Make a protected call to a Lua function which is allowed to yield.
+    ///
+    /// Make a yieldable call to a Lua function.
+    ///
+    /// This is the LuaSwift equivalent to [`lua_pcallk()`](https://www.lua.org/manual/5.4/manual.html#lua_pcallk).
+    /// See [Handling Yields in C](https://www.lua.org/manual/5.4/manual.html#4.5) for more details. This function
+    /// behaves similarly to `lua_pcallk`, with the exception that the continuation function is passed in as a
+    /// `LuaPcallContinuation` rather than a `lua_KFunction`, and does not need the additional explicit call to the
+    /// continuation function in the case where no yield occurs.
+    ///
+    /// For example, where a yieldable `lua_CFunction` implemented in C might look like this:
+    ///
+    /// ```c
+    /// int my_cfunction(lua_State *L) {
+    ///     /* stuff */
+    ///     return continuation(L, lua_pcallk(L, nargs, nret, msgh, ctx, continuation), ctx);
+    /// }
+    ///
+    /// int continuation(lua_State *L, int status, lua_KContext ctx) {
+    ///     /* continuation */
+    /// }
+    /// ```
+    ///
+    /// The equivalent written in Swift would be:
+    ///
+    /// ```swift
+    /// let my_closure: LuaClosure = { L in
+    ///     /* stuff */
+    ///     return L.pcallk(nargs: nargs, nret: nret, continuation: { L, status in
+    ///         /* continuation */
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// > Important: `pcallk()` must only be called from within a `LuaClosure` which is being executed by Lua having
+    ///   been pushed via ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``, must be the last call in the
+    ///   closure, and must be called with exactly the syntax `return L.pcallk(...)` where `L` is the same `LuaState`
+    ///   as passed into the `LuaClosure`. Any other usage will result in undefined behavior. Calling `lua_pcallk()`
+    ///   directly from Swift is not safe, for reasons similar to why `lua_call()` isn't.
+    ///
+    /// * If the call does not yield or error, `continuation` will be called with `status.yielded = false`,
+    ///   `status.error = nil`, and the results of the call adjusted to `nret` extra values on the stack.
+    /// * If the call errors, `continuation` be called with `status.error` set to a ``LuaCallError``, and the stack as
+    ///   it was before the call (minus the `nargs` and function, and without any values added).
+    /// * If the call yields, `continuation` will be called if/when the current thread is resumed with
+    ///   `status.yielded = true` and the values passed to the resume call adjusted to `nret` extra values on the stack.
+    ///
+    /// In all cases the result of the `LuaClosure` will be whatever `continuation` throws or returns. The continuation
+    /// closure may itself call `pcallk()`, providing that the `pcallk()` is the last call in the continuation closure,
+    /// and specifies its own continuation. If the call yields and the thread is never resumed, the continuation
+    /// closure will not be deinited until after the thread has been closed or garbage collected.
+    ///
+    /// - Parameter nargs: The number of arguments to pass to the function.
+    /// - Parameter nret: The number of expected results to be passed to the continuation. Can be ``MultiRet`` to keep
+    ///   all returned values.
+    /// - Parameter traceback: If true, any error from the call will include a full stack trace.
+    /// - Parameter continuation: Continuation to execute once the call has completed or errored (or, if the call
+    ///   yielded, once the thread is resumed).
+    /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
+    @inlinable
+    public func pcallk(nargs: CInt, nret: CInt, traceback: Bool = true, continuation: @escaping LuaPcallContinuation) -> CInt {
+        return pcallk(nargs: nargs, nret: nret, msgh: traceback ? defaultTracebackFn : nil, continuation: continuation)
+    }
+
+    /// Call a Lua function which is allowed to yield.
+    ///
+    /// Behaves identically to ``pcallk(nargs:nret:traceback:continuation:)`` except for the call not being called
+    /// protected, and therefore that the continuation will not be called if an error occurs. The same caveats apply, in
+    /// that `callk` can only be called as return from a `LuaClosure`.
+    ///
+    /// - Parameter nargs: The number of arguments to pass to the function.
+    /// - Parameter nret: The number of expected results to be passed to the continuation. Can be ``MultiRet`` to keep
+    ///   all returned values.
+    /// - Parameter continuation: Continuation to execute once the call has completed (or, if the call yielded, once the
+    ///   thread is resumed).
+    /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
+    public func callk(nargs: CInt, nret: CInt, continuation: @escaping LuaCallContinuation) -> CInt {
+        let pcont: LuaPcallContinuation = { L, status in
+            if status.error != nil {
+                // Not possible in a callk()
+                fatalError()
+            }
+            return try continuation(L, LuaCallContinuationStatus(yielded: status.yielded))
+        }
+        setupContinuationParams(nargs: nargs, nret: nret, msgh: nil, continuation: pcont)
+        return LUASWIFT_CALLCLOSURE_CALLK
+    }
+
+    /// Yield the current coroutine.
+    ///
+    /// Yield the current coroutine, popping `nresults` values from the stack. See
+    /// [`lua_yieldk()`](https://www.lua.org/manual/5.4/manual.html#lua_yieldk). Must only be used as the return value
+    /// of the last call in a `LuaClosure`. If there is no current coroutine, an error will be thrown from the
+    /// `LuaClosure`. If `continuation` is nil, when the coroutine resumes it continues the function that called the
+    /// `LuaClosure`, otherwise it calls `continuation`.
+    ///
+    /// For example:
+    ///
+    /// ```swift
+    /// let my_closure: LuaClosure = { L in
+    ///     L.push("something")
+    ///     return L.yield(nresults: 1)
+    /// }
+    ///
+    /// let my_closure_with_continuation: LuaClosure = { L in
+    ///     L.push("something")
+    ///     return L.yield(nresults: 1, continuation: { L in
+    ///         print("coroutine resumed with \(L.gettop()) arguments")
+    ///         return 0
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// > Important: `yield()` must only be called from within a `LuaClosure` which is being executed by Lua having
+    ///   been pushed via ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``, must be the last call in the
+    ///   closure, and must be called with exactly the syntax `return L.yield(...)` where `L` is the same `LuaState`
+    ///   as passed into the `LuaClosure`. Any other usage will result in undefined behavior. Calling `lua_yield()`
+    ///   or `lua_yieldk()` directly from Swift is not safe, for reasons similar to why `lua_call()` isn't.
+    ///
+    /// - Parameter nresults: The number of results to be returned from the resume call.
+    /// - Parameter continuation: closure to execute if/when the current coroutine is resumed, or nil to continue by
+    ///   returning to the parent function.
+    public func yield(nresults: CInt, continuation: LuaClosure? = nil) -> CInt {
+        if let continuation {
+            // Using LuaPcallContinuation lets us reuse LuaClosureWrapper.callContinuation
+            let pcont: LuaPcallContinuation = { L, _ in
+                return try continuation(L)
+            }
+            push(userdata: LuaContinuationWrapper(pcont))
+
+            // Check that the continuation registry val is set up
+            rawset(LUA_REGISTRYINDEX, key: .function(luaswift_continuation_regkey), value: .function(LuaClosureWrapper.callContinuation))
+        } else {
+            pushnil()
+        }
+        push(nresults)
+        return LUASWIFT_CALLCLOSURE_YIELD
+    }
+
     // MARK: - Registering metatables
 
     private func makeMetatableName(for type: Any.Type) -> String {
@@ -2164,12 +2359,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             }
         }
 
-        push(function: { L in
-            let rawptr = lua_touserdata(L, 1)!
-            let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
-            anyPtr.deinitialize(count: 1)
-            return 0
-        })
+        push(function: gcUserdata)
         rawset(-2, utf8Key: "__gc")
 
         // Leaves metatable on top of the stack
@@ -3276,7 +3466,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter to: The last index to print. The default value `nil` is the same as specifying `gettop()`, meaning
     ///   to include elements up to and including the topmost.
     public func printStack(from: CInt = 1, to: CInt? = nil) {
-        for i in from ... (to ?? gettop()) {
+        let top = to ?? gettop()
+        if top - from < 0 {
+            print("(No stack values)")
+            return
+        }
+        for i in from ... top {
             let desc = tostring(i, convert: true) ?? "??"
             print("\(i): \(desc)")
         }

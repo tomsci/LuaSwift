@@ -16,9 +16,9 @@ L.push(["abc", "def"]) // String is Pushable, therefore Array<String> is too
 L.setglobal(name: "foo", value: "bar") // Assigns the Pushable "bar" to the global named "foo"
 ```
 
-Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`.
+Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`. Perhaps surprisingly, `LuaState` is itself `Pushable`: this is because `LuaState` is also used to represent Lua threads (coroutines).
 
-For types like `LuaClosure` and `lua_CFunction` which conceptually should be pushable but the Swift type system does not permit to conform to `Pushable`, the helper functions ``function(_:)`` and ``closure(_:)`` are provided to allow you to write:
+For types like `LuaClosure` and `lua_CFunction` which conceptually should be pushable but the Swift type system does not permit to conform to `Pushable`, the helper functions ``function(_:)`` and ``closure(_:)`` can be used anywhere a `Pushable` is expected, allowing code like:
 
 ```swift
 L.setglobal(name: "foo", value: .function { L in

@@ -23,6 +23,52 @@ int luaswift_searcher_preload(lua_State *L) {
 #endif
 }
 
+static int continuation(lua_State *L, int status, lua_KContext ctx);
+
+static int handleClosureResult(lua_State *L, int ret) {
+    if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
+        return lua_error(L);
+    } else if (ret == LUASWIFT_CALLCLOSURE_CALLK) {
+        int nargs = (int)lua_tointeger(L, -2);
+        int nret = (int)lua_tointeger(L, -1);
+        lua_pop(L, 2);
+
+        lua_KContext ctx = (lua_KContext)(lua_gettop(L) - nargs - 1);
+        lua_callk(L, nargs, nret, ctx, continuation);
+        return continuation(L, LUA_OK, ctx);
+    } else if (ret == LUASWIFT_CALLCLOSURE_PCALLK) {
+        int nargs = (int)lua_tointeger(L, -2);
+        int nret = (int)lua_tointeger(L, -1);
+        lua_pop(L, 2);
+        int continuationIndex = lua_gettop(L) - nargs - 1;
+        int msgh = 0;
+        if (lua_type(L, continuationIndex - 1) == LUA_TFUNCTION) {
+            msgh = continuationIndex - 1;
+        }
+
+        lua_KContext ctx = (lua_KContext)continuationIndex;
+        return continuation(L, lua_pcallk(L, nargs, nret, msgh, ctx, continuation), ctx);
+    } else if (ret == LUASWIFT_CALLCLOSURE_YIELD) {
+        int nresults = (int)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+        if (lua_type(L, -1) == LUA_TUSERDATA) {
+            // Reusing the pcall continuation logic means we need to massage stack to correct layout
+            lua_pushnil(L);
+            lua_insert(L, -2);
+            // Stack is now [results...], nilmsgh, cont
+            int continuationIndex = lua_gettop(L) - nresults;
+            lua_rotate(L, continuationIndex - 1, 2);
+            // Stack is now nilmsgh, cont, [results...]
+            return lua_yieldk(L, nresults, (lua_KContext)continuationIndex, continuation);
+        } else {
+            lua_pop(L, 1);
+            return lua_yield(L, nresults);
+        }
+    } else {
+        return ret;
+    }
+}
+
 int luaswift_callclosurewrapper(lua_State *L) {
     // The function pointer for LuaClosureWrapper.callClosure is in the registry keyed by the
     // luaswift_callclosurewrapper function pointer.
@@ -32,11 +78,25 @@ int luaswift_callclosurewrapper(lua_State *L) {
     lua_pop(L, 1);
 
     int ret = LuaClosureWrapper_callClosure(L);
-    if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
-        return lua_error(L);
-    } else {
-        return ret;
-    }
+    return handleClosureResult(L, ret);
+}
+
+int luaswift_continuation_regkey(lua_State *L) {
+    // Never actually called, just used as registry key
+    return 0;
+}
+
+static int continuation(lua_State *L, int status, lua_KContext ctx) {
+    lua_pushcfunction(L, luaswift_continuation_regkey);
+    lua_rawget(L, LUA_REGISTRYINDEX);
+    lua_CFunction LuaClosureWrapper_callContinuation = lua_tocfunction(L, -1);
+    lua_pop(L, 1);
+
+    int continuationIndex = (int)ctx;
+    lua_pushinteger(L, continuationIndex);
+    lua_pushinteger(L, status);
+    int ret = LuaClosureWrapper_callContinuation(L);
+    return handleClosureResult(L, ret);
 }
 
 _Bool luaswift_iscallclosurewrapper(lua_CFunction fn) {

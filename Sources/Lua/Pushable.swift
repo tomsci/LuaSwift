@@ -104,6 +104,15 @@ extension UnsafeRawBufferPointer: Pushable {
     }
 }
 
+extension UnsafeMutablePointer: Pushable where Pointee == lua_State {
+    public func push(onto L: LuaState) {
+        self.pushthread()
+        if L != self {
+            lua_xmove(self, L, 1)
+        }
+    }
+}
+
 /// A `Pushable` wrapper around a `lua_CFunction`.
 public struct LuaFunctionWrapper: Pushable {
     public let function: lua_CFunction

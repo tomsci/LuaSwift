@@ -119,6 +119,243 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(expectedErr).description, "Deliberate error")
     }
 
+    // Test that I'm not going mad and closure scope and captured variables do behave the way I expect
+    func test_closure_scope() {
+        var closureDeinited = false
+        do {
+            let deinitChecker = DeinitChecker {
+                closureDeinited = true
+            }
+            let _: LuaClosure = { L in
+                // Force deinitChecker to be captured by the closure
+                L.push(closure: deinitChecker.deinitFn)
+                L.pop()
+                return 0
+            }
+            XCTAssertFalse(closureDeinited)
+        }
+        XCTAssertTrue(closureDeinited)
+    }
+
+    func test_pcallk() throws {
+        L.openLibraries([.coroutine])
+        try L.load(string: """
+            local nativefn = ...
+            co = coroutine.create(function()
+                local ret = nativefn()
+                -- print("nativefn returned", ret)
+                return ret + 1
+            end)
+
+            function thingThatCanYield()
+                return coroutine.yield(123)
+            end
+
+            function resumeCo()
+                return select(2, coroutine.resume(co, 456))
+            end
+
+            return coroutine.resume(co)
+            """, name: "=test")
+        var continuationYielded: Bool? = nil
+        var continuationGarbageCollected = false
+        do {
+            let deinitChecker = DeinitChecker {
+                continuationGarbageCollected = true
+            }
+            let c: LuaClosure = { L in
+                L.push("string")
+                L.getglobal("thingThatCanYield")
+                return L.pcallk(nargs: 0, nret: 1, continuation: { L, status in
+                    // Check the closure's stack has been preserved in the continuation
+                    XCTAssertEqual(L.gettop(), 2)
+                    XCTAssertEqual(L.tovalue(1), "string")
+                    XCTAssertEqual(L.tovalue(2), 456) // The value from coroutine.resume(coa)
+                    XCTAssertNil(status.error)
+
+                    continuationYielded = status.yielded
+
+                    // Force deinitChecker to be captured by the continuation
+                    L.push(closure: deinitChecker.deinitFn)
+                    L.pop()
+                    
+                    return 1 // Return the value thingThatCanYield yielded
+                })
+            }
+            L.push(c) // becomes nativeFn
+        }
+        XCTAssertFalse(continuationGarbageCollected)
+        try L.pcall(nargs: 1, nret: 2)
+        // The continuation should not have been called yet because of the yield() call in thingThatCanYield
+        XCTAssertEqual(continuationYielded, nil)
+        XCTAssertEqual(L.toboolean(-2), true) // 1st result of coroutine.resume
+        XCTAssertEqual(L.toint(-1), 123)
+
+        L.collectgarbage() // This should not cause the continuation to be collected
+        XCTAssertFalse(continuationGarbageCollected)
+
+        L.getglobal("resumeCo")
+        try L.pcall(nargs: 0, nret: 1)
+        XCTAssertEqual(continuationYielded, true)
+        XCTAssertEqual(L.tovalue(-1), 457)
+
+        L.collectgarbage() // Give chance for the continuation to be collected
+        XCTAssertTrue(continuationGarbageCollected)
+    }
+
+    // Test that the continuation for a yielded thread that is never resumed does eventually get GC'd once the thread
+    // itself is collected
+    func test_pcallk_continuationCollectedOnThreadCollection() throws {
+        L.openLibraries([.coroutine])
+        try L.load(string: """
+            local nativefn = ...
+
+            function thingThatCanYield(arg1, arg2)
+                assert(arg1 == "abc")
+                assert(arg2 == "def")
+                return coroutine.yield()
+            end
+
+            co = coroutine.create(function()
+                nativefn()
+            end)
+            return coroutine.resume(co)
+            """, name: "=test")
+        var continuationGarbageCollected = false
+        do {
+            let deinitChecker = DeinitChecker {
+                continuationGarbageCollected = true
+            }
+            let c: LuaClosure = { L in
+                L.getglobal("thingThatCanYield")
+                L.push("abc")
+                L.push("def")
+                return L.pcallk(nargs: 2, nret: 0, continuation: { L, status in
+                    // Force deinitChecker to be captured by the continuation
+                    L.push(closure: deinitChecker.deinitFn)
+                    XCTFail("Continuation should not be called")
+                    return 0
+                })
+            }
+            L.push(c) // becomes nativeFn
+        }
+        try L.pcall(nargs: 1, nret: 0)
+        XCTAssertFalse(continuationGarbageCollected)
+        XCTAssertEqual(L.gettop(), 0)
+        L.collectgarbage()
+        // Still won't have been collected because it's not been called, and there's still the global co
+        XCTAssertFalse(continuationGarbageCollected)
+        L.setglobal(name: "co", value: .nilValue)
+        L.collectgarbage()
+        XCTAssertTrue(continuationGarbageCollected)
+    }
+
+    func test_pcallk_error() throws {
+        L.openLibraries([.coroutine])
+        try L.load(string: """
+            local nativefn = ...
+
+            function thingThatErrors()
+                error("NOPE")
+            end
+
+            co = coroutine.create(function()
+                nativefn()
+            end)
+            return coroutine.resume(co)
+            """, name: "=test")
+        var continuationGarbageCollected = false
+        var pcallkStatus: LuaPcallContinuationStatus? = nil
+        do {
+            let deinitChecker = DeinitChecker {
+                continuationGarbageCollected = true
+            }
+            let c: LuaClosure = { L in
+                L.getglobal("thingThatErrors")
+                return L.pcallk(nargs: 0, nret: 0, continuation: { L, status in
+                    pcallkStatus = status
+
+                    // Force deinitChecker to be captured by the continuation
+                    L.push(closure: deinitChecker.deinitFn)
+                    L.pop()
+                    return 0
+                })
+            }
+            L.push(c) // becomes nativeFn
+        }
+        XCTAssertFalse(continuationGarbageCollected)
+        try L.pcall(nargs: 1, nret: 0)
+
+        XCTAssertFalse(try XCTUnwrap(pcallkStatus).yielded)
+        XCTAssertNotNil(try XCTUnwrap(pcallkStatus).error)
+        L.collectgarbage()
+        XCTAssertTrue(continuationGarbageCollected)
+    }
+
+    func test_yield() throws {
+        L.openLibraries([.coroutine])
+        try L.load(string: """
+            local nativefn = ...
+            co = coroutine.create(function()
+                return nativefn()
+            end)
+            return coroutine.resume(co)
+            """)
+        do {
+            let c: LuaClosure = { L in
+                L.push(123)
+                return L.yield(nresults: 1)
+            }
+            L.push(c) // becomes nativeFn
+        }
+        try L.pcall(nargs: 1, nret: MultiRet)
+        XCTAssertEqual(L.gettop(), 2)
+        XCTAssertEqual(L.type(1), .boolean)
+        XCTAssertTrue(L.toboolean(1))
+        XCTAssertEqual(L.toint(2), 123)
+    }
+
+    func test_yieldk() throws {
+        L.openLibraries([.coroutine])
+        try L.load(string: """
+            local nativefn = ...
+            co = coroutine.create(function()
+                return nativefn()
+            end)
+            function resumeCo()
+                return select(2, coroutine.resume(co, 456, 789))
+            end
+            return coroutine.resume(co)
+            """)
+        var continuationCalled = false
+        do {
+            let c: LuaClosure = { L in
+                L.push("string")
+                L.push(123)
+                return L.yield(nresults: 1, continuation: { L in
+                    continuationCalled = true
+                    XCTAssertEqual(L.gettop(), 3) // The existing stack, plus the two values from coroutine.resume()
+                    XCTAssertEqual(L.tostring(1), "string")
+                    XCTAssertEqual(L.toint(2), 456)
+                    XCTAssertEqual(L.toint(3), 789)
+                    L.pop()
+                    return 1 // ie 456
+                })
+            }
+            L.push(c) // becomes nativeFn
+        }
+        try L.pcall(nargs: 1, nret: MultiRet)
+        XCTAssertEqual(L.gettop(), 2)
+        XCTAssertEqual(L.type(1), .boolean)
+        XCTAssertTrue(L.toboolean(1))
+        XCTAssertEqual(L.toint(2), 123)
+        XCTAssertFalse(continuationCalled)
+        L.getglobal("resumeCo")
+        try L.pcall(nargs: 0, nret: 1)
+        XCTAssertTrue(continuationCalled)
+        XCTAssertEqual(L.toint(-1), 456)
+    }
+
     func test_istype() {
         L.push(1234) // 1
         L.push(12.34) // 2

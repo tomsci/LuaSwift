@@ -1,7 +1,31 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import CLua
+
+/// See ``LuaCallContinuation``.
+public struct LuaCallContinuationStatus {
+    public let yielded: Bool
+}
+
+/// See ``LuaPcallContinuation``.
+public struct LuaPcallContinuationStatus {
+    public let yielded: Bool
+    public let error: LuaCallError?
+}
+
+/// As per ``LuaPcallContinuation`` but for `callk()` rather than `pcallk()`.
+public typealias LuaCallContinuation = (LuaState, LuaCallContinuationStatus) throws -> CInt
+
+public typealias LuaPcallContinuation = (LuaState, LuaPcallContinuationStatus) throws -> CInt
+
+internal class LuaContinuationWrapper {
+    let continuation: LuaPcallContinuation
+
+    init(_ continuation: @escaping LuaPcallContinuation) {
+        self.continuation = continuation
+    }
+}
 
 /// A class which wraps a Swift closure of type ``LuaClosure`` and can be pushed as a Lua function.
 ///
@@ -46,7 +70,7 @@ public class LuaClosureWrapper: Pushable {
         return lua_upvalueindex(NumInternalUpvalues + i)
     }
 
-    // This is only optional because of the nonescaping requirements in for_pairs/for_ipairs
+    // This is only optional (and a var) because of the nonescaping requirements in for_pairs/for_ipairs
     var _closure: Optional<LuaClosure>
 
     public var closure: LuaClosure {
@@ -65,6 +89,34 @@ public class LuaClosureWrapper: Pushable {
 
         do {
             return try closure(L)
+        } catch {
+            L.push(error: error)
+            return LUASWIFT_CALLCLOSURE_ERROR
+        }
+    }
+
+    internal static let callContinuation: lua_CFunction = { (L: LuaState!) -> CInt in
+        let statusInt = CInt(L.toint(-1)!)
+        let continuationIndex = CInt(L.toint(-2)!)
+        let continuationWrapper: LuaContinuationWrapper = L.touserdata(continuationIndex)!
+        L.pop(2) // statusInt, continuationIndex
+        lua_remove(L, continuationIndex)
+        lua_remove(L, continuationIndex - 1) // msgh
+
+        // Stack should now be in correct state to call the continuation closure (except for possibly an error object)
+
+        let status: LuaPcallContinuationStatus
+        switch statusInt {
+        case LUA_OK:
+            status = LuaPcallContinuationStatus(yielded: false, error: nil)
+        case LUA_YIELD:
+            status = LuaPcallContinuationStatus(yielded: true, error: nil)
+        default:
+            status = LuaPcallContinuationStatus(yielded: false, error: LuaCallError.popFromStack(L))
+        }
+
+        do {
+            return try continuationWrapper.continuation(L, status)
         } catch {
             L.push(error: error)
             return LUASWIFT_CALLCLOSURE_ERROR

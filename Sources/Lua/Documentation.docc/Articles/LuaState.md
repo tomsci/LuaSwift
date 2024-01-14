@@ -198,6 +198,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``
+- ``Lua/Swift/UnsafeMutablePointer/pushthread()``
 - ``Lua/Swift/UnsafeMutablePointer/pushglobals(toindex:)-3ot28``
 
 ### Iterators
@@ -215,6 +216,10 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/pcall(_:traceback:)-3qlin``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-11jc5``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-8gv5``
+- ``Lua/Swift/UnsafeMutablePointer/pcallk(nargs:nret:traceback:continuation:)``
+- ``Lua/Swift/UnsafeMutablePointer/pcallk(nargs:nret:msgh:continuation:)``
+- ``Lua/Swift/UnsafeMutablePointer/callk(nargs:nret:continuation:)``
+- ``Lua/Swift/UnsafeMutablePointer/yield(nresults:continuation:)``
 
 ### Registering metatables
 

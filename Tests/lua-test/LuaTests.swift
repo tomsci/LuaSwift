@@ -1401,6 +1401,13 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tovalue(2), "abc")
         L.settop(0)
 
+        let namedPair = (foo: "bar", baz: false)
+        XCTAssertEqual(L.push(tuple: namedPair), 2)
+        XCTAssertEqual(L.gettop(), 2)
+        XCTAssertEqual(L.tovalue(1), "bar")
+        XCTAssertEqual(L.tovalue(2), false)
+        L.settop(0)
+
         let triple: (Int, Bool?, String) = (123, nil, "abc")
         XCTAssertEqual(L.push(tuple: triple), 3)
         XCTAssertEqual(L.gettop(), 3)

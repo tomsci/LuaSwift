@@ -1881,15 +1881,21 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Push an N-tuple on to the Lua stack as N values.
     ///
     /// If the argument is a tuple, it is unpacked and each element is pushed on to the stack in order using
-    /// ``push(any:toindex:)``, and the number of values pushed is returned. If the argument is not a tuple, it is
-    /// pushed using ``push(any:toindex:)`` and `1` is returned.
+    /// [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)), and the number of values pushed is
+    /// returned. If the argument is not a tuple, it is pushed using
+    /// [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:))  and `1` is returned.
     ///
-    /// The empty tuple `()` (also written `Void`) results in zero values being pushed. Any optional which is `.none`
-    /// will result in 1 value (`nil`) being pushed. Due to limitations in the Swift type system, tuples with more than
-    /// 10 elements, and named tuples of any size, are not supported and will be pushed as a single userdata value as
-    /// per the fallback behaviour of `push(any:)`. Nested tuples are also not supported.
+    /// The empty tuple `()` (also written `Void`) results in zero values being pushed. An optional of any type which is
+    /// `.none` will result in 1 value (`nil`) being pushed. Due to limitations in the Swift type system, tuples with
+    /// more than 10 elements are not supported and will be pushed as a single userdata value as per the fallback
+    /// behavior of `push(any:)`. Nested tuples are also not supported. If the argument is a named tuple, the names
+    /// are ignored and it is treated the same as an unnamed tuple.
     ///
-    /// Note this is the only `push()` function which does not always push exactly 1 value on to the stack.
+    /// ```swift
+    /// let numItems = L.push(tuple: (1, "hello", true)) // Pushes 3 values
+    /// ```
+    ///
+    /// > Note: This is the only `push()` function which does not always push exactly 1 value on to the stack.
     ///
     /// - Parameter tuple: Any value.
     /// - Returns: The number of values pushed on to the stack.

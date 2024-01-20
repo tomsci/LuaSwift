@@ -2024,7 +2024,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     // MARK: - Calling into Lua
 
-    /// Make a protected call to a Lua function.
+    /// Make a protected call to a Lua function, optionally including a stack trace in any errors.
     ///
     /// The function and any arguments must already be pushed to the stack in the same way as for
     /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
@@ -2043,7 +2043,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         try pcall(nargs: nargs, nret: nret, msgh: traceback ? defaultTracebackFn : nil)
     }
 
-    /// Make a protected call to a Lua function.
+    /// Make a protected call to a Lua function, optionally specifying a custom message handler.
     ///
     /// The function and any arguments must already be pushed to the stack in the same way as for
     /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
@@ -2057,6 +2057,25 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
     /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
     public func pcall(nargs: CInt, nret: CInt, msgh: lua_CFunction?) throws {
+        if let error = trypcall(nargs: nargs, nret: nret, msgh: msgh) {
+            throw error
+        }
+    }
+
+    /// Make a protected call to a Lua function, returning a `LuaCallError` if an error occurred.
+    ///
+    /// The function and any arguments must already be pushed to the stack in the same way as for
+    /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
+    /// and are popped from the stack by this call. If the function errors, no results are pushed
+    /// to the stack and a `LuaCallError` is returned. Otherwise `nret` results are pushed and `nil`
+    /// is returned.
+    ///
+    /// - Parameter nargs: The number of arguments to pass to the function.
+    /// - Parameter nret: The number of expected results. Can be ``MultiRet``
+    ///   to keep all returned values.
+    /// - Parameter msgh: An optional message handler function to be called if the function errors.
+    /// - Returns: A `LuaCallError` if the function errored, `nil` otherwise.
+    public func trypcall(nargs: CInt, nret: CInt, msgh: lua_CFunction?) -> LuaCallError? {
         let index: CInt
         if let msghFn = msgh {
             index = gettop() - nargs
@@ -2064,13 +2083,34 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         } else {
             index = 0
         }
-        let err = lua_pcall(self, nargs, nret, index)
+        let error = trypcall(nargs: nargs, nret: nret, msgh: index)
         if index != 0 {
             // Keep the stack balanced
             lua_remove(self, index)
         }
-        if err != LUA_OK {
-            throw LuaCallError.popFromStack(self)
+        return error
+    }
+
+    /// Make a protected call to a Lua function, returning a `LuaCallError` if an error occurred.
+    ///
+    /// The function and any arguments must already be pushed to the stack in the same way as for
+    /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
+    /// and are popped from the stack by this call. If the function errors, no results are pushed
+    /// to the stack and a `LuaCallError` is returned. Otherwise `nret` results are pushed and `nil`
+    /// is returned.
+    ///
+    /// - Parameter nargs: The number of arguments to pass to the function.
+    /// - Parameter nret: The number of expected results. Can be ``MultiRet``
+    ///   to keep all returned values.
+    /// - Parameter msgh: The stack index of a message handler function, or `0` to specify no
+    ///   message handler. The handler is not popped from the stack.
+    /// - Returns: A `LuaCallError` if the function errored, `nil` otherwise.
+    public func trypcall(nargs: CInt, nret: CInt, msgh: CInt) -> LuaCallError? {
+        let err = lua_pcall(self, nargs, nret, msgh)
+        if err == LUA_OK {
+            return nil
+        } else {
+            return LuaCallError.popFromStack(self)
         }
     }
 

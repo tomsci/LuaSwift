@@ -183,3 +183,68 @@ int luaswift_setinc(lua_State* L, int pause, int stepmul, int stepsize) {
     return LUASWIFT_GCINC; // Since incremental is the only option
 #endif
 }
+
+// This function exists in C because of the pesky call to lua_call() to call the iterator function, which means this
+// loop cannot be written in Swift (because that call could error).
+int luaswift_do_for_pairs(lua_State *L) {
+    // Preamble, look up callUnmanagedClosure
+    lua_pushcfunction(L, luaswift_do_for_pairs);
+    lua_rawget(L, LUA_REGISTRYINDEX);
+    lua_CFunction callUnmanagedClosure = lua_tocfunction(L, -1);
+    lua_pop(L, 1);
+
+    // Stack: 1 = iterfn, 2 = state, 3 = block (as lightuserdata), 4 = initval (k)
+    while (1) {
+        lua_settop(L, 4);
+        lua_pushvalue(L, 1); // iterfn
+        lua_insert(L, 4); // put iterfn before k
+        lua_pushvalue(L, 2); // state
+        lua_insert(L, 5); // put state before k (and after iterfn)
+        // 4, 5, 6 is now iterfn copy, state copy, k
+        lua_call(L, 2, 2); // k, v = iterfn(state, k)
+        // Stack is now 1 = iterfn, 2 = state, 3 = block, 4 = k, 5 = v
+        if (lua_isnil(L, 4)) {
+            break;
+        }
+
+        lua_pushvalue(L, 3); // 6 = block
+        int ret = callUnmanagedClosure(L);
+        // ret is not a conventional result code, only the following 3 values are valid with these specific meanings:
+        if (ret == 1) {
+            // new k is in position 4 ready to go round loop again
+        } else if (ret == 0) {
+            break;
+        } else if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
+            return lua_error(L);
+        }
+    }
+    return 0;
+}
+
+int luaswift_do_for_ipairs(lua_State *L) {
+    // Preamble, look up callUnmanagedClosure
+    lua_pushcfunction(L, luaswift_do_for_pairs);
+    lua_rawget(L, LUA_REGISTRYINDEX);
+    lua_CFunction callUnmanagedClosure = lua_tocfunction(L, -1);
+    lua_pop(L, 1);
+
+    // Stack: 1 = value, 2 = startidx, 3 = block (as lightuserdata)
+    for (lua_Integer i = lua_tointeger(L, 2); ; i++) {
+        lua_settop(L, 3);
+        lua_pushinteger(L, i); // 4
+        int t = lua_geti(L, 1, i); // 5, can error
+        if (t == LUA_TNIL) {
+            break;
+        }
+        lua_pushvalue(L, 3); // block
+        int ret = callUnmanagedClosure(L);
+        if (ret == 1) {
+            // Keep going
+        } else if (ret == 0) {
+            break;
+        } else if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
+            return lua_error(L);
+        }            
+    }
+    return 0;
+}

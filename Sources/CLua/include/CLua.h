@@ -219,6 +219,8 @@ int luaswift_requiref(lua_State *L);
 int luaswift_compare(lua_State *L);
 void* luaswift_newuserdata(lua_State* L, size_t sz);
 int luaswift_searcher_preload(lua_State *L);
+int luaswift_do_for_pairs(lua_State *L);
+int luaswift_do_for_ipairs(lua_State *L);
 
 size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
 void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);

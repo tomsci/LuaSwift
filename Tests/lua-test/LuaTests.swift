@@ -683,6 +683,32 @@ final class LuaTests: XCTestCase {
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
     }
 
+    // func test_for_pairs_perf_int_array() {
+    //     L.newtable()
+    //     for i in 1 ..< 10000000 {
+    //         L.rawset(-1, key: i, value: i)
+    //     }
+    //     measure {
+    //         try! L.for_pairs(-1, { _, _ in
+    //             /* Do nothing */
+    //             return true
+    //         })
+    //     }
+    // }
+
+    // func test_for_ipairs_perf_int_array() {
+    //     L.newtable()
+    //     for i in 1 ..< 10000000 {
+    //         L.rawset(-1, key: i, value: i)
+    //     }
+    //     measure {
+    //         try! L.for_ipairs(-1, { _ in
+    //             /* Do nothing */
+    //             return true
+    //         })
+    //     }
+    // }
+
     func test_for_pairs_mt() throws {
         var dict = [
             "aaa": 111,

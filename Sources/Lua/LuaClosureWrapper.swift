@@ -70,25 +70,17 @@ public class LuaClosureWrapper: Pushable {
         return lua_upvalueindex(NumInternalUpvalues + i)
     }
 
-    // This is only optional (and a var) because of the nonescaping requirements in for_pairs/for_ipairs
-    var _closure: Optional<LuaClosure>
-
-    public var closure: LuaClosure {
-        return _closure!
-    }
+    let closure: LuaClosure
 
     public init(_ closure: @escaping LuaClosure) {
-        self._closure = closure
+        self.closure = closure
     }
 
     private static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
         let wrapper: LuaClosureWrapper = L.unchecked_touserdata(lua_upvalueindex(1))!
-        guard let closure = wrapper._closure else {
-            fatalError("Attempt to call a LuaClosureWrapper after it has been explicitly nilled")
-        }
 
         do {
-            return try closure(L)
+            return try wrapper.closure(L)
         } catch {
             L.push(error: error)
             return LUASWIFT_CALLCLOSURE_ERROR

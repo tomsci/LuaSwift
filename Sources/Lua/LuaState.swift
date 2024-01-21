@@ -86,6 +86,20 @@ internal func gcUserdata(_ L: LuaState!) -> CInt {
     return 0
 }
 
+fileprivate func callUnmanagedClosure(_ L: LuaState!) -> CInt {
+    // Lightuserdata representing the LuaClosureWrapper expected to be on top of the stack; rest of stack is up to the
+    // caller to set up.
+    let wrapper = Unmanaged<LuaClosureWrapper>.fromOpaque(lua_touserdata(L, -1))
+    L.pop() // wrapper
+
+    do {
+        return try wrapper.takeUnretainedValue().closure(L)
+    } catch {
+        L.push(error: error)
+        return LUASWIFT_CALLCLOSURE_ERROR
+    }
+}
+
 /// A Swift enum of the Lua types.
 ///
 /// The `rawValue` of the enum uses the same integer values as the `LUA_T...` type constants. Note that `LUA_TNONE` does
@@ -1246,33 +1260,25 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
     ///   does not support indexing.
     public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Bool) throws {
+        // Ensure this is set up
+        push(function: luaswift_do_for_pairs) // yes, it's keyed under the pairs fn not ipairs...
+        push(function: callUnmanagedClosure)
+        rawset(LUA_REGISTRYINDEX)
+
+        push(index: index)
+        push(function: luaswift_do_for_ipairs, toindex: -2) // below the value being iterated
+        push(start)
+
+        // See for_pairs() for explanation of how this pattern works.
         try withoutActuallyEscaping(block) { escapingBlock in
             let wrapper = LuaClosureWrapper({ L in
-                var i = start
-                while true {
-                    L.settop(1)
-                    let t = try L.get(1, key: i)
-                    if t == .nil {
-                        break
-                    }
-                    let shouldContinue = try escapingBlock(i)
-                    if !shouldContinue {
-                        break
-                    }
-                    i = i + 1
-                }
-                return 0
+                // The stack is exactly in the state luaswift_do_for_pairs left it, so i and val are at 4 and 5
+                let iteratorResult = try escapingBlock(lua_tointeger(L, 4))
+                return iteratorResult ? 1 : 0
             })
 
-            // Must ensure closure does not actually escape, since we cannot rely on garbage collection of the upvalue
-            // of the closure, explicitly nil it in the ClosureWrapper instead
-            defer {
-                wrapper._closure = nil
-            }
-
-            push(index: index) // Push first as could be relative index
-            push(wrapper, toindex: -2)
-            try pcall(nargs: 1, nret: 0, traceback: false)
+            lua_pushlightuserdata(self, Unmanaged.passUnretained(wrapper).toOpaque())
+            try pcall(nargs: 3, nret: 0) // luaswift_do_for_ipairs(value, start, wrapper)
         }
     }
 
@@ -1396,38 +1402,29 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     // Top of stack must have iterfn, state, initval
     func do_for_pairs(_ block: (CInt, CInt) throws -> Bool) throws {
+        // Ensure this is set up
+        push(function: luaswift_do_for_pairs)
+        push(function: callUnmanagedClosure)
+        rawset(LUA_REGISTRYINDEX)
+
         try withoutActuallyEscaping(block) { escapingBlock in
             let wrapper = LuaClosureWrapper({ L in
-                // Stack: 1 = iterfn, 2 = state, 3 = initval (k)
-                while true {
-                    L.settop(3)
-                    L.push(index: 1)
-                    lua_insert(L, 3) // put iterfn before k
-                    L.push(index: 2)
-                    lua_insert(L, 4) // put state before k
-                    // 3, 4, 5 is now iterfn copy, state copy, k
-                    lua_call(L, 2, 2) // k, v = iterfn(state, k)
-                    // Stack is now 1 = iterfn, 2 = state, 3 = k, 4 = v
-                    if L.isnoneornil(3) {
-                        break
-                    }
-                    let shouldContinue = try escapingBlock(3, 4)
-                    if !shouldContinue {
-                        break
-                    }
-                    // new k is in position 3 ready to go round loop again
-                }
-                L.settop(0)
-                return 0
+                // The stack is exactly in the state luaswift_do_for_pairs left it, so k and v are at 4 and 5
+                let iteratorResult = try escapingBlock(4, 5)
+                return iteratorResult ? 1 : 0
             })
 
-            // Must ensure closure does not actually escape, since we cannot rely on prompt garbage collection of the
-            // upvalue, explicitly nil it in the ClosureWrapper instead.
-            defer {
-                wrapper._closure = nil
-            }
-            push(wrapper, toindex: -4) // Push wrapper below iterfn, state, initval
-            try pcall(nargs: 3, nret: 0)
+            // Note, we push wrapper as an unmanaged lightuserdata here rather than as a function, to shortcut the need
+            // for an additional Lua call frame every time wrapper is called within the iteration loop, and also avoid
+            // needing a dynamic cast as part of touserdata/unchecked_touserdata. By avoiding pushing wrapper as a full
+            // userdata we also don't need to worry about escapingBlock actually escaping (due to wrapper's userdata
+            // having a reference to it, and being subject to deferred deinit by the Lua garbage collector) which in
+            // turn simplifies the implementation of LuaClosureWrapper.
+            lua_pushlightuserdata(self, Unmanaged.passUnretained(wrapper).toOpaque())
+            lua_insert(self, -2)
+            // iterfn, state, wrapper, initval
+            push(function: luaswift_do_for_pairs, toindex: -5)
+            try pcall(nargs: 4, nret: 0)
         }
     }
 

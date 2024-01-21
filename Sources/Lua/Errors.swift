@@ -1,9 +1,7 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 /// An `Error` type representing an error thrown by the Lua runtime.
-///
-/// This type's implementation of `Pushable` pushes the underlying error object (or string).
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable {
     private init(_ error: LuaValue) {
         self.errorValue = error
@@ -12,13 +10,17 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable 
         self.errorString = error.tostring(convert: true) ?? "<no error description available>"
     }
 
-    /// Construct a `LuaCallError` with a string error. `errorValue` will be nil.
+    /// Construct a `LuaCallError` with a string error. `errorValue` will be `nil`.
     public init(_ error: String) {
         self.errorValue = nil
         self.errorString = error
     }
 
     /// Pops a value from the stack and constructs a `LuaCallError` from it.
+    ///
+    /// If the value is a string decodable using the default string encoding, `errorString` in the resulting
+    /// `LuaCallError` will be set to that string and `errorValue` will be nil. Otherwise, the value will be stored
+    /// in `errorValue` and `errorString` will be set to the result of calling `tostring()` on the value.
     public static func popFromStack(_ L: LuaState) -> LuaCallError {
         defer {
             L.pop()
@@ -30,6 +32,7 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable 
         }
     }
 
+    /// Pushes the underlying error object (or string) on to the stack.
     public func push(onto L: LuaState) {
         if let errorValue {
             L.push(errorValue)
@@ -38,13 +41,19 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable 
         }
     }
 
-    /// The underlying Lua error object that was thrown by `lua_error()`, if the object thrown was something other than
-    /// a string. For string errors, `errorValue` will be nil. Note like all `LuaValue`s, this is only valid until the
-    /// `LuaState` that created it is closed. After that point, only `errorString` can be used.
+    /// The underlying Lua error value that was thrown by `lua_error()`.
+    ///
+    /// If the underlying Lua error was not a `string`, errorValue will be set to that value. If the error was a string
+    /// that could be decoded using the default string encoding, then `errorValue` will be `nil`. 
+
+    /// > Important: Like all `LuaValue` objects, this is only valid until the `LuaState` that created it is closed.
+    ///   After that point, only `errorString` can be used.
     public let errorValue: LuaValue?
 
-    /// The string representation of the Lua error object. If the thrown error object was a string, this is that object
-    /// as a Swift String. Otherwise, `errorString` will be set from the result of `tostring(errorValue)`.
+    /// The string representation of the Lua error value.
+    ///
+    /// If the thrown error value was a `string` decodable using the default string encoding, this is that object as a
+    /// Swift `String`. Otherwise, `errorString` will be set to the result of `tostring(errorValue)`.
     public let errorString: String
 
     // Conformance to CustomStringConvertible

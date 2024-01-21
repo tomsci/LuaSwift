@@ -6,6 +6,18 @@ Because this package mostly uses the raw C Lua paradigms (with a thin layer of S
 
 A copy of the LuaSwift API documentation can be found here: <https://tomsci.github.io/LuaSwift/documentation/lua>.
 
+## Features
+
+* Interop directly with C `lua_State` pointers; no custom Swift objects needed to represent the Lua runtime. Same APIs available within a `lua_CFunction` or `LuaClosure` as callable from the top level. Fully reentrant.
+* Swift objects bridgeable into Lua using `userdata` and metatables, observing Swift lifetimes and Lua garbage collection.
+* Lots of helper functions for converting Swift data types to and from Lua, supporting both raw and non-raw accesses, including powerful type-inference to support converting `string` to `Data` or `String`, and `table` to `Dictionary` or `Array`, as appropriate.
+* Lua tables convertible to Swift types that implement `Decodable`.
+* Lua longjmp-based errors translated into Swift throw-based Errors and vice-versa. Use plain `lua_CFunction`, Swift closures that can throw errors, or any mixture of the two.
+* `yield`, `callk` and `pcallk` APIs supported in a Swift-safe fashion.
+* Swift helpers for `ipairs` and `pairs` iteration operations.
+* Optional object-oriented API. Raw C API also available.
+* Precompilation of Lua source files at build-time integrated into Xcode (and `swift` command-line) using `swiftpm` plug-in.
+
 ## Usage
 
 ```swift

@@ -230,7 +230,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Destroy and clean up the Lua state.
     ///
-    /// Must be the last function called on this `LuaState` pointer. For example:
+    /// Calls [`lua_close()`](https://www.lua.org/manual/5.4/manual.html#lua_close) on this state. Must be the last
+    /// function called on this `LuaState` pointer. For example:
     ///
     /// ```swift
     /// class MyLuaWrapperClass {
@@ -252,6 +253,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Open some or all of the standard Lua libraries.
     ///
     /// Example:
+    ///
     /// ```swift
     /// L.openLibraries(libraries: .all)
     /// // is equivalent to:
@@ -932,7 +934,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * `lightuserdata` converts to `UnsafeRawPointer`.
     /// 
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
-    /// called.
+    /// called. Tuples are not supported and conversion to a tuple type will always fail and return `nil`.
     ///
     /// Converting the `nil` Lua value when `T` is `Optional<U>` always succeeds and returns `.some(.none)`. This is the
     /// only case where the Lua `nil` value does not return `nil`. Any behavior described above like "converts to
@@ -957,6 +959,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// let dict: [String: Int] = L.tovalue(-1)! // OK
     /// let numDict: [String: Double] = L.tovalue(-1)! // Also OK
     /// ```
+    ///
+    /// `tovalue()` underpins all of the LuaSwift APIs which automatically convert Lua values to Swift types, such as
+    /// ``pcall(_:traceback:)-3qlin`` and ``checkArgument(_:)``.
     ///
     /// > Important: The exact behavior of `tovalue()` has varied over the course of the 0.x versions of LuaSwift, in
     ///   corner cases such as how strings and tables should be returned from calls to `tovalue<Any>()`. Be sure to

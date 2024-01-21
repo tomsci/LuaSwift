@@ -103,8 +103,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Get the default string encoding.
     ///
     /// This is the encoding which Lua strings are assumed to be in if an explicit encoding is not supplied when
-    /// converting strings to or from Lua, for example when calling ``tostring(_:encoding:convert:)-9syls`` or
-    /// ``push(string:toindex:)``.
+    /// converting strings to or from Lua, for example when calling
+    /// [`tostring(_:)`](doc:Lua/Swift/UnsafeMutablePointer/tostring(_:encoding:convert:)-9syls) or
+    /// [`push(string:)`](doc:Lua/Swift/UnsafeMutablePointer/push(string:toindex:)).
     ///
     /// The default string encoding is initially UTF-8. It can be overridden on a per-state basis by calling
     /// ``setDefaultStringEncoding(_:)``.

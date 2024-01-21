@@ -29,7 +29,7 @@ import CLua
 /// is not callable, ``LuaValueError/notCallable`` will be thrown.
 ///
 /// ```swift
-/// let printFn = L.globals["print"]
+/// let printFn: LuaValue = L.globals["print"]
 /// try! printFn.pcall("Hello World!")
 /// try! printFn("Hello World!") // Equivalent to the line above
 /// ```
@@ -43,7 +43,7 @@ import CLua
 /// ```
 ///
 /// `LuaValue` objects are only valid as long as the `LuaState` is. Calling any of its functions after the `LuaState`
-/// has been closed will trigger a `precondition` error. It is safe to allow `LuaValue` objects to `deinit` after the
+/// has been closed will cause a `fatalError`. It is safe to allow `LuaValue` objects to `deinit` after the
 /// `LuaState` has been closed, however.
 ///
 /// 
@@ -461,11 +461,10 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     /// Get or set the value's metatable.
     ///
-    /// Only tables and userdata values can have (per-value) metatables. It is an error to try to set the metatable of
-    /// any other type of value (if you really need to do this, call `lua_setmetatable` directly).
-    ///
     /// The result of getting a value's metatable will always be either a `LuaValue` of type `.table`, or `nil`.
     /// Setting a metatable to `LuaValue()` is equivalent to setting it to `nil`.
+    ///
+    /// - Precondition: When setting a metatable, the value must be of a type with per-value metatables, ie a table or userdata.
     public var metatable: LuaValue? {
         get {
             if type == .nil {
@@ -755,6 +754,6 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 }
 
-struct UnownedLuaValue {
+internal struct UnownedLuaValue {
     unowned let val: LuaValue
 }

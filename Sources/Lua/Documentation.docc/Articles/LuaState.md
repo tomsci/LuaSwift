@@ -90,6 +90,34 @@ Using `CLua` directly is generally only useful for complex stack manipulations f
 
 Keep in mind that the C API gives access to functions which are (or can be) unsafe to call from Swift. It is possible to leak memory, orphan Swift objects, or crash the process by misusing the C API.
 
+### Error handling
+
+Lua errors (implemented in C using `longjmp`) have no direct equivalent in Swift, because `longjmp` is not safe to call from Swift (just as C++ exceptions are not safe to throw from or through a Swift function either). They are instead translated to and from instances of the Swift Error type ``LuaCallError`` at the appropriate API boundaries. Instead of `lua_call()` erroring using a `longjmp` or `lua_pcall()` returning an error code and leaving an error object on the Lua stack, LuaState's `pcall()` throws a Swift `LuaCallError` instead. This means that `pcall()` and any other LuaState Swift API which can error are annotated with `throws` and thus must be called with a `try`, making it obvious what can error and what can't. APIs like `lua_call()` which are impossible to implement safely in Swift have no equivalent in `LuaState`. Import `CLua` and call `lua_call()` directly if you are absolutely certain the call cannot error and a protected call is not desired.
+
+Any `Error` thrown by a `LuaClosure` (including `LuaCallError`) is automatically translated using ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)`` and then passed back to the Lua runtime using `lua_error()`.
+
+Where an error might be raised in a `lua_CFunction` written in C like this:
+
+```c
+int myFn(lua_State *L) {
+    if (/*something error-worthy*/) {
+        return luaL_error(L, "Bad thing happened");
+    }
+    /* ... */
+}
+```
+
+In a Swift `LuaClosure` it would be:
+
+```swift
+func myClosure(_ L: LuaState) throws -> CInt {
+    if /*something error-worthy*/ {
+        throw L.error("Bad thing happened")
+    }
+    /* ... */
+}
+```
+
 ### Thread safety
 
 As a result of `LuaState` being usable anywhere a C `lua_State` is, all the internal state needed by the `LuaState` (for example, tracking metatables and default string encodings) is stored inside the state itself (using the Lua registry), meaning each top-level `LuaState` is completely independent, just like a normal C `lua_State` is.

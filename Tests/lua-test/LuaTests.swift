@@ -504,6 +504,14 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(expected, 4)
         XCTAssertEqual(L.gettop(), 1)
 
+        expected = 0
+        for (i, intVal) in L.ipairs(1, type: Int8.self) {
+            expected = expected + 1
+            XCTAssertEqual(i, expected)
+            XCTAssertEqual(L.gettop(), 1)
+            XCTAssertEqual(intVal, Int8(expected * 11))
+        }
+
         // Now check that a table with nils in is also handled correctly
         expected = 0
         L.pushnil()
@@ -594,21 +602,32 @@ final class LuaTests: XCTestCase {
     }
 
     func test_pairs() throws {
-        var dict = [
+        let dict = [
             "aaa": 111,
             "bbb": 222,
             "ccc": 333,
         ]
         L.push(dict)
+        var emptyingDict = dict
         for (k, v) in L.pairs(1) {
             XCTAssertTrue(k > 1)
             XCTAssertTrue(v > 1)
             let key = try XCTUnwrap(L.tostring(k))
             let val = try XCTUnwrap(L.toint(v))
-            let foundVal = dict.removeValue(forKey: key)
+            let foundVal = emptyingDict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
         }
-        XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+        XCTAssertTrue(emptyingDict.isEmpty) // All entries should have been removed by the pairs loop
+
+        L.push(dict)
+        emptyingDict = dict
+        for (key, val) in L.pairs(1, type: (String.self, Int.self)) {
+            XCTAssertEqual(key.count, 3)
+            XCTAssertTrue(val >= 111)
+            let foundVal = emptyingDict.removeValue(forKey: key)
+            XCTAssertEqual(val, foundVal)
+        }
+        XCTAssertTrue(emptyingDict.isEmpty) // All entries should have been removed by the pairs loop
     }
 
     func test_for_ipairs() throws {

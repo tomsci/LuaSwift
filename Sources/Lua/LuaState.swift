@@ -1210,31 +1210,92 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Return a for-iterator that iterates the array part of a table, using raw accesses.
+    private class IPairsTypedRawIterator<T>: Sequence, IteratorProtocol {
+        let L: LuaState
+        let index: CInt
+        var i: lua_Integer
+        init(_ L: LuaState, _ index: CInt, start: lua_Integer) {
+            self.L = L
+            self.index = L.absindex(index)
+            self.i = start - 1
+        }
+        public func next() -> (lua_Integer, T)? {
+            i = i + 1
+            lua_rawgeti(L, index, i)
+            let val: T? = L.tovalue(-1)
+            L.pop()
+            if let val {
+                return (i, val)
+            } else {
+                return nil
+            }
+        }
+    }
+
+    /// Iterate the array part of a table using raw accesses.
     ///
-    /// Inside the for loop, each element will on the top of the stack and can be accessed using stack index -1. Indexes
-    /// are done raw, in other words the `__index` metafield is ignored if the table has one.
+    /// Returns a for-iterator that iterates the array part of a table, using raw accesses, with each element being
+    /// placed on the top of the stack within the for loop. The "iterated element" is the array index of each element.
+    ///
+    /// Accesses are performed raw, in other words the `__index` metafield is ignored if the table has one.
+    ///
+    /// To automatically convert each element to a Swift type, use ``ipairs(_:type:start:)`` instead.
     ///
     /// ```swift
-    /// // Assuming { 11, 22, 33 } is on the top of the stack
-    /// for i in L.ipairs(-1) {
-    ///     print("Index \(i) is \(L.toint(-1)!)")
+    /// // Assuming { 11, 22, 33 } is the only thing on the stack
+    /// for i in L.ipairs(1) {
+    ///     print("table[\(i)] is \(L.toint(-1)!)")
     /// }
     /// // Prints:
-    /// // Index 1 is 11
-    /// // Index 2 is 22
-    /// // Index 3 is 33
+    /// // table[1] is 11
+    /// // table[2] is 22
+    /// // table[3] is 33
     /// ```
     ///
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
-    /// - Parameter resetTop: By default, the stack top is reset on exit and each time through the iterator to what it
-    ///   was at the point of calling `ipairs`. Occasionally this is not desirable and can be disabled by setting
-    ///   `resetTop` to false.
+    /// - Parameter resetTop: By default, the stack top is reset on exit of the loop and each time through the iterator
+    ///   to what it was at the point of calling `ipairs`. Occasionally this is not desirable and can be disabled by
+    ///   setting `resetTop` to false.
     /// - Precondition: `index` must refer to a table value.
     public func ipairs(_ index: CInt, start: lua_Integer = 1, resetTop: Bool = true) -> some Sequence<lua_Integer> {
         precondition(type(index) == .table, "Value must be a table to iterate with ipairs()")
         return IPairsRawIterator(self, index, start: start, resetTop: resetTop)
+    }
+
+    /// Iterate a table using raw accesses as if it were an array with elements of type `T`.
+    ///
+    /// Return a for-iterator that iterates the array part of a table, using raw accesses, with each element being
+    /// converted to type `T` using `tovalue()`. The "iterated element" is the tuple `(index, value)`. The iteration is
+    /// stopped if any value cannot be converted to `T` using `tovalue()` (which includes stopping because a `nil` value
+    /// is encountered).
+    ///
+    /// Accesses are performed raw, in other words the `__index` metafield is ignored if the table has one.
+    ///
+    /// To iterate the table without converting the values to Swift values, use ``ipairs(_:start:resetTop:)`` instead.
+    ///
+    /// ```swift
+    /// // Assuming { "abc", "def", "ghi" } is the only thing on the stack
+    /// for (i, val) in L.ipairs(1, type: String.self) {
+    ///     print("table[\(i)] is \(val)")
+    /// }
+    /// // Prints:
+    /// // table[1] is abc
+    /// // table[2] is def
+    /// // table[3] is ghi
+    /// ```
+    ///
+    /// > Note: The stack top is never reset when using this API. Any items pushed on to the stack inside the `for`
+    ///   loop will be left there where the loop exits.
+    ///
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter type: The expected type of the array values.
+    /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
+    /// - Precondition: `index` must refer to a table value.
+    public func ipairs<T>(_ index: CInt, type: T.Type, start: lua_Integer = 1) -> some Sequence<(lua_Integer, T)> {
+        precondition(self.type(index) == .table, "Value must be a table to iterate with ipairs()")
+        let iter: IPairsTypedRawIterator<T> = IPairsTypedRawIterator(self, index, start: start)
+        return iter
     }
 
     /// Iterates a Lua array, observing `__index` metafields.
@@ -1310,6 +1371,43 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    private class PairsTypedRawIterator<K, V> : Sequence, IteratorProtocol {
+        let L: LuaState
+        let index: CInt
+        let top: CInt
+        init(_ L: LuaState, _ index: CInt) {
+            self.L = L
+            self.index = L.absindex(index)
+            top = L.gettop()
+            L.pushnil() // initial k
+        }
+        public func next() -> (K, V)? {
+            if L.gettop() < top + 1 {
+                // The loop better not have messed up the stack, we rely on k staying valid
+                fatalError("Iteration popped more items from the stack than it pushed")
+            }
+            while true {
+                L.settop(top + 1) // Pop everything except k
+                let t = lua_next(L, index)
+                if t == 0 {
+                    // No more items
+                    return nil
+                }
+                let k: K? = L.tovalue(top + 1)
+                let v: V? = L.tovalue(top + 2)
+                if let k, let v {
+                    return (k, v)
+                } else {
+                    // Skip this element, keep iterating
+                    continue
+                }
+            }
+        }
+        deinit {
+            L.settop(top)
+        }
+    }
+
     /// Return a for-iterator that will iterate all the members of a table, using raw accesses.
     ///
     /// The values in the table are iterated in an unspecified order. Each time
@@ -1319,9 +1417,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// To iterate with non-raw accesses, use ``for_pairs(_:_:)`` instead.
     ///
-    /// The indexes to the key and value will always be `top+1` and `top+2`, where `top` is the value of `gettop()`
-    /// prior to the call to `pairs()`, thus are provided for convenience only. `-2` and `-1` can be used instead, if
-    /// desired. The stack is reset to `top` at the end of each iteration through the loop.
+    /// The indexes to the key and value will always refer to the top 2 values on the stack, thus are provided for
+    /// convenience only. `-2` and `-1` can be used instead, if desired. The stack is reset to `top` at the end of each
+    /// iteration through the loop.
     ///
     /// ```swift
     /// // Assuming top of stack is a table { a = 1, b = 2, c = 3 }
@@ -1341,6 +1439,36 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func pairs(_ index: CInt) -> some Sequence<(CInt, CInt)> {
         precondition(type(index) == .table, "Value must be a table to iterate with pairs()")
         return PairsRawIterator(self, index)
+    }
+
+    /// Iterate all the members of a table whose types are `K` and `V`, using raw accesses.
+    ///
+    /// Returns a for-iterator that will iterate the values of the table at `index` on the stack, in an unspecified
+    /// order. If the key or value cannot be converted to type `K` or `V` respectively (using `tovalue()`), then that
+    /// pair is skipped and the iteration will continue to the next pair. Therefore, this function can be used to
+    /// filter the table based on the key and value types. To iterate a table of mixed key and/or value types without
+    /// potentially skipping elements, use ``pairs(_:)`` instead.
+    ///
+    /// The `__pairs` metafield is ignored if the table has one, that is to say raw accesses are used.
+    ///
+    /// ```swift
+    /// // Assuming top of stack is a table { a = 1, b = 2, c = 3, awkward = "notanint!" }
+    /// for (k, v) in L.pairs(-1, type: (String.self, Int.self)) {
+    ///     // k is a String, v is an Int
+    ///     print("\(k) \(v)")
+    /// }
+    /// // ...might output the following:
+    /// // b 2
+    /// // c 3
+    /// // a 1
+    /// ```
+    ///
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter type: The key and value types to convert to, as a tuple.
+    /// - Precondition: `index` must refer to a table value.
+    public func pairs<K, V>(_ index: CInt, type: (K.Type, V.Type)) -> some Sequence<(K, V)> {
+        precondition(self.type(index) == .table, "Value must be a table to iterate with pairs()")
+        return PairsTypedRawIterator(self, index)
     }
 
     /// Push the 3 values needed to iterate the value at the top of the stack.

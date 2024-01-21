@@ -1051,7 +1051,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return unchecked_touserdata(index)
     }
 
-    private func unchecked_touserdata<T>(_ index: CInt) -> T? {
+    internal func unchecked_touserdata<T>(_ index: CInt) -> T? {
         guard let rawptr = lua_touserdata(self, index) else {
             return nil
         }

@@ -82,7 +82,7 @@ public class LuaClosureWrapper: Pushable {
     }
 
     private static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
-        let wrapper: LuaClosureWrapper = L.touserdata(lua_upvalueindex(1))!
+        let wrapper: LuaClosureWrapper = L.unchecked_touserdata(lua_upvalueindex(1))!
         guard let closure = wrapper._closure else {
             fatalError("Attempt to call a LuaClosureWrapper after it has been explicitly nilled")
         }

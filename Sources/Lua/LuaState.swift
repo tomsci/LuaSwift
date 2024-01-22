@@ -541,7 +541,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    func getState() -> _State {
+    internal func getState() -> _State {
         if let state = maybeGetState() {
             return state
         }
@@ -565,7 +565,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return state
     }
 
-    func maybeGetState() -> _State? {
+    internal func maybeGetState() -> _State? {
         push(function: stateLookupKey)
         rawget(LUA_REGISTRYINDEX)
         defer {
@@ -939,8 +939,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   array or a dictionary. Call ``Lua/Swift/Dictionary/luaTableToArray()-7jqqs`` subsequently if desired.
     ///   Similarly, if `T` is `AnyHashable`, a `Dictionary<AnyHashable, AnyHashable>` will always be returned
     ///   (providing both key and value can be converted to `AnyHashable`).
-    /// * `userdata` - providing the value was pushed via `push<U>(userdata:)`, converts to `U` or anything `U` can be
-    ///    cast to.
+    /// * `userdata` - providing the value was pushed via
+    ///   [`push<U>(userdata:)`](doc:Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)), converts to `U` or anything
+    ///   `U` can be cast to.
     /// * `function` - if the function is a C function, it is represented by `lua_CFunction`. If the function was pushed
     ///   with ``push(_:numUpvalues:toindex:)``, is represented by ``LuaClosure``. Otherwise it is represented by
     ///   ``LuaValue``. The conversion succeeds if the represented type can be cast to `T`.
@@ -1653,8 +1654,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Functions or closures implemented in Swift that conform to `(LuaState?) -> CInt` may be pushed using this API
     /// only if they:
     ///
-    /// * Do not throw Swift or Lua errors
-    /// * Do not capture any variables
+    /// * Do not throw Swift or Lua errors.
+    /// * Do not capture any variables.
+    /// * Do not call any of the yield or yieldable APIs (`pcallk`, `lua_pcallk`, etc).
     ///
     /// If the above conditions do not hold, push a ``LuaClosure`` using ``push(_:numUpvalues:toindex:)`` instead.
     ///
@@ -3245,7 +3247,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Get the main thread for this state.
     ///
-    /// Unless coroutines are being used, this will be the same as `self`.
+    /// Unless called from within a coroutine, this will be the same as `self`.
     public func getMainThread() -> LuaState {
         rawget(LUA_REGISTRYINDEX, key: LUA_RIDX_MAINTHREAD)
         defer {
@@ -3269,8 +3271,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter file: Path to a Lua text or binary file.
     /// - Parameter displayPath: If set, use this instead of `file` in Lua stacktraces.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
-    /// - Throws: ``LuaLoadError/fileError(_:)`` if `file` cannot be opened. ``LuaLoadError/parseError(_:)`` if the file
-    ///   cannot be parsed.
+    /// - Throws: [`LuaLoadError.fileError`](doc:Lua/LuaLoadError/fileError(_:)) if `file` cannot be opened.
+    ///   [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the file cannot be parsed.
     public func load(file path: String, displayPath: String? = nil, mode: LoadMode = .text) throws {
         var err: CInt = 0
 #if LUASWIFT_NO_FOUNDATION
@@ -3304,7 +3306,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter data: The data to load.
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
-    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
+    /// - Throws: [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the data cannot be parsed.
     public func load(data: [UInt8], name: String?, mode: LoadMode) throws {
         try data.withUnsafeBytes { buf in
             try load(buffer: buf, name: name, mode: mode)
@@ -3318,7 +3320,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter buffer: The data to load.
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
-    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
+    /// - Throws: [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the data cannot be parsed.
     public func load(buffer: UnsafeRawBufferPointer, name: String?, mode: LoadMode) throws {
         var err: CInt = 0
         buffer.withMemoryRebound(to: CChar.self) { chars in
@@ -3340,7 +3342,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter string: The Lua script to load. This is always parsed using UTF-8 string encoding.
     /// - Parameter name: The name to give to the resulting chunk. If not specified, the string parameter itself will
     ///   be used as the name.
-    /// - Throws: ``LuaLoadError/parseError(_:)`` if the string cannot be parsed.
+    /// - Throws: [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the string cannot be parsed.
     public func load(string: String, name: String? = nil) throws {
         try load(data: Array<UInt8>(string.utf8), name: name ?? string, mode: .text)
     }
@@ -3351,8 +3353,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter file: Path to a Lua text or binary file.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
-    /// - Throws: ``LuaLoadError/fileError(_:)`` if `file` cannot be opened.
-    ///   ``LuaLoadError/parseError(_:)`` if the file cannot be parsed.
+    /// - Throws: [`LuaLoadError.fileError`](doc:Lua/LuaLoadError/fileError(_:)) if `file` cannot be opened.
+    ///   [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the file cannot be parsed.
     public func dofile(_ path: String, mode: LoadMode = .text) throws {
         try load(file: path, mode: mode)
         try pcall(nargs: 0, nret: LUA_MULTRET)
@@ -3363,7 +3365,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Any values returned from the chunk are left on the top of the stack.
     ///
     /// - Parameter string: The Lua script to load.
-    /// - Throws: ``LuaLoadError/parseError(_:)`` if the string cannot be parsed.
+    /// - Throws: [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the string cannot be parsed.
     public func dostring(_ string: String, name: String? = nil) throws {
         try load(string: string, name: name)
         try pcall(nargs: 0, nret: LUA_MULTRET)

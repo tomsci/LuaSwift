@@ -164,7 +164,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter bytes: The data to load.
     /// - Parameter name: The name of the chunk, for use in stacktraces. Optional.
     /// - Parameter mode: Whether to only allow text, compiled binary chunks, or either.
-    /// - Throws: ``LuaLoadError/parseError(_:)`` if the data cannot be parsed.
+    /// - Throws: [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the data cannot be parsed.
     public func load(bytes: ContiguousBytes, name: String?, mode: LoadMode) throws {
         try bytes.withUnsafeBytes { buf in
             try load(buffer: buf, name: name, mode: mode)

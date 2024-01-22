@@ -140,7 +140,7 @@ public struct DefaultMetatable {
 /// that aren't used internally by LuaSwift.
 ///
 /// Metafield names in Swift are defined without the leading underscores used in the Lua names - so for example the
-/// `index` argument to the `Metamethod` constructor refers to the `__index` metafield in Lua.
+/// `index` argument to the `Metatable` constructor refers to the `__index` metafield in Lua.
 ///
 /// [init]: doc:Metatable/init(for:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
 public struct Metatable<T> {

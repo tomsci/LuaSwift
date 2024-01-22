@@ -27,6 +27,8 @@ class Foo {
         return true
     }
 }
+
+// We want to be able to call `foo:bar()` in Lua
 ```
 
 We need to therefore call `register()` with a `Metatable` whose `fields` containing a ``Metatable/FieldType/closure(_:)`` called `bar` (which will become the Lua `bar()` member function) which calls the Swift `bar()` function. Here we are assuming the Lua API should be a member function called as `foo:bar()`, therefore the `Foo` userdata will be argument 1. We recover the original Swift `Foo` instance by calling ``Lua/Swift/UnsafeMutablePointer/checkArgument(_:)``.
@@ -71,7 +73,7 @@ Any arguments to the closure are type-checked using using `L.checkArgument<Argum
 
 ## Pushing values into Lua
 
-Having defined a metatable for our type, we can use ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)`` or ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` to push instances of it on to the Lua stack, at which point we can assign it to a variable just like any other Lua value. Using the example `Foo` class described above, and assuming our Lua code expects a single global value called `foo` to be defined, we could use ``Lua/Swift/UnsafeMutablePointer/setglobal(name:)``:
+Having defined a metatable for our type, we can use [`push(userdata:)`](doc:Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)) or [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)) to push instances of it on to the Lua stack, at which point we can assign it to a variable just like any other Lua value. Using the example `Foo` class described above, and assuming our Lua code expects a single global value called `foo` to be defined, we could use ``Lua/Swift/UnsafeMutablePointer/setglobal(name:)``:
 
 ```swift
 let foo = Foo()

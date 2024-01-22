@@ -360,6 +360,10 @@ public struct Metatable<T> {
                 return 1
             }
         }
+
+        public static func memberfn(_ accessor: @escaping (T) throws -> String) -> Self {
+            return .closure(LuaState.makeClosure(accessor))
+        }
     }
 
     public struct PairsType {

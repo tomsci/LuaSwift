@@ -1252,6 +1252,18 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tovalue(1), expected)
     }
 
+    func test_tostringMetamethod() throws {
+        struct Foo {
+            func str() -> String {
+                return "woop"
+            }
+        }
+        L.register(Metatable(for: Foo.self, tostring: .memberfn { $0.str() }))
+        L.push(userdata: Foo())
+        let result = L.tostring(1, convert: true)
+        XCTAssertEqual(result, "woop")
+    }
+
     func test_synthesize_tostring() throws {
         struct Foo {}
         L.register(Metatable(for: Foo.self, tostring: .synthesize))

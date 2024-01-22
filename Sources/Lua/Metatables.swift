@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import CLua
@@ -28,6 +28,7 @@ internal enum MetafieldName: String {
     case call = "__call"
     case close = "__close"
     case tostring = "__tostring"
+    case pairs = "__pairs"
 }
 
 internal enum InternalMetafieldValue {
@@ -73,7 +74,8 @@ public struct DefaultMetatable {
         newindex: FunctionType? = nil,
         call: FunctionType? = nil,
         close: FunctionType? = nil,
-        tostring: FunctionType? = nil)
+        tostring: FunctionType? = nil,
+        pairs: FunctionType? = nil)
     {
         var mt: [MetafieldName: InternalMetafieldValue] = [:]
 
@@ -101,6 +103,7 @@ public struct DefaultMetatable {
         mt[.call] = call?.value
         mt[.close] = close?.value
         mt[.tostring] = tostring?.value
+        mt[.pairs] = pairs?.value
 
         self.mt = mt
     }
@@ -139,7 +142,7 @@ public struct DefaultMetatable {
 /// Metafield names in Swift are defined without the leading underscores used in the Lua names - so for example the
 /// `index` argument to the `Metamethod` constructor refers to the `__index` metafield in Lua.
 ///
-/// [init]: doc:Metatable/init(for:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:)
+/// [init]: doc:Metatable/init(for:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
 public struct Metatable<T> {
     internal let mt: [MetafieldName: InternalMetafieldValue]
     internal let unsynthesizedFields: [String: FieldType]?
@@ -359,6 +362,13 @@ public struct Metatable<T> {
         }
     }
 
+    public struct PairsType {
+        internal let value: InternalMetafieldValue
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
+    }
+
     /// See ``Metatable``.
     public init(
         for type: T.Type,
@@ -386,7 +396,8 @@ public struct Metatable<T> {
         newindex: NewIndexType? = nil,
         call: CallType? = nil,
         close: CloseType? = nil,
-        tostring: TostringType? = nil)
+        tostring: TostringType? = nil,
+        pairs: PairsType? = nil)
     {
         var mt: [MetafieldName: InternalMetafieldValue] = [:]
 
@@ -459,6 +470,7 @@ public struct Metatable<T> {
         mt[.call] = call?.value
         mt[.close] = close?.value
         mt[.tostring] = tostring?.value
+        mt[.pairs] = pairs?.value
 
         self.mt = mt
     }

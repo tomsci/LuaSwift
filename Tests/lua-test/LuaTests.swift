@@ -1208,6 +1208,50 @@ final class LuaTests: XCTestCase {
         XCTAssertFalse(try L.compare(2, 1, .le))
     }
 
+    func test_pairsMetamethod() throws {
+        struct Foo {
+            let a: String
+            let b: Int
+        }
+        L.register(Metatable(for: Foo.self, pairs: .closure { L in
+            // Fn starts with stack 1=obj
+            L.push({ L in
+                let obj: Foo = try L.checkArgument(1)
+                let idx: String? = L.tostring(2)
+                switch idx {
+                case .none:
+                    L.push("a")
+                    L.push(obj.a)
+                case "a":
+                    L.push("b")
+                    L.push(obj.b)
+                default:
+                    L.pushnil()
+                    L.pushnil()
+                }
+                return 2
+            }, toindex: 1)
+            L.pushnil()
+            // returning fn, obj, nil
+            return 3
+        }))
+
+
+        try L.load(string: """
+            local obj = ...
+            local result = {}
+            for k, v in pairs(obj) do
+                result[k] = v
+            end
+            return result
+            """)
+        let foo = Foo(a: "abc", b: 123)
+        L.push(userdata: foo)
+        try L.pcall(nargs: 1, nret: 1)
+        let expected: Dictionary<String, AnyHashable> = ["a": "abc", "b": 123]
+        XCTAssertEqual(L.tovalue(1), expected)
+    }
+
     func test_synthesize_tostring() throws {
         struct Foo {}
         L.register(Metatable(for: Foo.self, tostring: .synthesize))

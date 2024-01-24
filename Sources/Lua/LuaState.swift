@@ -2405,8 +2405,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Call a Lua function which is allowed to yield.
     ///
     /// Behaves identically to ``pcallk(nargs:nret:traceback:continuation:)`` except for the call not being called
-    /// protected, and therefore that the continuation will not be called if an error occurs. The same caveats apply, in
-    /// that `callk` can only be called as return from a `LuaClosure`.
+    /// protected, and therefore that the continuation will not be called if an error occurs (instead, the calling
+    /// LuaClosure will error). The same caveats apply, in that `callk` can only be called as return from a
+    /// `LuaClosure`.
+    ///
+    /// > Note: This is the only unprotected call function which is safe to call from Swift, due to the way
+    ///   continuations are implemented and the constraints they impose. Neither `lua_call()` nor `lua_callk()` are
+    ///   safe to call from Swift.
     ///
     /// - Parameter nargs: The number of arguments to pass to the function.
     /// - Parameter nret: The number of expected results to be passed to the continuation. Can be ``MultiRet`` to keep
@@ -2457,6 +2462,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   as passed into the `LuaClosure`. Any other usage will result in undefined behavior. Calling `lua_yield()`
     ///   or `lua_yieldk()` directly from Swift is not safe, for reasons similar to why `lua_call()` isn't.
     ///
+    /// > Important: When the continuation closure is called, the stack will be exactly as per the definition of
+    ///   `lua_yieldk()` (ie as it was at the point of the yield call, minus `nresults` values, plus whatever values
+    ///   added by the resume). While the thread is yielded however, the exact stack state is not defined (other than
+    ///   the top `nresults` values) - LuaSwift uses some stack slots for housekeeping the continuation. Do not modify
+    ///   the thread's stack while it is yielded (other than to pop the `nresults` values and push any values for the
+    ///   resume).
+    ///
     /// - Parameter nresults: The number of results to be returned from the resume call.
     /// - Parameter continuation: closure to execute if/when the current coroutine is resumed, or nil to continue by
     ///   returning to the parent function.
@@ -2475,6 +2487,66 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
         push(nresults)
         return LUASWIFT_CALLCLOSURE_YIELD
+    }
+
+    /// Create a new thread, see [`lua_newthread()`](https://www.lua.org/manual/5.4/manual.html#lua_newthread).
+    ///
+    /// The resulting thread is also pushed on to the stack.
+    public func newthread() -> LuaState {
+        return lua_newthread(self)
+    }
+
+    /// Close the thread, see [`lua_closethread()`](https://www.lua.org/manual/5.4/manual.html#lua_closethread).
+    ///
+    /// - Parameter from: The coroutine that is resetting `self`, or `nil` if there is no such coroutine.
+    /// - Returns: If the thread errored, or if a `__close` metamethod errored while cleaning up the to-be-closed
+    ///   variables, returns that error, otherwise returns `nil`. If the thread errored, this will be the same error as
+    ///   returned from ``resume(from:nargs:)``, assuming the stack has not been modified in the interim.
+    /// > Note: When using Lua versions 5.4.0 to 5.4.5, this calls `lua_resetthread()` instead. On earlier versions, it
+    ///   has no effect and always returns `nil`.
+    @discardableResult
+    public func closethread(from: LuaState?) -> LuaCallError? {
+        let status = luaswift_closethread(self, from)
+        if status == LUA_OK || gettop() == 0 { // Be paranoid in case the caller has already reset the stack
+            return nil
+        } else {
+            return LuaCallError.popFromStack(self)
+        }
+    }
+
+    /// Start or resume a coroutine in this thread.
+    ///
+    /// - Parameter from: The coroutine that is resuming `self`, or `nil` if there is no such coroutine.
+    /// - Parameter nargs: The number of arguments to pass to the coroutine.
+    /// - Returns: A tuple of values: `nresults` being the number of results returned from the coroutine or yield;
+    ///   `yielded` which is `true` if the coroutine yielded and `false` otherwise; and `error` which is non-nil if
+    ///   the coroutine threw an error.
+    ///
+    /// Start or resume a coroutine in this thread, see
+    /// [`lua_resume()`](https://www.lua.org/manual/5.4/manual.html#lua_resume). `self` should be a `LuaState` returned
+    /// by ``newthread()`` or `lua_newthread()`. To start a coroutine, first push the main function on to the stack,
+    /// followed by `nargs` arguments, then call resume. To resume a coroutine, remove the `nresults` results from the
+    /// previous `resume()` call, then push `nargs` values to be passed as the results from `yield`, then call
+    /// `resume()`.
+    ///
+    /// On return, if `error` is `nil`, `nresults` values are present on the top of the stack.
+    ///
+    /// - Precondition: If the coroutine is being started, the stack must consist of a function/callable and `nargs`
+    ///   arguments. If the coroutine is being resumed, the top of the stack must contain `nargs` arguments.
+    ///
+    /// - Important: Prior to Lua 5.4, all values are removed from the stack by this call, so the stack will only
+    ///   contain `nresults` values when `resume()` returns. In 5.4 and later, only `nargs` results (and the function,
+    ///   if the coroutine is being started) are removed, and the `nresults` values are added to the top of the stack.
+    ///   See [lua_resume (5.3)](https://www.lua.org/manual/5.3/manual.html#lua_resume) vs
+    ///   [lua_resume (5.4)](https://www.lua.org/manual/5.4/manual.html#lua_resume).
+    public func resume(from: LuaState?, nargs: CInt) -> (nresults: CInt, yielded: Bool, error: LuaCallError?) {
+        var nresults: CInt = 0
+        let status = luaswift_resume(self, from, nargs, &nresults)
+        if status == LUA_OK || status == LUA_YIELD {
+            return (nresults: nresults, yielded: status == LUA_YIELD, error: nil)
+        } else {
+            return (nresults: 0, yielded: false, error: LuaCallError.popFromStack(self))
+        }
     }
 
     // MARK: - Registering metatables

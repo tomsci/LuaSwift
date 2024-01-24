@@ -222,6 +222,9 @@ int luaswift_searcher_preload(lua_State *L);
 int luaswift_do_for_pairs(lua_State *L);
 int luaswift_do_for_ipairs(lua_State *L);
 
+int luaswift_resume(lua_State *L, lua_State *from, int nargs, int *nresults);
+int luaswift_closethread(lua_State *L, lua_State* from);
+
 size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
 void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);
 

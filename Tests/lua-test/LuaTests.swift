@@ -356,6 +356,77 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.toint(-1), 456)
     }
 
+    func test_thread() throws {
+        let thread = L.newthread()
+        thread.push({ L in
+            XCTAssertEqual(L.tostring(1), "arg")
+            L.push("yieldedval")
+            return L.yield(nresults: 1) { L in
+                XCTAssertEqual(L.gettop(), 2)
+                XCTAssertEqual(L.tostring(1), "arg")
+                XCTAssertEqual(L.tostring(2), "cont")
+                L.push("done")
+                return 1
+            }
+        })
+        thread.push("arg")
+        do {
+            let (nresults, yielded, err) = thread.resume(from: nil, nargs: 1)
+            thread.printStack()
+            XCTAssertEqual(nresults, 1)
+            XCTAssertEqual(yielded, true)
+            XCTAssertNil(err)
+            if LUA_VERSION.is54orLater() {
+                // Stack has 4 elements here - arg, 2 used internally by LuaSwift.yield(), and yieldedval
+                XCTAssertEqual(thread.gettop(), 4)
+                XCTAssertEqual(thread.tostring(1), "arg")
+                XCTAssertEqual(thread.tostring(4), "yieldedval")
+            } else {
+                // Previous stack not retained
+                XCTAssertEqual(thread.gettop(), 1)
+                XCTAssertEqual(thread.tostring(1), "yieldedval")
+            }
+            thread.pop(nresults) // yieldedval
+        }
+
+        thread.push("cont")
+        let (nresults, yielded, err) = thread.resume(from: nil, nargs: 1)
+        XCTAssertEqual(nresults, 1)
+        XCTAssertEqual(yielded, false)
+        XCTAssertNil(err)
+        XCTAssertEqual(thread.gettop(), 1)
+        XCTAssertEqual(thread.tostring(1), "done")
+        let closeErr = thread.closethread(from: nil)
+        XCTAssertNil(closeErr)
+        if LUA_VERSION.is54orLater() {
+            XCTAssertEqual(thread.gettop(), 0)
+        }
+    }
+
+    func test_thread_error() throws {
+        let thread = L.newthread()
+        thread.push({ L in
+            throw L.error("doom")
+        })
+        thread.push("arg")
+        // The docs on lua_resume and lua_closethread are a little unclear, but what _appears_ to happen if an
+        // error is thrown from lua_resume, is that 2 copies of the error are left on the stack. The first we pop
+        // in resume(), and the second is available to be popped by closethread().
+        let (nresults, yielded, err) = thread.resume(from: nil, nargs: 1)
+        XCTAssertEqual(nresults, 0)
+        XCTAssertEqual(yielded, false)
+        XCTAssertEqual(err?.errorString, "doom")
+        XCTAssertEqual(thread.gettop(), 2)
+        XCTAssertEqual(thread.tostring(1), "arg")
+        XCTAssertEqual(thread.tostring(2), "doom")
+
+        if LUA_VERSION.is54orLater() {
+            let closeErr = thread.closethread(from: nil)
+            XCTAssertEqual(closeErr?.errorString, "doom")
+            XCTAssertEqual(thread.gettop(), 0) // closethread will have removed arg
+        }
+    }
+
     func test_istype() {
         L.push(1234) // 1
         L.push(12.34) // 2

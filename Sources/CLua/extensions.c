@@ -252,3 +252,28 @@ int luaswift_do_for_ipairs(lua_State *L) {
     }
     return 0;
 }
+
+int luaswift_resume(lua_State *L, lua_State *from, int nargs, int *nresults) {
+#if LUA_VERSION_NUM >= 504
+    return lua_resume(L, from, nargs, nresults);
+#else
+    int ret = lua_resume(L, from, nargs);
+    // Lua 5.3 lua_resume does not preserve anything previously on the stack
+    *nresults = lua_gettop(L);
+    return ret;
+#endif
+}
+
+int luaswift_closethread(lua_State *L, lua_State* from) {
+#if LUA_VERSION_NUM >= 504
+// LUA_VERSION_RELEASE_NUM is defined in all 5.4 and later versions
+#if LUA_VERSION_RELEASE_NUM >= 50406
+    return lua_closethread(L, from);
+#else
+    return lua_resetthread(L);
+#endif
+#else
+    // Nothing needed prior to 5.4 since there are no to-be-closed variables
+    return LUA_OK;
+#endif
+}

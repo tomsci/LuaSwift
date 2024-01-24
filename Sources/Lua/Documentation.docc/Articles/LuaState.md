@@ -8,7 +8,7 @@
 typealias LuaState = UnsafeMutablePointer<lua_State>
 ```
 
-It can therefore be constructed either using the explicit constructor provided, or any C `lua_State` obtained from anywhere can be treated as a `LuaState` Swift object. By convention `LuaState`/`lua_State` variables are often called `L`, although that is not mandatory.
+It can therefore be constructed either using the explicit constructor provided, or any C `lua_State` pointer obtained from anywhere can be treated as a `LuaState` Swift object. By convention `LuaState`/`lua_State` variables are often called `L`, although this is not mandatory.
 
 See <https://www.lua.org/manual/5.4/manual.html> for documentation of the underlying Lua C APIs.
 
@@ -248,12 +248,17 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/pcall(_:traceback:)-3qlin``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-11jc5``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-8gv5``
+- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-6nd9m``
+- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-70inn``
+
+### Coroutines
+- ``Lua/Swift/UnsafeMutablePointer/newthread()``
+- ``Lua/Swift/UnsafeMutablePointer/resume(from:nargs:)``
 - ``Lua/Swift/UnsafeMutablePointer/pcallk(nargs:nret:traceback:continuation:)``
 - ``Lua/Swift/UnsafeMutablePointer/pcallk(nargs:nret:msgh:continuation:)``
 - ``Lua/Swift/UnsafeMutablePointer/callk(nargs:nret:continuation:)``
 - ``Lua/Swift/UnsafeMutablePointer/yield(nresults:continuation:)``
-- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-6nd9m``
-- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-70inn``
+- ``Lua/Swift/UnsafeMutablePointer/closethread(from:)``
 
 ### Registering metatables
 

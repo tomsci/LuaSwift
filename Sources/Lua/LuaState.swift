@@ -3655,9 +3655,3 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 }
-
-protocol LuaTemporaryRef {
-
-    func ref() -> LuaValue
-    
-}

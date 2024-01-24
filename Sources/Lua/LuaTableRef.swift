@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 #if !LUASWIFT_NO_FOUNDATION
@@ -6,7 +6,7 @@ import Foundation
 #endif
 
 /// Placeholder type used by ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)`` when `guessType` is `false`.
-public struct LuaTableRef : LuaTemporaryRef {
+public struct LuaTableRef {
     let L: LuaState
     let index: CInt
 
@@ -307,10 +307,6 @@ public struct LuaTableRef : LuaTemporaryRef {
         let tableRef: LuaTableRef? // Valid for .array .dict
         let testValue: Any
 
-        // Valid for .array and .dict, also in the case of .anyhashable used as an indicator that the value is a known
-        // LuaTemporaryRef (avoiding the need for an additional dynamic cast).
-        let ref: LuaTemporaryRef?
-
         init(type: TypeConstraint,
              stringRef: LuaStringRef? = nil,
              tableRef: LuaTableRef? = nil,
@@ -318,7 +314,6 @@ public struct LuaTableRef : LuaTemporaryRef {
             self.type = type
             self.stringRef = stringRef
             self.tableRef = tableRef
-            self.ref = stringRef ?? tableRef
             switch type {
             case .dict: self.testValue = emptyAnyDict
             case .array: self.testValue = emptyAnyArray

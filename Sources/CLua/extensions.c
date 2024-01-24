@@ -4,6 +4,10 @@
 #define LUASWIFT_MINIMAL_CLUA
 #include "CLua.h"
 
+#if LUA_VERSION_NUM < 504
+#include <string.h> // for strlen
+#endif
+
 int luaswift_searcher_preload(lua_State *L) {
     const char *name = luaL_checkstring(L, 1);
     lua_getfield(L, LUA_REGISTRYINDEX, LUA_PRELOAD_TABLE);

@@ -612,13 +612,15 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// `__index` metafields are observed, if present, and any error thrown by them will be re-thrown from
     /// `for_ipairs()` as a `LuaCallError`. `block` is called with two arguments, the integer `index` of the array
-    /// item, and a `LuaValue` representing the value. `block` can return `false` to halt the iteration early,
-    /// otherwise it should return `true`.
+    /// item, and a `LuaValue` representing the value. `block` can return `.breakIteration` to halt the iteration early,
+    /// otherwise it should return `.continueIteration`. If `block` never needs to break, use a Void-returning block
+    /// with ``for_ipairs(start:_:)-9ivqt`` instead.
     ///
     /// ```swift
     /// let foo = L.ref(any: [11, 22, 33])
-    /// for (i, val) in foo.ipairs() {
+    /// try foo.for_ipairs() { i, val in
     ///     print("Index \(i) is \(val.toint()!)")
+    ///     return .continueIteration
     /// }
     /// // Prints:
     /// // Index 1 is 11
@@ -630,7 +632,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
     ///           ``LuaCallError`` if an error is thrown during an `__index` call.
-    public func for_ipairs(start: lua_Integer = 1, block: (lua_Integer, LuaValue) throws -> Bool) throws {
+    public func for_ipairs(start: lua_Integer = 1, _ block: (lua_Integer, LuaValue) throws -> LuaState.IteratorResult) throws {
         try checkValid()
         push(onto: L)
         try Self.checkTopIsIndexable(L)
@@ -641,6 +643,36 @@ public class LuaValue: Equatable, Hashable, Pushable {
             let value = L.popref()
             return try block(i, value)
         }
+    }
+
+    /// Like ``for_ipairs(start:_:)-35dov`` but without the option to break from the iteration.
+    ///
+    /// This function behaves like ``for_ipairs(start:_:)-35dov`` except that `block` should not return anything. This
+    /// is a convenience overload allowing you to omit writing `return .continueIteration` when the block never needs
+    /// to exit the iteration early by using `return .breakIteration`.
+    ///
+    /// ```swift
+    /// let foo = L.ref(any: [11, 22, 33])
+    /// try foo.for_ipairs() { i, val in
+    ///     print("Index \(i) is \(val.toint()!)")
+    /// }
+    /// // Prints:
+    /// // Index 1 is 11
+    /// // Index 2 is 22
+    /// // Index 3 is 33
+    /// ```
+    public func for_ipairs(start: lua_Integer = 1, _ block: (lua_Integer, LuaValue) throws -> Void) throws {
+        return try for_ipairs(start: start, { i, value in
+            try block(i, value)
+            return .continueIteration
+        })
+    }
+
+    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    public func for_ipairs(start: lua_Integer = 1, block: (lua_Integer, LuaValue) throws -> Bool) throws {
+        return try for_ipairs(start: start, { i, value in
+            return try block(i, value) ? .continueIteration : .breakIteration
+        })
     }
 
     /// Iterate a Lua table-like value, calling `block` for each member.
@@ -661,7 +693,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
     ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
     ///           ``LuaCallError`` if an error is thrown during a `__pairs` or iterator call.
-    public func for_pairs(block: (LuaValue, LuaValue) throws -> Bool) throws {
+    public func for_pairs(_ block: (LuaValue, LuaValue) throws -> LuaState.IteratorResult) throws {
         try checkValid()
         push(onto: L)
         let iterable = try L.pushPairsParameters() // pops self, pushes iterfn, state, initval
@@ -677,11 +709,26 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
+    public func for_pairs(_ block: (LuaValue, LuaValue) throws -> Void) throws {
+        try for_pairs { k, v in
+            try block(k, v)
+            return .continueIteration
+        }
+    }
+
+    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    public func for_pairs(block: (LuaValue, LuaValue) throws -> Bool) throws {
+        try for_pairs { k, v in
+            return try block(k, v) ? .continueIteration : .breakIteration
+        }
+    }
+
     /// Convenience function to iterate the value as an array using `for_ipairs()`.
     ///
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
     ///           ``LuaCallError`` if an error is thrown during an `__index` call.
+    @available(*, deprecated, message: "Use for_ipairs() overload with block returning Void instead.")
     public func forEach(_ block: (LuaValue) throws -> Void) throws {
         try for_ipairs() { _, value in
             try block(value)
@@ -689,6 +736,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
+    @available(*, deprecated, message: "Use for_pairs() overload with block returning Void instead.")
     public func forEach(_ block: (LuaValue, LuaValue) throws -> Void) throws {
         try for_pairs() { key, value in
             try block(key, value)

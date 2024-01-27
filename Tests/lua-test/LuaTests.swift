@@ -654,7 +654,6 @@ final class LuaTests: XCTestCase {
         let bad_ipairs: (LuaValue) throws -> Void = { val in
             try val.for_ipairs() { _, _ in
                 XCTFail("Shouldn't get here!")
-                return false
             }
         }
         XCTAssertThrowsError(try bad_ipairs(LuaValue()), "", { err in
@@ -709,7 +708,7 @@ final class LuaTests: XCTestCase {
             expected_i = expected_i + 1
             XCTAssertEqual(i, expected_i)
             XCTAssertEqual(L.toint(-1), arr[Int(i-1)])
-            return i <= 4 // Test we can bail early
+            return i <= 4 ? .continueIteration : .breakIteration // Test we can bail early
         }
         XCTAssertEqual(expected_i, 5)
 
@@ -721,11 +720,10 @@ final class LuaTests: XCTestCase {
             """)
         try L.pcall(nargs: 0, nret: 1)
         expected_i = 1
-        try L.for_ipairs(-1) { i in
+        try L.for_ipairs(-1) { i -> Void in
             XCTAssertEqual(i, expected_i)
             expected_i = expected_i + 1
             XCTAssertEqual(L.toint(-1), arr[Int(i-1)])
-            return true
         }
 
         // Check we can error from an indexing operation and not explode
@@ -747,7 +745,6 @@ final class LuaTests: XCTestCase {
         let shouldError = {
             try self.L.for_ipairs(-1) { i in
                 last_i = i
-                return true
             }
         }
         XCTAssertThrowsError(try shouldError(), "", { err in
@@ -763,12 +760,11 @@ final class LuaTests: XCTestCase {
             "ccc": 333,
         ]
         L.push(dict)
-        try L.for_pairs(1) { k, v in
+        try L.for_pairs(1) { k, v -> Void in
             let key = try XCTUnwrap(L.tostring(k))
             let val = try XCTUnwrap(L.toint(v))
             let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
-            return true
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
     }
@@ -821,12 +817,11 @@ final class LuaTests: XCTestCase {
         L.push(dict)
         try L.pcall(nargs: 1, nret: 1)
 
-        try L.for_pairs(-1) { k, v in
+        try L.for_pairs(-1) { k, v -> Void in
             let key = try XCTUnwrap(L.tostring(k))
             let val = try XCTUnwrap(L.toint(v))
             let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
-            return true
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
     }

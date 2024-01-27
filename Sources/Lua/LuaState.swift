@@ -1299,20 +1299,39 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return iter
     }
 
+    /// Used as the return value from `for_ipairs()` and `for_pairs()` blocks.
+    public enum IteratorResult: Equatable {
+        /// Indicates that the iteration should stop and the `for_[i]pairs()` should return.
+        case breakIteration
+        /// Indicates that the iteration should proceed to the next element (if there is one).
+        case continueIteration
+    }
+
     /// Iterates a Lua array, observing `__index` metafields.
     ///
-    /// Because `__index` metafields can error, and `IteratorProtocol` is not allowed to, the iteration code must be
-    /// passed in as a block. The block should return `true` to continue iteration, or `false` to break.
+    /// Iterates a Lua array, observing `__index` metafields. Because `__index` metafields can error, and
+    /// `IteratorProtocol` is not allowed to, the iteration code must be passed in as a block. The block should return
+    /// `.continueIteration` to continue iterating to the next element, or `.breakIteration` to break. As an
+    /// alternative to always returning `.continueIteration` to iterate all elements, use
+    /// ``for_ipairs(_:start:_:)-5kkcd`` instead which takes a Void-returning block.
+    ///
+    /// Any error thrown by the block is rethrown by the `for_ipairs()` call, halting the iteration.
     ///
     /// ```swift
     /// for i in L.ipairs(-1) {
     ///     // top of stack contains `L.rawget(value, key: i)`
+    ///     if /* something */ {
+    ///         break
+    ///     }
     /// }
     ///
     /// // Compared to:
     /// try L.for_ipairs(-1) { i in
-    ///     // top of stack contains `L.get(value, key: i)`
-    ///     return true // continue iteration
+    ///     // top of stack contains `try L.get(value, key: i)`
+    ///     if /* something */ {
+    ///         return .breakIteration
+    ///     }
+    ///     return .continueIteration
     /// }
     /// ```
     ///
@@ -1320,8 +1339,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
     /// - Parameter block: The code to execute.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
-    ///   does not support indexing.
-    public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Bool) throws {
+    ///   does not support indexing. Rethrows anything thrown by `block`.
+    public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> IteratorResult) throws {
         // Ensure this is set up
         push(function: luaswift_do_for_pairs) // yes, it's keyed under the pairs fn not ipairs...
         push(function: callUnmanagedClosure)
@@ -1334,14 +1353,39 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // See for_pairs() for explanation of how this pattern works.
         try withoutActuallyEscaping(block) { escapingBlock in
             let wrapper = LuaClosureWrapper({ L in
-                // The stack is exactly in the state luaswift_do_for_pairs left it, so i and val are at 4 and 5
+                // The stack is exactly in the state luaswift_do_for_ipairs left it, so i and val are at 4 and 5
                 let iteratorResult = try escapingBlock(lua_tointeger(L, 4))
-                return iteratorResult ? 1 : 0
+                return iteratorResult == .continueIteration ? 1 : 0
             })
 
             lua_pushlightuserdata(self, Unmanaged.passUnretained(wrapper).toOpaque())
             try pcall(nargs: 3, nret: 0) // luaswift_do_for_ipairs(value, start, wrapper)
         }
+    }
+
+    /// Like ``for_ipairs(_:start:_:)-16dkm`` but without the option to break from the iteration.
+    ///
+    /// This function behaves like ``for_ipairs(_:start:_:)-16dkm`` except that `block` should not return anything. This
+    /// is a convenience overload allowing you to omit writing `return .continueIteration` when the block never needs
+    /// to exit the iteration early by using `return .breakIteration`.
+    ///
+    /// ```swift
+    /// try L.for_ipairs(-1) { i in
+    ///     // iterates every item of value observing the __index metafield if present.
+    /// }
+    /// ```
+    public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Void) throws {
+        try for_ipairs(index, start: start, { i in
+            try block(i)
+            return .continueIteration
+        })
+    }
+
+    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Bool) throws {
+        try for_ipairs(index, start: start, { i in
+            return try block(i) ? .continueIteration : .breakIteration
+        })
     }
 
     private class PairsRawIterator : Sequence, IteratorProtocol {
@@ -1416,7 +1460,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// value which are pushed on to the stack. The `__pairs` metafield is ignored if the
     /// table has one, that is to say raw accesses are used.
     ///
-    /// To iterate with non-raw accesses, use ``for_pairs(_:_:)`` instead.
+    /// To iterate with non-raw accesses, use ``for_pairs(_:_:)-2v2e3`` instead.
     ///
     /// The indexes to the key and value will always refer to the top 2 values on the stack, thus are provided for
     /// convenience only. `-2` and `-1` can be used instead, if desired. The stack is reset to `top` at the end of each
@@ -1510,12 +1554,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```swift
     /// for (k, v) in L.pairs(-1) {
     ///     // iterates table with raw accesses
+    ///     if /* something */ {
+    ///         break
+    ///     }
     /// }
     ///
     /// // Compared to:
     /// try L.for_pairs(-1) { k, v in
-    ///     // iterates table observing __pairs if present.
-    ///     return true // continue iteration
+    ///     // iterates value observing the __pairs metafield if present.
+    ///     if /* something */ {
+    ///         return .breakIteration
+    ///     }
+    ///     return .continueIteration
     /// }
     /// ```
     ///
@@ -1523,14 +1573,40 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter block: The code to execute.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of an iterator function or a `__pairs`
     ///   metafield, or if the value at `index` does not support indexing.
-    public func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Bool) throws {
+    public func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> IteratorResult) throws {
         push(index: index) // The value being iterated
         try pushPairsParameters() // pops value, pushes iterfn, state, initval
         try do_for_pairs(block)
     }
 
+    /// Like ``for_pairs(_:_:)-2v2e3`` but without the option to break from the iteration.
+    ///
+    /// This function behaves like ``for_pairs(_:_:)-2v2e3`` except that `block` should not return anything. This is a
+    /// convenience overload allowing you to omit writing `return .continueIteration` when the block never needs to
+    /// exit the iteration early by using `return .breakIteration`.
+    ///
+    /// ```swift
+    /// try L.for_pairs(-1) { k, v in
+    ///     // iterates every item of value observing the __pairs metafield if present.
+    /// }
+    /// ```
+    @inlinable
+    public func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Void) throws {
+        try for_pairs(index) { k, v in
+            try block(k, v)
+            return .continueIteration
+        }
+    }
+
+    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    public func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Bool) throws {
+        try for_pairs(index, { k, v in
+            return try block(k, v) ? .continueIteration : .breakIteration
+        })
+    }
+
     // Top of stack must have iterfn, state, initval
-    func do_for_pairs(_ block: (CInt, CInt) throws -> Bool) throws {
+    internal func do_for_pairs(_ block: (CInt, CInt) throws -> IteratorResult) throws {
         // Ensure this is set up
         push(function: luaswift_do_for_pairs)
         push(function: callUnmanagedClosure)
@@ -1540,7 +1616,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             let wrapper = LuaClosureWrapper({ L in
                 // The stack is exactly in the state luaswift_do_for_pairs left it, so k and v are at 4 and 5
                 let iteratorResult = try escapingBlock(4, 5)
-                return iteratorResult ? 1 : 0
+                return iteratorResult == .continueIteration ? 1 : 0
             })
 
             // Note, we push wrapper as an unmanaged lightuserdata here rather than as a function, to shortcut the need

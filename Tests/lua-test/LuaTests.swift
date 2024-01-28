@@ -668,7 +668,6 @@ final class LuaTests: XCTestCase {
         XCTAssertThrowsError(try bad_ipairs(L.popref()), "", { err in
             XCTAssertNotNil(err as? LuaCallError)
         })
-
     }
 
     func test_pairs() throws {
@@ -753,6 +752,31 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(last_i, 2)
     }
 
+    func test_for_ipairs_type() throws {
+        let arr = [11, 22, 33, 44, 55, 66]
+        L.push(arr)
+        var expected_i: lua_Integer = 0
+        try L.for_ipairs(-1, type: Int.self) { i, val in
+            expected_i = expected_i + 1
+            XCTAssertEqual(i, expected_i)
+            XCTAssertEqual(val, arr[Int(i-1)])
+            return i <= 4 ? .continueIteration : .breakIteration // Test we can bail early
+        }
+        XCTAssertEqual(expected_i, 5)
+        L.pop()
+
+        // Test we don't explode when encountering the wrong type, and instead just exit the iteration
+        let mixedArray: [Any] = ["abc", "def", 33]
+        L.push(any: mixedArray)
+        expected_i = 0
+        try L.for_ipairs(-1, type: String.self) { (i: lua_Integer, val: String) -> Void in
+            expected_i = expected_i + 1
+            XCTAssertEqual(i, expected_i)
+            XCTAssertEqual(val, mixedArray[Int(i-1)] as? String)
+        }
+        XCTAssertEqual(expected_i, 2)
+    }
+
     func test_for_pairs_raw() throws {
         var dict = [
             "aaa": 111,
@@ -824,6 +848,21 @@ final class LuaTests: XCTestCase {
             XCTAssertEqual(val, foundVal)
         }
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
+    func test_for_pairs_type() throws {
+        let dict: [AnyHashable: AnyHashable] = [
+            "aaa": 111,
+            "bbb": 222,
+            "ccc": "hello?",
+            "ddd": 444,
+        ]
+        L.push(any: dict)
+        var seenValues: [AnyHashable: AnyHashable] = [:]
+        try L.for_pairs(-1, type: (String.self, Int.self)) { k, v in
+            seenValues[k] = v
+        }
+        XCTAssertEqual(seenValues, ["aaa": 111, "bbb": 222, "ddd": 444])
     }
 
     func test_LuaValue_pairs_errors() throws {

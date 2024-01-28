@@ -1381,6 +1381,79 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         })
     }
 
+    /// Iterates a Lua value as if it were an array of elements with type `T`, observing `__index` metafields.
+    ///
+    /// Iterates a Lua value as if it were an array of elements with type `T`, observing `__index` metafields. The
+    /// iteration finishes when any element fails to convert to `T` - note that any failure to convert is treated just
+    /// like if a `nil` element was encountered to indicate the end of the array. It does not cause an error.
+    ///
+    /// Because `__index` metafields can error, and `IteratorProtocol` is not allowed to, the iteration code must be
+    /// passed in as a block. The block should return `.continueIteration` to continue iteration, or `.breakIteration`
+    /// to break.
+    ///
+    /// ```swift
+    /// // Assuming something behaving like { "abc", "def", "ghi" } is the only thing on the stack
+    /// try L.for_ipairs(1, type: String.self) { i, val in
+    ///     print("table[\(i)] is \(val)")
+    ///     return .continueIteration
+    /// }
+    /// // Prints:
+    /// // table[1] is abc
+    /// // table[2] is def
+    /// // table[3] is ghi
+    /// ```
+    ///
+    /// Use ``for_ipairs(_:start:type:_:)-3v788`` instead to allow you to omit the `return .continueIteration` in
+    /// cases where the block never needs to break.
+    ///
+    /// - Parameter index: Stack index of the value to iterate.
+    /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
+    /// - Parameter block: The code to execute.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
+    ///   does not support indexing. Rethrows anything `block` throws.
+    public func for_ipairs<T>(_ index: CInt, start: lua_Integer = 1, type: T.Type, _ block: (lua_Integer, T) throws -> IteratorResult) throws {
+        try for_ipairs(index, start: start, { i in
+            if let val: T = self.tovalue(-1) {
+                return try block(i, val)
+            } else {
+                return .breakIteration
+            }
+        })
+    }
+
+    /// Like ``for_ipairs(_:start:type:_:)-9mbw7`` but without the option to break from the iteration.
+    ///
+    /// This function behaves like ``for_ipairs(_:start:type:_:)-9mbw7`` except that `block` should not return anything.
+    /// This is a convenience overload allowing you to omit writing `return .continueIteration` when the block never
+    /// needs to exit the iteration early by using `return .breakIteration`.
+    ///
+    /// ```swift
+    /// // Assuming something behaving like { "abc", "def", "ghi" } is the only thing on the stack
+    /// try L.for_ipairs(1, type: String.self) { i, val in
+    ///     print("table[\(i)] is \(val)")
+    /// }
+    /// // Prints:
+    /// // table[1] is abc
+    /// // table[2] is def
+    /// // table[3] is ghi
+    /// ```
+    ///
+    /// - Parameter index: Stack index of the value to iterate.
+    /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
+    /// - Parameter block: The code to execute.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
+    ///   does not support indexing. Rethrows anything `block` throws.
+    public func for_ipairs<T>(_ index: CInt, start: lua_Integer = 1, type: T.Type, _ block: (lua_Integer, T) throws -> Void) throws {
+        try for_ipairs(index, start: start, { i in
+            if let val: T = self.tovalue(-1) {
+                try block(i, val)
+                return .continueIteration
+            } else {
+                return .breakIteration
+            }
+        })
+    }
+
     @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
     public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Bool) throws {
         try for_ipairs(index, start: start, { i in
@@ -1596,6 +1669,71 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             try block(k, v)
             return .continueIteration
         }
+    }
+
+    /// Iterate all the members of a value whose types are K and V, observing `__pairs` metafields.
+    ///
+    /// Iterate all the members of a `table` or `userdata` whose types are K and V, observing `__pairs` metafields if
+    /// present, in an unspecified order. If the key or value cannot be converted to type `K` or `V` respectively
+    /// (using `tovalue()`), then that pair is skipped and the iteration will continue to the next pair. Therefore,
+    /// this function can be used to filter the table based on the key and value types. To iterate a table of mixed key
+    /// and/or value types without potentially skipping elements, use ``for_pairs(_:_:)-2v2e3`` instead.
+    ///
+    /// ```swift
+    /// // Assuming top of stack is a table { a = 1, b = 2, c = 3, awkward = "notanint!" }
+    /// try L.for_pairs(-1, type: (String.self, Int.self)) { k, v in
+    ///     // k is a String, v is an Int
+    ///     print("\(k) \(v)")
+    ///     return .continueIteration
+    /// }
+    /// // ...might output the following:
+    /// // b 2
+    /// // c 3
+    /// // a 1
+    /// ```
+    ///
+    /// Use ``for_pairs(_:type:_:)-8xaw8`` instead to allow you to omit the `return .continueIteration` in cases where
+    /// the block never needs to break.
+    ///
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter type: The key and value types to convert to, as a tuple.
+    /// - Parameter block: The code to execute.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of an iterator function or a `__pairs`
+    ///   metafield, or if the value at `index` does not support indexing.
+    public func for_pairs<K, V>(_ index: CInt, type: (K.Type, V.Type), _ block: (K, V) throws -> IteratorResult) throws {
+        push(index: index) // The value being iterated
+        try pushPairsParameters() // pops value, pushes iterfn, state, initval
+        try do_for_pairs({ k, v in
+            if let key: K = self.tovalue(k),
+               let val: V = self.tovalue(v) {
+                return try block(key, val)
+            } else {
+                return .continueIteration
+            }
+        })
+    }
+
+    /// Like ``for_pairs(_:type:_:)-9g8dt`` but without the option to break from the iteration.
+    ///
+    /// This function behaves like ``for_pairs(_:type:_:)-9g8dt`` except that `block` should not return anything. This
+    /// is a convenience overload allowing you to omit writing `return .continueIteration` when the block never needs
+    /// to exit the iteration early by using `return .breakIteration`.
+    ///
+    /// - Parameter index: Stack index of the table to iterate.
+    /// - Parameter type: The key and value types to convert to, as a tuple.
+    /// - Parameter block: The code to execute.
+    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of an iterator function or a `__pairs`
+    ///   metafield, or if the value at `index` does not support indexing.
+    public func for_pairs<K, V>(_ index: CInt, type: (K.Type, V.Type), _ block: (K, V) throws -> Void) throws {
+        push(index: index) // The value being iterated
+        try pushPairsParameters() // pops value, pushes iterfn, state, initval
+        try do_for_pairs({ k, v in
+            if let key: K = self.tovalue(k),
+               let val: V = self.tovalue(v) {
+                try block(key, val)
+            }
+            return .continueIteration
+        })
     }
 
     @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")

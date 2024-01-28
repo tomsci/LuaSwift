@@ -238,11 +238,15 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/for_ipairs(_:start:_:)-16dkm``
 - ``Lua/Swift/UnsafeMutablePointer/for_ipairs(_:start:_:)-5kkcd``
 - ``Lua/Swift/UnsafeMutablePointer/for_ipairs(_:start:_:)-2u2ns``
+- ``Lua/Swift/UnsafeMutablePointer/for_ipairs(_:start:type:_:)-9mbw7``
+- ``Lua/Swift/UnsafeMutablePointer/for_ipairs(_:start:type:_:)-3v788``
 - ``Lua/Swift/UnsafeMutablePointer/pairs(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/pairs(_:type:)``
 - ``Lua/Swift/UnsafeMutablePointer/for_pairs(_:_:)-2v2e3``
 - ``Lua/Swift/UnsafeMutablePointer/for_pairs(_:_:)-71zhp``
 - ``Lua/Swift/UnsafeMutablePointer/for_pairs(_:_:)-b6tx``
+- ``Lua/Swift/UnsafeMutablePointer/for_pairs(_:type:_:)-9g8dt``
+- ``Lua/Swift/UnsafeMutablePointer/for_pairs(_:type:_:)-8xaw8``
 
 ### Calling into Lua
 

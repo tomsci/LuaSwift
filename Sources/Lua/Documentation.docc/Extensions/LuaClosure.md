@@ -8,7 +8,6 @@ This type represents Swift closures that behave like the C [`lua_CFunction`](htt
 
 Closures or functions of this type can be pushed on to the Lua stack as Lua functions (like `lua_CFunction`) using ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``, but additionally they are allowed to throw Swift Errors (unlike `lua_CFunction`), which will be translated to Lua errors according to ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)``. Also unlike `lua_CFunction`, closures of type `LuaClosure` are allowed to capture variables.
 
-
 Normally `lua_CFunctions` are allowed to error using `lua_error()`, but `lua_CFunctions` implemented in Swift are not, because it is a violation of the Swift runtime to longjmp across a C-Swift boundary. Where a `lua_CFunction` written in C might do this:
 
 ```c
@@ -46,6 +45,9 @@ L.push({ L in
     return 0
 })
 ```
+
+The way this is implemented is that the function responsible for pushing `LuaClosure`, ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``, actually pushes a wrapper function which is responsible for calling the `LuaClosure`, catching any errors and translating them to Lua errors. Part of this support is provided by the `LuaClosureWrapper` class, although that is an implementation detail. The `type()` of a pushed `LuaClosure` is always `function`, not `userdata`.
+
 
 ## See Also
 

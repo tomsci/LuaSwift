@@ -1570,7 +1570,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// The `__pairs` metafield is ignored if the table has one, that is to say raw accesses are used.
     ///
     /// ```swift
-    /// // Assuming top of stack is a table { a = 1, b = 2, c = 3, awkward = "notanint!" }
+    /// // Assuming top of stack is a table
+    /// // { a = 1, b = 2, c = 3, awkward = "notanint!" }
     /// for (k, v) in L.pairs(-1, type: (String.self, Int.self)) {
     ///     // k is a String, v is an Int
     ///     print("\(k) \(v)")
@@ -1660,7 +1661,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// ```swift
     /// try L.for_pairs(-1) { k, v in
-    ///     // iterates every item of value observing the __pairs metafield if present.
+    ///     // iterates every item of value observing the __pairs metafield
+    ///     // if present.
     /// }
     /// ```
     @inlinable
@@ -1680,7 +1682,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// and/or value types without potentially skipping elements, use ``for_pairs(_:_:)-2v2e3`` instead.
     ///
     /// ```swift
-    /// // Assuming top of stack is a table { a = 1, b = 2, c = 3, awkward = "notanint!" }
+    /// // Assuming top of stack is a table
+    /// // { a = 1, b = 2, c = 3, awkward = "notanint!" }
     /// try L.for_pairs(-1, type: (String.self, Int.self)) { k, v in
     ///     // k is a String, v is an Int
     ///     print("\(k) \(v)")
@@ -2567,7 +2570,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```c
     /// int my_cfunction(lua_State *L) {
     ///     /* stuff */
-    ///     return continuation(L, lua_pcallk(L, nargs, nret, msgh, ctx, continuation), ctx);
+    ///     return continuation(L,
+    ///         lua_pcallk(L, nargs, nret, msgh, ctx, continuation), ctx);
     /// }
     ///
     /// int continuation(lua_State *L, int status, lua_KContext ctx) {

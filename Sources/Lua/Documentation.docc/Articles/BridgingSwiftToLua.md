@@ -139,7 +139,8 @@ L.register(Metatable(for: Foo.self,
         print("I have no idea what this should do")
     },
     close: .memberfn { obj in
-        // Do whatever is appropriate to obj here, eg calling a close() function
+        // Do whatever is appropriate to obj here,
+        // eg calling a close() function.
     }
 ))
 ```
@@ -157,7 +158,8 @@ L.register(Metatable(for: Foo.self,
         let memberName: String = try L.checkArgument(2)
         switch memberName {
         case "bar":
-            // Simplifying, given there are no arguments or results to worry about
+            // Simplifying, given there are no arguments or results
+            // to worry about
             L.push(closure: { foo.bar() })
         case "prop":
             L.push(foo.prop)
@@ -173,7 +175,8 @@ L.register(Metatable(for: Foo.self,
         case "prop":
             foo.prop = L.checkArgument(3)
         default:
-            throw L.argumentError(2, "no set function defined for property \(memberName)")
+            throw L.argumentError(2,
+                "no set function defined for property \(memberName)")
         }
         return 0
     }
@@ -202,7 +205,8 @@ L.register(Metatable(for: Foo.self,
             }
             obj.prop = stringVal
         default:
-            throw LuaState.error("no set function defined for property \(memberName)")
+            throw LuaState.error(
+                "no set function defined for property \(memberName)")
         }
     }
 ))
@@ -218,9 +222,10 @@ L.register(Metatable(for: Foo.self, fields: [
 ]))
 
 L.register(Metatable(for: Foo.self, fields: [
-    "prop": Metatable<Foo>.FieldType.property(get: { (obj: Foo) -> String in
-        return obj.prop
-    }, set: nil)
+    "prop": Metatable<Foo>.FieldType.property(get:
+        { (obj: Foo) -> String in
+            return obj.prop
+        }, set: nil)
 ]))
 ```
 

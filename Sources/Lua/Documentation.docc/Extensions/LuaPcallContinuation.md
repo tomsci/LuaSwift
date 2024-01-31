@@ -13,7 +13,9 @@ The `LuaPcallContinuation` type is normally used directly as the `continuation` 
 ```swift
 let my_closure: LuaClosure = { L in
     /* ... */
-    return try L.pcallk(nargs: nargs, nret: nret, continuation: { L, status in
+    return try L.pcallk(nargs: nargs,
+                        nret: nret,
+                        continuation: { L, stat in
         /* Do things after the pcallk... */
         return 0
     })

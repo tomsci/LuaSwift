@@ -56,7 +56,7 @@ So if you need to load the Lua code from Swift you can access an individual modu
 
 ```swift
 try L.load(data: lua_sources["example"]!, mode: .binary)
-try L.pcall(nargs: 0, nret: 0) // Or nret: 1 if the file returns a table of module fns, etc
+try L.pcall(nargs: 0, nret: 0) // Or `nret: 1`, etc
 
 // or:
 

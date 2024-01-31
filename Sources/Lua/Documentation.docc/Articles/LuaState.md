@@ -45,7 +45,7 @@ try printfn("Hello world!") // ... which can be called
 // but this will error because the globals table is not callable.
 try L.globals("wat?")
 
-// and so will this because printfn is not a table or other indexable value
+// and so will this because printfn is not a table (or other indexable)
 try printfn["nope"]
 ```
 

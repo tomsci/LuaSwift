@@ -1454,7 +1454,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         })
     }
 
-    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use overload with block returning IteratorResult or Void instead.")
     public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> Bool) throws {
         try for_ipairs(index, start: start, { i in
             return try block(i) ? .continueIteration : .breakIteration
@@ -1739,7 +1739,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         })
     }
 
-    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use overload with block returning IteratorResult or Void instead.")
     public func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> Bool) throws {
         try for_pairs(index, { k, v in
             return try block(k, v) ? .continueIteration : .breakIteration
@@ -2836,7 +2836,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     private static let DefaultMetatableName = "LuaSwift_Default"
 
     /// Deprecated, use ``register(_:)-8rgnn`` instead.
-    @available(*, deprecated, message: "Use register(Metatable) instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use register(Metatable) instead.")
     public func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
         deprecated_registerMetatable(for: type, functions: functions)
     }
@@ -2858,7 +2858,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
     }
 
-    @available(*, deprecated, message: "Use register(DefaultMetatable) instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use register(DefaultMetatable) instead.")
     public func registerDefaultMetatable(functions: [String: MetafieldType]) {
         deprecated_registerDefaultMetatable(functions: functions)
     }
@@ -3247,7 +3247,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Deprecated, use ``pushglobals(toindex:)-3ot28``.
-    @available(*, deprecated, renamed: "pushglobals")
+    @available(*, deprecated, renamed: "pushglobals", message: "Will be removed in v1.0.0. Use pushglobals() instead.")
     public func pushGlobals(toindex: CInt = -1) {
         pushglobals(toindex: toindex)
     }

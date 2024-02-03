@@ -668,7 +668,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         })
     }
 
-    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use overload with block returning IteratorResult or Void instead.")
     public func for_ipairs(start: lua_Integer = 1, block: (lua_Integer, LuaValue) throws -> Bool) throws {
         return try for_ipairs(start: start, { i, value in
             return try block(i, value) ? .continueIteration : .breakIteration
@@ -716,7 +716,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
-    @available(*, deprecated, message: "Use overload with block returning IteratorResult or Void instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use overload with block returning IteratorResult or Void instead.")
     public func for_pairs(block: (LuaValue, LuaValue) throws -> Bool) throws {
         try for_pairs { k, v in
             return try block(k, v) ? .continueIteration : .breakIteration
@@ -728,7 +728,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
     ///           ``LuaCallError`` if an error is thrown during an `__index` call.
-    @available(*, deprecated, message: "Use for_ipairs() overload with block returning Void instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use for_ipairs() overload with block returning Void instead.")
     public func forEach(_ block: (LuaValue) throws -> Void) throws {
         try for_ipairs() { _, value in
             try block(value)
@@ -736,7 +736,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
-    @available(*, deprecated, message: "Use for_pairs() overload with block returning Void instead.")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use for_pairs() overload with block returning Void instead.")
     public func forEach(_ block: (LuaValue, LuaValue) throws -> Void) throws {
         try for_pairs() { key, value in
             try block(key, value)

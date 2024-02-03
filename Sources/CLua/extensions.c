@@ -269,6 +269,8 @@ int luaswift_closethread(lua_State *L, lua_State* from) {
 // LUA_VERSION_RELEASE_NUM is defined in all 5.4 and later versions
 #if LUA_VERSION_RELEASE_NUM >= 50406
     return lua_closethread(L, from);
+#elif LUA_VERSION_RELEASE_NUM == 50405
+    return lua_resetthread(L, from);
 #else
     return lua_resetthread(L);
 #endif

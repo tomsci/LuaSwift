@@ -155,21 +155,6 @@ static inline int lua_upvalueindex(int i) {
 #undef LUA_REGISTRYINDEX
 static const int LUA_REGISTRYINDEX = -LUAI_MAXSTACK - 1000;
 
-// Early Lua 5.3 versions didn't define this, even though it is used in the same way.
-#ifndef LUA_PRELOAD_TABLE
-#define LUA_PRELOAD_TABLE "_PRELOAD"
-#endif
-
-// Ditto
-#ifndef LUA_LOADED_TABLE
-#define LUA_LOADED_TABLE "_LOADED"
-#endif
-
-// Only in 5.4
-#ifndef LUA_GNAME
-#define LUA_GNAME "_G"
-#endif
-
 #undef luaL_getmetatable
 static inline int luaL_getmetatable(lua_State* L, const char* name) {
     return lua_getfield(L, LUA_REGISTRYINDEX, name);
@@ -248,6 +233,21 @@ int luaswift_setinc(lua_State* L, int pause, int stepmul, int stepsize);
 #define LUASWIFT_LUA_VERSION_MAJOR LUA_VERSION_MAJOR
 #define LUASWIFT_LUA_VERSION_MINOR LUA_VERSION_MINOR
 #define LUASWIFT_LUA_VERSION_RELEASE LUA_VERSION_RELEASE
+#endif
+
+// Early Lua 5.3 versions didn't define this, even though it is used in the same way.
+#ifndef LUA_PRELOAD_TABLE
+#define LUA_PRELOAD_TABLE "_PRELOAD"
+#endif
+
+// Ditto
+#ifndef LUA_LOADED_TABLE
+#define LUA_LOADED_TABLE "_LOADED"
+#endif
+
+// Only in 5.4
+#ifndef LUA_GNAME
+#define LUA_GNAME "_G"
 #endif
 
 #endif /* clua_bridge_h */

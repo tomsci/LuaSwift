@@ -1380,7 +1380,10 @@ final class LuaTests: XCTestCase {
         L.register(Metatable(for: NoTostringStruct.self))
         L.push(userdata: NoTostringStruct())
         let nonTostringStr = try XCTUnwrap(L.tostring(-1, convert: true))
-        XCTAssertTrue(nonTostringStr.hasPrefix("LuaSwift_Type_NoTostringStruct: ")) // The default behaviour of tostring for a named userdata
+        if LUA_VERSION.releaseNum >= 50303 {
+            // The use of __name in tostring wasn't added until 5.3.3
+            XCTAssertTrue(nonTostringStr.hasPrefix("LuaSwift_Type_NoTostringStruct: ")) // The default behaviour of tostring for a named userdata
+        }
 
         struct CustomStruct: CustomStringConvertible {
             var description: String {

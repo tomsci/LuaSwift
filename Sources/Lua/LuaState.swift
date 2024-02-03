@@ -877,7 +877,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case .boolean:
             return toboolean(index)
         case .lightuserdata:
-            return lua_topointer(self, index)!
+            return lua_touserdata(self, index)
         case .number:
             if let intVal = tointeger(index) {
                 // Integers are returned type-erased (thanks to AnyHashable) meaning fewer cast restrictions in
@@ -914,7 +914,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 return ref(index: index)
             }
         case .userdata:
-            return touserdata(index)
+            if let oneOfOurs: Any = touserdata(index) {
+                return oneOfOurs
+            } else {
+                // If it's not a userdata we configured, just return the raw pointer
+                return lua_touserdata(self, index)!
+            }
         case .thread:
             return lua_tothread(self, index)
         }
@@ -940,14 +945,19 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   Similarly, if `T` is `AnyHashable`, a `Dictionary<AnyHashable, AnyHashable>` will always be returned
     ///   (providing both key and value can be converted to `AnyHashable`).
     /// * `userdata` - providing the value was pushed via
-    ///   [`push<U>(userdata:)`](doc:Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)), converts to `U` or anything
-    ///   `U` can be cast to.
+    ///   [`push<U>(userdata:)`](doc:Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)), converts to `U` or
+    ///   anything `U` can be cast to. If the value was not pushed via `push(userdata:)` (a "foreign" userdata) then it
+    ///   converts to `UnsafeRawPointer` or `UnsafeMutableRawPointer`. If `T` is `Any` or `AnyHashable` and the value is
+    ///   a foreign userdata, a `UnsafeMutableRawPointer` is returned.
     /// * `function` - if the function is a C function, it is represented by `lua_CFunction`. If the function was pushed
     ///   with ``push(_:numUpvalues:toindex:)``, is represented by ``LuaClosure``. Otherwise it is represented by
     ///   ``LuaValue``. The conversion succeeds if the represented type can be cast to `T`.
     /// * `thread` converts to `LuaState`.
-    /// * `lightuserdata` converts to `UnsafeRawPointer`.
-    /// 
+    /// * `lightuserdata` converts to `UnsafeRawPointer` or `UnsafeMutableRawPointer`. If `T` is `Any` or `AnyHashable`,
+    ///   a `UnsafeMutableRawPointer` is returned. The null lightuserdata (that is, a value pushed with
+    ///   `lua_pushuserdata(L, nil)`) will return `nil` (technically, it converts to
+    ///   `Optional<UnsafeMutableRawPointer>.none` or `Optional<UnsafeRawPointer>.none`). 
+    ///
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
     /// called. Tuples are not supported and conversion to a tuple type will always fail and return `nil`.
     ///
@@ -1033,6 +1043,17 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         } else if let directCast = value as? T {
             return directCast
         }
+
+        // You cannot direct cast from UnsafeMutableRawPointer to UnsafeRawPointer and unfortunately lightuserdata used
+        // to always be returned from toany() as UnsafeRawPointer, so we need to avoid breaking any existing code and
+        // allow both T=UnsafeRawPointer and T=UnsafeMutableRawPointer.
+        let t = type(index)
+        if t == .userdata || t == .lightuserdata {
+             if let mutptr = value as? UnsafeMutableRawPointer {
+                return UnsafeRawPointer(mutptr) as? T
+            }
+        }
+
         return nil
     }
 

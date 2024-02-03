@@ -1459,8 +1459,11 @@ final class LuaTests: XCTestCase {
             free(m)
         }
         lua_pushlightuserdata(L, m)
-        XCTAssertEqual(L.toany(1) as? UnsafeRawPointer, UnsafeRawPointer(m))
+        XCTAssertEqual(L.toany(1) as? UnsafeMutableRawPointer, m)
         L.pop()
+
+        lua_pushlightuserdata(L, nil)
+        XCTAssertNil(L.toany(1))
     }
 
     func test_pushany() {
@@ -1812,9 +1815,16 @@ final class LuaTests: XCTestCase {
     func testForeignUserdata() {
         // Tests that a userdata not set via pushuserdata (and thus, doesn't necessarily contain an `Any`) does not
         // crash or return anything if you attempt to access it via touserdata().
-        let _ = lua_newuserdata(L, MemoryLayout<Any>.size)
+        let userdataPtr = lua_newuserdata(L, MemoryLayout<Any>.size)
         let bad: Any? = L.touserdata(-1)
         XCTAssertNil(bad)
+
+        // But it should be returnable as a UnsafeRawPointer or UnsafeMutableRawPointer
+        let ptr: UnsafeRawPointer? = L.tovalue(-1)
+        XCTAssertEqual(ptr, UnsafeRawPointer(userdataPtr))
+
+        let mutptr: UnsafeMutableRawPointer? = L.tovalue(-1)
+        XCTAssertEqual(mutptr, userdataPtr)
 
         // Now give it a metatable, because touserdata bails early if it doesn't have one
         L.newtable()
@@ -2251,6 +2261,40 @@ final class LuaTests: XCTestCase {
         L.rawset(-2, key: 1)
         let closureArray: [LuaClosure] = try XCTUnwrap(L.tovalue(1))
         XCTAssertEqual(closureArray.count, 1)
+    }
+
+    func test_tovalue_userdata() throws {
+        lua_pushlightuserdata(L, nil) // 1
+        var whatevs = 123
+        lua_pushlightuserdata(L, &whatevs) // 2
+        let udata = lua_newuserdata(L, 12) // 3
+        struct Foo { let bar = 0 }
+        L.register(Metatable(for: Foo.self))
+        L.push(userdata: Foo()) // 4
+
+        XCTAssertNil(L.tovalue(1, type: UnsafeMutableRawPointer.self))
+        XCTAssertNil(L.tovalue(1, type: UnsafeRawPointer.self))
+        XCTAssertNil(L.tovalue(1, type: Any.self))
+        XCTAssertNil(L.tovalue(1, type: AnyHashable.self))
+
+        XCTAssertNotNil(L.tovalue(2, type: UnsafeMutableRawPointer.self))
+        XCTAssertNotNil(L.tovalue(2, type: UnsafeRawPointer.self))
+        XCTAssertNotNil(L.tovalue(2, type: Any.self) as? UnsafeMutableRawPointer)
+        XCTAssertNotNil(L.tovalue(2, type: AnyHashable.self) as? UnsafeMutableRawPointer)
+        XCTAssertNil(L.tovalue(2, type: Any.self) as? UnsafeRawPointer)
+        XCTAssertNil(L.tovalue(2, type: AnyHashable.self) as? UnsafeRawPointer)
+
+        XCTAssertEqual(L.tovalue(3), udata)
+        XCTAssertEqual(L.tovalue(3, type: UnsafeRawPointer.self), UnsafeRawPointer(udata))
+        XCTAssertEqual(L.tovalue(3, type: Any.self) as? UnsafeMutableRawPointer, udata)
+        XCTAssertEqual(L.tovalue(3, type: AnyHashable.self) as? UnsafeMutableRawPointer, udata)
+        XCTAssertNil(L.tovalue(3, type: Any.self) as? UnsafeRawPointer)
+        XCTAssertNil(L.tovalue(3, type: AnyHashable.self) as? UnsafeRawPointer)
+
+        XCTAssertNotNil(L.tovalue(4, type: Foo.self))
+        // Should fail because 4 is not a foreign userdata
+        XCTAssertNil(L.tovalue(4, type: UnsafeMutableRawPointer.self))
+        XCTAssertNil(L.tovalue(4, type: UnsafeRawPointer.self))
     }
 
 // #if !LUASWIFT_NO_FOUNDATION

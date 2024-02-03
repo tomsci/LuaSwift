@@ -23,7 +23,9 @@ This will add a constant called `lua_sources` to your target which contains the 
 
 > Tip: In a non-Swift-package Xcode project, instead go to the "Build Phases" tab of the target and click the "+" under "Run Build Tool Plug-ins", and select "LuaSwift -> EmbedLuaPlugin". To avoid warnings from the build system, you may want to collect all the Lua sources into a separate "Copy Files" build phase, rather than leaving the Lua files in the "Compile Sources" phase like you (effectively) do with a SwiftPM project. Using a Copy Files build phase with "Destination: Products Directory" and "Subpath: dummyCopyLocationForLuaFiles" is an effective workaround. The `lua_sources` file is added to the project automatically and does not need to be managed manually.
 
-All the included Lua files will be compiled into Lua bytecode when your project is built. Parse and syntax errors in the Lua files will show as clickable errors in the Xcode build log.
+All the included Lua files will be compiled into Lua bytecode when your project is built. Parse and syntax errors in the Lua files will show as clickable errors in the Xcode build log:
+
+![Example of a Lua syntax error in the build log](lua_sources_syntax_error)
 
 Then, pass `lua_sources` to ``Lua/Swift/UnsafeMutablePointer/addModules(_:mode:)`` when you construct your `LuaState`:
 
@@ -110,9 +112,9 @@ let lua_sources: [String: [UInt8]] = [
 ]
 ```
 
-Now, `firstmod.lua` and `secondmod.lua` are considered to be nested because of the presence of `topmod.lua` in their parent directory, and would need to be included using `require "DirA.firstmod"` or similar. The same logic applies for any level of nesting - each directory in the hierarchy must contain at least one Lua file to avoid terminating the hierarchy. As a convenience, if a zero-length file named `_.lua` exists it will count for the purposes of establishing the hierarchy, but will not appear in `lua_sources`.
+Now, `firstmod.lua` and `secondmod.lua` are considered to be nested because of the presence of `topmod.lua` in their parent directory, and would need to be included using `require "DirA.firstmod"` or similar. The same logic applies for any level of nesting: each directory in the hierarchy must contain at least one Lua file to avoid terminating the hierarchy. As a convenience, if a zero-length file named `_.lua` exists in a directory it will count for the purposes of establishing the hierarchy, but will not appear in `lua_sources`.
 
-Note that `EmbedLuaPlugin` does not treat nested `init.lua` files specially - to have a module `foo` and a module `foo.bar`, the files must be structured as `dir/foo.lua` and `dir/foo/bar.lua`. You could emulate init.lua support by making an additional call to addModules something like this:
+Note that `EmbedLuaPlugin` does not treat nested `init.lua` files specially: to have a module `foo` and a module `foo.bar`, the files must be structured as `dir/foo.lua` and `dir/foo/bar.lua`. You could emulate init.lua support by making an additional call to addModules something like this:
 
 ```swift
 L.addModules([

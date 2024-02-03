@@ -114,6 +114,8 @@ extension UnsafeMutablePointer: Pushable where Pointee == lua_State {
 }
 
 /// A `Pushable` wrapper around a `lua_CFunction`.
+///
+/// See ``Pushable/function(_:)``.
 public struct LuaFunctionWrapper: Pushable {
     public let function: lua_CFunction
 
@@ -123,6 +125,8 @@ public struct LuaFunctionWrapper: Pushable {
 }
 
 /// A `Pushable` wrapper around a `[UInt8]`.
+///
+/// See ``Pushable/data(_:)``.
 public struct LuaDataArrayWrapper: Pushable {
     public let data: [UInt8]
 
@@ -132,6 +136,8 @@ public struct LuaDataArrayWrapper: Pushable {
 }
 
 /// A `Pushable` wrapper that pushes its value as a userdata.
+///
+/// See ``Pushable/userdata(_:)``.
 public struct LuaUserdataWrapper: Pushable {
     public let value: Any
 
@@ -148,7 +154,7 @@ public struct _NonPushableTypesHelper: Pushable {
 }
 
 // It's not clear to me why the "where Self == _NonPushableTypesHelper" has to exist, other than because the type system
-// needs there to be _some_ sort of concrete type to resolve ".nilValue" against.
+// needs there to be _some_ sort of concrete type to resolve ".nilValue" etc against.
 extension Pushable where Self == _NonPushableTypesHelper {
     /// Returns a Pushable representing the `nil` Lua value.
     ///

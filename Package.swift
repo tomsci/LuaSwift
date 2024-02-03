@@ -6,7 +6,7 @@ let package = Package(
     name: "LuaSwift",
     platforms: [
         .iOS(.v12),
-        .macOS(.v10_13)
+        .macOS(.v10_15)
     ],
     products: [
         .library(

@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import CLua
@@ -268,7 +268,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
         try pushAndCheckCallable()
-        lua_insert(L, -(nret + 1))
+        lua_insert(L, -(nargs + 1))
         try L.pcall(nargs: nargs, nret: nret, traceback: traceback)
     }
 

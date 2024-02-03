@@ -65,7 +65,6 @@ let package = Package(
         .executableTarget(
             name: "embedlua",
             dependencies: [
-                "CLua",
                 "Lua",
             ]
         ),

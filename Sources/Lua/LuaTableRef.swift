@@ -115,6 +115,9 @@ public struct LuaTableRef {
         } else if good(LuaValue.nilValue) { // Be sure to check this _after_ acceptsAny and anyhashable
             elementType = .luavalue
             acceptsAny = false
+        } else if good(dummyRawPtr) {
+            elementType = .rawpointer
+            acceptsAny = false
         } else {
             elementType = nil
             acceptsAny = false
@@ -157,7 +160,7 @@ public struct LuaTableRef {
                     fatalError() // Handled above
                 case .anyhashable:
                     result.append(ref.guessType()) // as per tovalue() docs
-                case .dict, .array, .hashableDict, .hashableArray, .direct: // None of these are applicable for TypeConstraint(stringTest:)
+                case .dict, .array, .hashableDict, .hashableArray, .direct, .rawpointer: // None of these are applicable for TypeConstraint(stringTest:)
                     fatalError()
                 case .none: // TypeConstraint(stringTest:) failed to find any compatible type
                     return nil
@@ -189,7 +192,7 @@ public struct LuaTableRef {
                     } else {
                         resolvedVal = nil
                     }
-                case .string, .bytes, .direct: // None of these are applicable for TypeConstraint(tableTest:)
+                case .string, .bytes, .direct, .rawpointer: // None of these are applicable for TypeConstraint(tableTest:)
                     return nil
 #if !LUASWIFT_NO_FOUNDATION
                 case .data: // ditto
@@ -205,6 +208,8 @@ public struct LuaTableRef {
                 }
             } else if acceptsAny {
                 result.append(value)
+            } else if elementType == .rawpointer, let mut = value as? UnsafeMutableRawPointer {
+                result.append(UnsafeRawPointer(mut))
             } else {
                 // Nothing from toany has made T happy, give up
                 return nil
@@ -327,6 +332,7 @@ public struct LuaTableRef {
             case .direct: self.testValue = testValue!
             case .luavalue: self.testValue = LuaValue.nilValue
             case .anyhashable: self.testValue = opaqueHashable
+            case .rawpointer: self.testValue = dummyRawPtr
             }
         }
 
@@ -357,6 +363,7 @@ public struct LuaTableRef {
                     // to fail the conversion.
                     return nil
                 }
+            case .rawpointer: return UnsafeRawPointer(anyVal as! UnsafeMutableRawPointer)
             }
         }
 
@@ -409,6 +416,9 @@ public struct LuaTableRef {
                 if type == nil || type == .direct {
                     result.append(PossibleValue(type: .direct, testValue: value))
                 }
+                if type == nil || type == .rawpointer {
+                    result.append(PossibleValue(type: .rawpointer))
+                }
                 if type == nil || type == .luavalue {
                     result.append(PossibleValue(type: .luavalue)) // No need to cache the cast like with anyhashable
                 }
@@ -433,6 +443,7 @@ internal let dummyBytes: [UInt8] = [0] // Not empty in case [] casts overly broa
 #if !LUASWIFT_NO_FOUNDATION
 internal let emptyData = Data()
 #endif
+fileprivate let dummyRawPtr = UnsafeRawPointer(Unmanaged.passUnretained(LuaValue.nilValue).toOpaque())
 
 enum TypeConstraint {
     // string types
@@ -450,6 +461,7 @@ enum TypeConstraint {
     case direct // A concrete type
     case anyhashable // AnyHashable (or Any, in some contexts)
     case luavalue
+    case rawpointer // UnsafeRawPointer (relevant when we have UnsafeMutableRawPointer from a [light]userdata)
 }
 
 extension TypeConstraint {

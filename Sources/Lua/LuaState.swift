@@ -877,7 +877,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case .boolean:
             return toboolean(index)
         case .lightuserdata:
-            return lua_touserdata(self, index)
+            let ptr: Any = lua_touserdata(self, index) as Any
+            return ptr
         case .number:
             if let intVal = tointeger(index) {
                 // Integers are returned type-erased (thanks to AnyHashable) meaning fewer cast restrictions in
@@ -953,10 +954,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   with ``push(_:numUpvalues:toindex:)``, is represented by ``LuaClosure``. Otherwise it is represented by
     ///   ``LuaValue``. The conversion succeeds if the represented type can be cast to `T`.
     /// * `thread` converts to `LuaState`.
-    /// * `lightuserdata` converts to `UnsafeRawPointer` or `UnsafeMutableRawPointer`. If `T` is `Any` or `AnyHashable`,
-    ///   a `UnsafeMutableRawPointer` is returned. The null lightuserdata (that is, a value pushed with
-    ///   `lua_pushuserdata(L, nil)`) will return `nil` (technically, it converts to
-    ///   `Optional<UnsafeMutableRawPointer>.none` or `Optional<UnsafeRawPointer>.none`). 
+    /// * `lightuserdata` converts to `UnsafeRawPointer?` or `UnsafeMutableRawPointer?`. If `T` is `Any` or
+    ///   `AnyHashable`, a `UnsafeMutableRawPointer?` is returned. If the value is definitely not the null pointer,
+    ///   then the non-optional types `UnsafeRawPointer` or `UnsafeMutableRawPointer` can be used -- the null pointer
+    ///   lightuserdata will not convert to the non-optional types (because in swift a non-optional raw pointer is not
+    ///   allowed to be null).
     ///
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
     /// called. Tuples are not supported and conversion to a tuple type will always fail and return `nil`.
@@ -1064,6 +1066,33 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     @inlinable
     public func tovalue<T>(_ index: CInt, type: T.Type) -> T? {
         return tovalue(index)
+    }
+
+    /// Convert a Lua light userdata back to the pointer it represents.
+    ///
+    /// Because pointers in Swift that can be null are represented by an optional `UnsafeMutableRawPointer`, and it is
+    /// valid to have a lightuserdata referring to the null pointer, this function returns a double-nested optional --
+    /// that is to say, it returns `nil` if the value at `index` is not a light userdata, `.some(.none)` for a light
+    /// userdata representing the null pointer, and `.some(.some(ptr))` for any other light userdata.
+    ///
+    /// ```swift
+    /// if let ptr = L.tolightuserdata(-1) {
+    ///     if ptr == nil {
+    ///         print("null lightuserdata")
+    ///     } else {
+    ///         print("lightuserdata \(ptr!)")
+    ///     }
+    /// } else {
+    ///     print("not a lightuserdata")
+    /// }
+    /// ```
+    ///
+    /// - Parameter index: The stack index.
+    public func tolightuserdata(_ index: CInt) -> UnsafeMutableRawPointer?? {
+        guard type(index) == .lightuserdata else {
+            return nil
+        }
+        return .some(lua_touserdata(self, index))
     }
 
     /// Convert a Lua userdata which was created with ``push(userdata:toindex:)`` back to a value of type `T`.
@@ -1379,7 +1408,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 return iteratorResult == .continueIteration ? 1 : 0
             })
 
-            lua_pushlightuserdata(self, Unmanaged.passUnretained(wrapper).toOpaque())
+            push(lightuserdata: Unmanaged.passUnretained(wrapper).toOpaque())
             try pcall(nargs: 3, nret: 0) // luaswift_do_for_ipairs(value, start, wrapper)
         }
     }
@@ -1787,8 +1816,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             // userdata we also don't need to worry about escapingBlock actually escaping (due to wrapper's userdata
             // having a reference to it, and being subject to deferred deinit by the Lua garbage collector) which in
             // turn simplifies the implementation of LuaClosureWrapper.
-            lua_pushlightuserdata(self, Unmanaged.passUnretained(wrapper).toOpaque())
-            lua_insert(self, -2)
+            push(lightuserdata: Unmanaged.passUnretained(wrapper).toOpaque(), toindex: -2)
             // iterfn, state, wrapper, initval
             push(function: luaswift_do_for_pairs, toindex: -5)
             try pcall(nargs: 4, nret: 0)
@@ -2173,6 +2201,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` is a `LuaClosure`, ``push(_:numUpvalues:toindex:)`` is used (with `numUpvalues=0`).
     /// * If `value` is a zero-argument closure that returns `Void` or `Any?`, it is pushed using `push(closure:)`.
     ///   Due to limitations in Swift type inference, these are the only closure types that are handled in this way.
+    /// * If `value` is a `UnsafeMutableRawPointer`, ``push(lightuserdata:toindex:)`` is used.
     /// * Any other type is pushed as a `userdata` using ``push(userdata:toindex:)``.
     ///
     /// - Parameter value: The value to push on to the Lua stack.
@@ -2239,6 +2268,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             push(closure: closure)
         case let closure as () throws -> (Any?):
             push(closure: closure)
+        case let ptr as UnsafeMutableRawPointer:
+            push(lightuserdata: ptr)
         default:
             push(userdata: value)
         }
@@ -2390,6 +2421,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     @discardableResult
     public func pushthread() -> Bool {
         return lua_pushthread(self) == 1
+    }
+
+    /// Push a raw pointer on to the stack as a light userdata.
+    public func push(lightuserdata: UnsafeMutableRawPointer?, toindex: CInt = -1) {
+        lua_pushlightuserdata(self, lightuserdata)
+        if toindex != -1 {
+            insert(toindex)
+        }
     }
 
     // MARK: - Calling into Lua

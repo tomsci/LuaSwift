@@ -372,7 +372,6 @@ final class LuaTests: XCTestCase {
         thread.push("arg")
         do {
             let (nresults, yielded, err) = thread.resume(from: nil, nargs: 1)
-            thread.printStack()
             XCTAssertEqual(nresults, 1)
             XCTAssertEqual(yielded, true)
             XCTAssertNil(err)
@@ -1024,6 +1023,23 @@ final class LuaTests: XCTestCase {
         L.pop()
     }
 
+    func test_pushlightuserdata() {
+        let lud: UnsafeMutableRawPointer = malloc(4)!
+        defer {
+            free(lud)
+        }
+        L.push(lightuserdata: lud)
+        XCTAssertEqual(L.type(-1), .lightuserdata)
+        XCTAssertEqual(lua_touserdata(L, -1), lud)
+        XCTAssertEqual(L.tolightuserdata(-1), lud)
+        L.pop(1)
+
+        L.push(any: lud)
+        XCTAssertEqual(L.type(-1), .lightuserdata)
+        XCTAssertEqual(lua_touserdata(L, -1), lud)
+        XCTAssertEqual(L.tolightuserdata(-1), lud)
+    }
+
     // Tests that objects deinit correctly when pushed with toany and GC'd by Lua
     func test_pushuserdata_instance() {
         var deinited = 0
@@ -1436,7 +1452,7 @@ final class LuaTests: XCTestCase {
         }
     }
 
-    func test_toany() {
+    func test_toany() throws {
         // Things not covered by any of the other pushany tests
 
         XCTAssertNil(L.toany(1))
@@ -1458,12 +1474,24 @@ final class LuaTests: XCTestCase {
         defer {
             free(m)
         }
-        lua_pushlightuserdata(L, m)
+        L.push(lightuserdata: m)
         XCTAssertEqual(L.toany(1) as? UnsafeMutableRawPointer, m)
         L.pop()
 
-        lua_pushlightuserdata(L, nil)
-        XCTAssertNil(L.toany(1))
+        L.push(lightuserdata: nil)
+        let nullptr = try XCTUnwrap(L.toany(1))
+        // It's impossible to type check a nil optional wrapped in an Any to any exact type, because Optional<Foo>.none
+        // is always castable to Optional<Bar> regardless of the types. So the best we can check for here is that
+        // toany returned Optional<something>.nil
+        switch nullptr {
+        case let opt as Optional<UnsafeMutableRawPointer>:
+            XCTAssertNil(opt)
+        default:
+            XCTFail()
+        }
+
+        let optraw = nullptr as? Optional<UnsafeRawPointer>
+        XCTAssertEqual(optraw, Optional<UnsafeRawPointer>.none)
     }
 
     func test_pushany() {
@@ -1831,6 +1859,107 @@ final class LuaTests: XCTestCase {
         lua_setmetatable(L, -2)
         let stillbad: Any? = L.touserdata(-1)
         XCTAssertNil(stillbad)
+    }
+
+    func test_tovalue_userdata_array() throws {
+        let lud: UnsafeMutableRawPointer = malloc(4)
+        defer {
+            free(lud)
+        }
+        L.push(lightuserdata: lud) // 1
+        let ud = lua_newuserdata(L, 8)! // 2
+        L.push(lightuserdata: nil) // 3
+
+        L.newtable()
+        L.push(index: 1)
+        L.rawset(-2, key: 1)
+        L.push(index: 2)
+        L.rawset(-2, key: 2)
+        L.push(index: 3)
+        L.rawset(-2, key: 3)
+
+        // top is now an array [lightuserdata, userdata, nulllightuserdata]
+
+        // Have to make this optional type because of the null lightuserdata
+        let mutArr: Array<UnsafeMutableRawPointer?> = try XCTUnwrap(L.tovalue(-1))
+        let expectedMutArr: [UnsafeMutableRawPointer?] = [lud, ud, nil]
+        XCTAssertEqual(mutArr, expectedMutArr)
+
+        let nopeMutArray: Array<UnsafeMutableRawPointer>? = L.tovalue(-1)
+        XCTAssertNil(nopeMutArray) // Fails because of the nullptr lightuserdata
+
+        let arr: Array<UnsafeRawPointer?> = try XCTUnwrap(L.tovalue(-1))
+        let expectedArr: [UnsafeRawPointer?] = [UnsafeRawPointer(lud), UnsafeRawPointer(ud), nil]
+        XCTAssertEqual(arr, expectedArr)
+
+        // remove the null lightuserdata, retest that non-optionals now succeed
+        L.rawset(-1, key: 3, value: .nilValue)
+        let mutNonOptArr: Array<UnsafeMutableRawPointer> = try XCTUnwrap(L.tovalue(-1))
+        let expectedNonOptMutArr: [UnsafeMutableRawPointer] = [lud, ud]
+        XCTAssertEqual(mutNonOptArr, expectedNonOptMutArr)
+    }
+
+    func test_tovalue_userdata_dict() throws {
+        let ud: UnsafeMutableRawPointer = lua_newuserdata(L, 8)!
+        let udVal: LuaValue = L.popref()
+        let lud: UnsafeMutableRawPointer = malloc(4)
+        defer {
+            free(lud)
+        }
+        let ludVal = L.ref(any: lud)
+
+        L.push(["ud": udVal, "lud": ludVal])
+        let string_mutptr_dict: [String: UnsafeMutableRawPointer] = ["ud": ud, "lud": lud]
+        XCTAssertEqual(L.tovalue(-1), string_mutptr_dict)
+
+        let string_ptr_dict: [String: UnsafeRawPointer] = ["ud": UnsafeRawPointer(ud), "lud": UnsafeRawPointer(lud)]
+        XCTAssertEqual(L.tovalue(-1), string_ptr_dict)
+
+        L.pop()
+
+        L.push([udVal: ludVal])
+        XCTAssertEqual(L.tovalue(-1), [ud: UnsafeRawPointer(lud)])
+        let anyDict: [AnyHashable: AnyHashable] = [ud: lud]
+        XCTAssertEqual(L.tovalue(-1), anyDict)
+    }
+
+    func test_tolightuserdata() throws {
+        let lud = malloc(4)!
+        defer {
+            free(lud)
+        }
+
+        L.push(lightuserdata: lud)
+        if let gotlud: UnsafeMutableRawPointer? = L.tolightuserdata(-1) {
+            XCTAssertEqual(gotlud, lud)
+        } else {
+            XCTFail()
+        }
+        XCTAssertTrue(L.tolightuserdata(-1) == lud)
+
+        let tovalueLud: UnsafeMutableRawPointer? = L.tovalue(-1)
+        XCTAssertEqual(tovalueLud, lud)
+
+        L.pop()
+
+        L.push(lightuserdata: nil)
+        if let gotlud: UnsafeMutableRawPointer? = L.tolightuserdata(-1) {
+            XCTAssertNil(gotlud)
+        } else {
+            XCTFail()
+        }
+        XCTAssertTrue(L.tolightuserdata(-1) == .some(.none))
+        XCTAssertFalse(L.tolightuserdata(-1) == nil)
+        let tovalueNullLud: UnsafeMutableRawPointer? = L.tovalue(-1)
+        XCTAssertNil(tovalueNullLud)
+        let tovalueOptNullLud: UnsafeMutableRawPointer?? = L.tovalue(-1)
+        XCTAssertFalse(tovalueOptNullLud == nil)
+
+        L.pop()
+
+        lua_newuserdata(L, 4)
+        // Check we don't allow full userdata to be returned
+        XCTAssertTrue(L.tolightuserdata(-1) == nil)
     }
 
     func test_ref() {
@@ -2264,22 +2393,29 @@ final class LuaTests: XCTestCase {
     }
 
     func test_tovalue_userdata() throws {
-        lua_pushlightuserdata(L, nil) // 1
-        var whatevs = 123
-        lua_pushlightuserdata(L, &whatevs) // 2
+        L.push(lightuserdata: nil) // 1
+        let m = malloc(4)
+        defer {
+            free(m)
+        }
+        L.push(lightuserdata: m) // 2
         let udata = lua_newuserdata(L, 12) // 3
         struct Foo { let bar = 0 }
         L.register(Metatable(for: Foo.self))
         L.push(userdata: Foo()) // 4
+        L.pushnil() // 5
+
+        // I hate that this succeeds...
+        XCTAssertEqual(L.tovalue(5, type: UnsafeMutableRawPointer?.self), Optional<UnsafeMutableRawPointer>.none)
 
         XCTAssertNil(L.tovalue(1, type: UnsafeMutableRawPointer.self))
         XCTAssertNil(L.tovalue(1, type: UnsafeRawPointer.self))
-        XCTAssertNil(L.tovalue(1, type: Any.self))
-        XCTAssertNil(L.tovalue(1, type: AnyHashable.self))
+        XCTAssertNotNil(L.tovalue(1, type: Any.self))
+        XCTAssertNotNil(L.tovalue(1, type: AnyHashable.self))
 
-        XCTAssertNotNil(L.tovalue(2, type: UnsafeMutableRawPointer.self))
-        XCTAssertNotNil(L.tovalue(2, type: UnsafeRawPointer.self))
-        XCTAssertNotNil(L.tovalue(2, type: Any.self) as? UnsafeMutableRawPointer)
+        XCTAssertEqual(L.tovalue(2, type: UnsafeMutableRawPointer.self), m)
+        XCTAssertEqual(L.tovalue(2, type: UnsafeRawPointer.self), UnsafeRawPointer(m))
+        XCTAssertEqual(L.tovalue(2, type: Any.self) as? UnsafeMutableRawPointer, m)
         XCTAssertNotNil(L.tovalue(2, type: AnyHashable.self) as? UnsafeMutableRawPointer)
         XCTAssertNil(L.tovalue(2, type: Any.self) as? UnsafeRawPointer)
         XCTAssertNil(L.tovalue(2, type: AnyHashable.self) as? UnsafeRawPointer)

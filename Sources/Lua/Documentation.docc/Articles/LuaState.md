@@ -200,6 +200,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/tostring(_:encoding:convert:)-4dzgb``
 - ``Lua/Swift/UnsafeMutablePointer/tostring(_:encoding:convert:)-9syls``
 - ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)``
+- ``Lua/Swift/UnsafeMutablePointer/tolightuserdata(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/touserdata(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:type:)``
@@ -225,6 +226,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-bpns``
 - ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-5gt3d``
 - ``Lua/Swift/UnsafeMutablePointer/push(closure:toindex:)-7xtpf``
+- ``Lua/Swift/UnsafeMutablePointer/push(lightuserdata:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)``
 - ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``

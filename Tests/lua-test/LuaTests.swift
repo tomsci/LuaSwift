@@ -647,6 +647,22 @@ final class LuaTests: XCTestCase {
         })
     }
 
+    func test_LuaValue_ipairs_type() throws {
+        let arr: [AnyHashable] = [11, 22, 33, "four", 555]
+        let val = L.ref(any: arr)
+        var first: lua_Integer? = nil
+        var last: lua_Integer? = nil
+        for (i, elem) in try val.ipairs(start: 2, type: lua_Integer.self) {
+            XCTAssertEqual(elem, i * 11)
+            if first == nil {
+                first = i
+            }
+            last = i
+        }
+        XCTAssertEqual(first, 2)
+        XCTAssertEqual(last, 3)
+    }
+
     func test_LuaValue_for_ipairs_errors() throws {
         let bad_ipairs: (LuaValue) throws -> Void = { val in
             try val.for_ipairs() { _, _ in
@@ -665,6 +681,30 @@ final class LuaTests: XCTestCase {
         XCTAssertThrowsError(try bad_ipairs(L.popref()), "", { err in
             XCTAssertNotNil(err as? LuaCallError)
         })
+    }
+
+    func test_LuaValue_for_ipairs_type() throws {
+        let arr = [11, 22, 33, 44, 55, 66]
+        let arrValue = L.ref(any: arr)
+        var expected_i: lua_Integer = 0
+        try arrValue.for_ipairs(type: Int.self) { i, val in
+            expected_i = expected_i + 1
+            XCTAssertEqual(i, expected_i)
+            XCTAssertEqual(val, arr[Int(i-1)])
+            return i <= 4 ? .continueIteration : .breakIteration // Test we can bail early
+        }
+        XCTAssertEqual(expected_i, 5)
+
+        // Test we don't explode when encountering the wrong type, and instead just exit the iteration
+        let mixedArray: [Any] = ["abc", "def", 33]
+        let mixedVal = L.ref(any: mixedArray)
+        expected_i = 0
+        try mixedVal.for_ipairs(type: String.self) { i, val -> Void in
+            expected_i = expected_i + 1
+            XCTAssertEqual(i, expected_i)
+            XCTAssertEqual(val, mixedArray[Int(i-1)] as? String)
+        }
+        XCTAssertEqual(expected_i, 2)
     }
 
     func test_pairs() throws {
@@ -914,6 +954,7 @@ final class LuaTests: XCTestCase {
         L.push(dict)
         try L.pcall(nargs: 1, nret: 1)
         let dictValue = L.popref()
+        let top = L.gettop()
 
         for (k, v) in try dictValue.pairs() {
             let key = try XCTUnwrap(k.tostring())
@@ -921,6 +962,7 @@ final class LuaTests: XCTestCase {
             let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
         }
+        XCTAssertEqual(L.gettop(), top)
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
     }
 
@@ -944,14 +986,46 @@ final class LuaTests: XCTestCase {
         L.push(dict)
         try L.pcall(nargs: 1, nret: 1)
         let dictValue = L.popref()
+        let top = L.gettop()
 
-        for (k, v) in try dictValue.pairs() {
+        try dictValue.for_pairs() { k, v -> Void in
             let key = try XCTUnwrap(k.tostring())
             let val = try XCTUnwrap(v.toint())
             let foundVal = dict.removeValue(forKey: key)
             XCTAssertEqual(val, foundVal)
         }
+        XCTAssertEqual(L.gettop(), top)
         XCTAssertTrue(dict.isEmpty) // All entries should have been removed by the pairs loop
+    }
+
+    func test_LuaValue_pairs_mixeddict() throws {
+        let dict: [String: Any] = [
+            "aaa": 111,
+            "bbb": 222,
+            "ccc": "333",
+            "ddd": 444,
+            "eee": 555,
+        ]
+        let dictValue = L.ref(any: dict)
+        var sawC = false
+        // This isn't a guarantee we definitely skipped over mismatching types correctly, because we cannot predict
+        // what order the iteration will proceed in as that is a Lua-internal impl detail
+        for (k, v) in try dictValue.pairs(type: (String.self, String.self)) {
+            XCTAssertEqual(k, "ccc")
+            XCTAssertEqual(v, "333")
+            XCTAssertEqual(sawC, false)
+            sawC = true
+        }
+        XCTAssertTrue(sawC)
+        sawC = false
+
+        // And again with for_pairs
+        try dictValue.for_pairs(type: (String.self, String.self)) { k, v -> Void in
+            XCTAssertEqual(k, "ccc")
+            XCTAssertEqual(v, "333")
+            sawC = true
+        }
+        XCTAssertTrue(sawC)
     }
 
     func test_LuaValue_metatable() {

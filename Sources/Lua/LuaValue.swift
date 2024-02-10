@@ -505,18 +505,18 @@ public class LuaValue: Equatable, Hashable, Pushable {
 
     // MARK: - Iterators
 
-    private class IPairsIterator : Sequence, IteratorProtocol {
+    private class IPairsIterator<T> : Sequence, IteratorProtocol {
         let value: LuaValue
         var i: lua_Integer
         init(_ value: LuaValue, start: lua_Integer) {
             self.value = value
             i = start - 1
         }
-        public func next() -> (lua_Integer, LuaValue)? {
+        public func next() -> (lua_Integer, T)? {
             i = i + 1
             let val = value[i]
-            if val.type != .nil {
-                return (i, val)
+            if let element: T = val.tovalue() {
+                return (i, element)
             } else {
                 return nil
             }
@@ -551,7 +551,15 @@ public class LuaValue: Equatable, Hashable, Pushable {
         return IPairsIterator(self, start: start)
     }
 
-    private class PairsIterator: Sequence, IteratorProtocol {
+    public func ipairs<T>(start: lua_Integer = 1, type: T.Type) throws -> some Sequence<(lua_Integer, T)> {
+        try checkValid()
+        push(onto: L)
+        try Self.checkTopIsIndexable(L)
+        L.pop()
+        return IPairsIterator(self, start: start)
+    }
+
+    private class PairsIterator<K, V>: Sequence, IteratorProtocol {
         let iterFn: LuaValue
         let state: LuaValue
         var k: LuaValue
@@ -568,22 +576,28 @@ public class LuaValue: Equatable, Hashable, Pushable {
             iterFn = L.popref()
         }
 
-        public func next() -> (LuaValue, LuaValue)? {
+        public func next() -> (K, V)? {
             let L = iterFn.L!
-            L.push(state)
-            L.push(k)
-            do {
-                try iterFn.pcall(nargs: 2, nret: 2, traceback: false)
-            } catch {
-                // print warning?
-                return nil
-            }
-            let val = L.popref()
-            k = L.popref()
-            if k.type != .nil {
-                return (k, val)
-            } else {
-                return nil
+            while true {
+                L.push(state)
+                L.push(k)
+                do {
+                    try iterFn.pcall(nargs: 2, nret: 2, traceback: false)
+                } catch {
+                    // print warning?
+                    return nil
+                }
+                let v = L.popref()
+                k = L.popref()
+                if k.isNil {
+                    return nil
+                } else if let key: K = k.tovalue(),
+                          let val: V = v.tovalue() {
+                    return (key, val)
+                } else {
+                    // Skip this element, keep iterating
+                    continue
+                }
             }
         }
     }
@@ -610,6 +624,33 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
     ///           ``LuaCallError`` if an error is thrown during a `__pairs` call.
     public func pairs() throws -> some Sequence<(LuaValue, LuaValue)> {
+        try checkValid()
+        return try PairsIterator(self)
+    }
+
+    /// Return a for-iterator that will iterate all the members of a value conforming to types `K` and `V`.
+    ///
+    /// The values in the table are iterated in an unspecified order. The `__pairs` metafield is respected if present.
+    /// If `__pairs` returned an iterator function which errors at any point during the iteration, the error is
+    /// silently ignored and will be treated as if it returned `nil, nil`, ie will end the iteration. Use
+    /// `for_pairs(block:)` to preserve such errors. If any key or value cannot be converted to `K` or `V` using
+    /// `tovalue()`, then the element is skipped and the iteration proceeds to the next value.
+    ///
+    /// ```swift
+    /// let foo = L.ref(any: ["a": 1, "b": 2, "c": 3])
+    /// for (key, value) in try foo.pairs(type: (String.self, Int.self)) {
+    ///     print("\(key) \(value)")
+    /// }
+    /// // ...might output the following:
+    /// // b 2
+    /// // c 3
+    /// // a 1
+    /// ```
+    ///
+    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
+    ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
+    ///           ``LuaCallError`` if an error is thrown during a `__pairs` call.
+    public func pairs<K, V>(type: (K.Type, V.Type)) throws -> some Sequence<(K, V)> {
         try checkValid()
         return try PairsIterator(self)
     }
@@ -674,6 +715,25 @@ public class LuaValue: Equatable, Hashable, Pushable {
         })
     }
 
+    public func for_ipairs<T>(start: lua_Integer = 1, type: T.Type, _ block: (lua_Integer, T) throws -> LuaState.IteratorResult) throws {
+        try checkValid()
+        push(onto: L)
+        try Self.checkTopIsIndexable(L)
+        defer {
+            L.pop()
+        }
+        try L.for_ipairs(-1, start: start, type: T.self) { i, value in
+            return try block(i, value)
+        }
+    }
+
+    public func for_ipairs<T>(start: lua_Integer = 1, type: T.Type, _ block: (lua_Integer, T) throws -> Void) throws {
+        try for_ipairs(start: start, type: T.self) { i, value in
+            try block(i, value)
+            return .continueIteration
+        }
+    }
+
     @available(*, deprecated, message: "Will be removed in v1.0.0. Use overload with block returning IteratorResult or Void instead.")
     public func for_ipairs(start: lua_Integer = 1, block: (lua_Integer, LuaValue) throws -> Bool) throws {
         return try for_ipairs(start: start, { i, value in
@@ -700,6 +760,17 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
     ///           ``LuaCallError`` if an error is thrown during a `__pairs` or iterator call.
     public func for_pairs(_ block: (LuaValue, LuaValue) throws -> LuaState.IteratorResult) throws {
+        try for_pairs(type: (LuaValue.self, LuaValue.self), block)
+    }
+
+    public func for_pairs(_ block: (LuaValue, LuaValue) throws -> Void) throws {
+        try for_pairs { k, v in
+            try block(k, v)
+            return .continueIteration
+        }
+    }
+
+    public func for_pairs<K, V>(type: (K.Type, V.Type), _ block: (K, V) throws -> LuaState.IteratorResult) throws {
         try checkValid()
         push(onto: L)
         let iterable = try L.pushPairsParameters() // pops self, pushes iterfn, state, initval
@@ -709,14 +780,17 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
 
         try L.do_for_pairs() { k, v in
-            let key = L.ref(index: k)
-            let value = L.ref(index: v)
-            return try block(key, value)
+            if let key: K = L.tovalue(k),
+               let value: V = L.tovalue(v) {
+                return try block(key, value)
+            } else {
+                return .continueIteration
+            }
         }
-    }
+    }        
 
-    public func for_pairs(_ block: (LuaValue, LuaValue) throws -> Void) throws {
-        try for_pairs { k, v in
+    public func for_pairs<K, V>(type: (K.Type, V.Type), _ block: (K, V) throws -> Void) throws {
+        try for_pairs(type: (K.self, V.self)) { k, v in
             try block(k, v)
             return .continueIteration
         }

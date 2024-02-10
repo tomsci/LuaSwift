@@ -434,9 +434,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case collect = 2
     }
 
-    public enum GcMode : CInt {
-        case generational = 10
-        case incremental = 11
+    public enum GcMode {
+        case generational
+        case incremental
     }
 
     /// Call the garbage collector according to the `what` parameter.
@@ -490,6 +490,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Set the garbage collector to incremental mode, and optionally set any or all of the collection parameters.
     /// See [Incremental Garbage Collection](https://www.lua.org/manual/5.4/manual.html#2.5.1).
     ///
+    /// > Warning: Collection parameter values are not portable between versions of Lua. Consult the appropriate
+    ///   [version of the manual](https://www.lua.org/manual/).
+    ///
     /// - Parameter pause: how long the collector waits before starting a new cycle, or `nil` to leave the parameter
     ///   unchanged.
     /// - Parameter stepmul: the speed of the collector relative to memory allocation, or `nil` to leave the parameter
@@ -501,8 +504,16 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     @discardableResult
     public func collectorSetIncremental(pause: CInt? = nil, stepmul: CInt? = nil, stepsize: CInt? = nil) -> GcMode {
         let prevMode = luaswift_setinc(self, pause ?? 0, stepmul ?? 0, stepsize ?? 0)
-        precondition(prevMode >= 0, "Attempt to call collectorSetIncremental() from within a finalizer.")
-        return GcMode(rawValue: prevMode)!
+        switch prevMode {
+        case LUASWIFT_GCGEN:
+            return .generational
+        case LUASWIFT_GCINC:
+            return .incremental
+        case -1:
+            preconditionFailure("Attempt to call collectorSetIncremental() from within a finalizer.")
+        default:
+            fatalError("Unexpected return \(prevMode) from luaswift_setinc")
+        }
     }
 
     /// Set the garbage collector to generational mode.
@@ -511,18 +522,35 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// See [Generational Garbage Collection](https://www.lua.org/manual/5.4/manual.html#2.5.2). Only supported on
     /// Lua 5.4 and later.
     ///
+    /// > Warning: Collection parameter values are not portable between versions of Lua. Consult the appropriate
+    ///   [version of the manual](https://www.lua.org/manual/). The `majorMinorMul` and `minorMinorMul` parameters are
+    ///   experimental and should not be considered part of the public API, until they are present in an official Lua
+    ///   release.
+    ///
     /// - Parameter minormul: the frequency of minor collections, or `nil` to leave the parameter unchanged.
     /// - Parameter majormul: the frequency of major collections, or `nil` to leave the parameter unchanged.
+    ///   Only applicable on Lua v5.4, must be nil on later versions.
+    /// - Parameter majorMinorMul: the major-minor multiplier, or `nil` to leave the parameter unchanged.
+    ///   Only applicable post Lua v5.4, must be nil on earlier versions.
+    /// - Parameter minorMinorMul: the minor-minor multiplier, or `nil` to leave the parameter unchanged.
+    ///   Only applicable post Lua v5.4, must be nil on earlier versions.
     /// - Returns: The previous garbage collection mode.
-    /// - Precondition: Do not call from within a finalizer.
+    /// - Precondition: Do not call from within a finalizer, or when using Lua v5.3 or earlier. Do not specify a
+    ///   parameter that is not supported on the version of Lua being used.
     @discardableResult
-    public func collectorSetGenerational(minormul: CInt? = nil, majormul: CInt? = nil) -> GcMode {
-        let prevMode = luaswift_setgen(self, minormul ?? 0, majormul ?? 0)
-        precondition(prevMode >= 0, "Attempt to call collectorSetGenerational() from within a finalizer.")
-        if let result = GcMode(rawValue: prevMode) {
-            return result
-        } else {
-            fatalError("Attempt to call collectorSetGenerational() on a Lua version that doesn't support it")
+    public func collectorSetGenerational(minormul: CInt? = nil, majormul: CInt? = nil, minorMajorMul: CInt? = nil, majorMinorMul: CInt? = nil) -> GcMode {
+        let prevMode = luaswift_setgen(self, minormul ?? 0, majormul ?? 0, minorMajorMul ?? 0, majorMinorMul ?? 0)
+        switch prevMode {
+        case LUASWIFT_GCGEN:
+            return .generational
+        case LUASWIFT_GCINC:
+            return .incremental
+        case LUASWIFT_GCUNSUPPORTED:
+            preconditionFailure("Attempt to call collectorSetGenerational() on a Lua version that doesn't support it")
+        case -1:
+            preconditionFailure("Attempt to call collectorSetGenerational() from within a finalizer.")
+        default:
+            fatalError("Unexpected return \(prevMode) from luaswift_setgen")
         }
     }
 

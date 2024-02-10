@@ -213,15 +213,17 @@ int luaswift_closethread(lua_State *L, lua_State* from);
 size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
 void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);
 
-#if LUA_VERSION_NUM <= 504
-#define LUASWIFT_GCGEN 10
-#define LUASWIFT_GCINC 11
+#if LUA_VERSION_NUM < 504
+// Doesn't really matter what these are set to
+#define LUASWIFT_GCGEN 0
+#define LUASWIFT_GCINC 1
 #else
 #define LUASWIFT_GCGEN LUA_GCGEN
 #define LUASWIFT_GCINC LUA_GCINC
 #endif
+#define LUASWIFT_GCUNSUPPORTED 0xFFFF
 
-int luaswift_setgen(lua_State* L, int minormul, int majormul);
+int luaswift_setgen(lua_State* L, int minormul, int majormul, int minorMajorMul, int majorMinorMul);
 int luaswift_setinc(lua_State* L, int pause, int stepmul, int stepsize);
 
 #ifdef LUA_VERSION_MAJOR_N

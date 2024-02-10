@@ -163,18 +163,53 @@ void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransf
 #endif
 }
 
-int luaswift_setgen(lua_State* L, int minormul, int majormul) {
-#if LUA_VERSION_NUM >= 504
+int luaswift_setgen(lua_State* L, int minormul, int majormul, int minorMajorMul, int majorMinorMul) {
+#if LUA_VERSION_NUM > 504
+    if (majormul) {
+        return LUASWIFT_GCUNSUPPORTED;
+    }
+
+    int prev = lua_gc(L, LUA_GCGEN);
+    if (minormul) {
+        lua_gc(L, LUA_GCPARAM, LUA_GCPMINORMUL, minormul);
+    }
+    if (minorMajorMul) {
+        lua_gc(L, LUA_GCPARAM, LUA_GCPMINORMAJOR, minorMajorMul);
+    }
+    if (majorMinorMul) {
+        lua_gc(L, LUA_GCPARAM, LUA_GCPMAJORMINOR, majorMinorMul);
+    }
+    return prev;
+#elif LUA_VERSION_NUM == 504
+    if (minorMajorMul || majorMinorMul) {
+        return LUASWIFT_GCUNSUPPORTED;
+    }
     return lua_gc(L, LUA_GCGEN, minormul, majormul);
-#else
-    return 0; // Anything other than LUASWIFT_GCGEN, LUASWIFT_GCINC works
+#else // LUA_VERSION < 504
+    (void)minormul;
+    (void)majormul;
+    (void)minorMajorMul;
+    (void)majorMinorMul;
+    return LUASWIFT_GCUNSUPPORTED;
 #endif
 }
 
 int luaswift_setinc(lua_State* L, int pause, int stepmul, int stepsize) {
-#if LUA_VERSION_NUM >= 504
+#if LUA_VERSION_NUM > 504
+    int prev = lua_gc(L, LUA_GCINC);
+    if (pause) {
+        lua_gc(L, LUA_GCPARAM, LUA_GCPPAUSE, pause);
+    }
+    if (stepmul) {
+        lua_gc(L, LUA_GCPARAM, LUA_GCPSTEPMUL, stepmul);
+    }
+    if (stepsize) {
+        lua_gc(L, LUA_GCPARAM, LUA_GCPSTEPSIZE, stepsize);
+    }
+    return prev;
+#elif LUA_VERSION_NUM == 504
     return lua_gc(L, LUA_GCINC, pause, stepmul, stepsize);
-#else
+#else // LUA_VERSION < 504
     if (pause) {
         lua_gc(L, LUA_GCSETPAUSE, pause);
     }

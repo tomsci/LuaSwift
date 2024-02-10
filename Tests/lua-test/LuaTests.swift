@@ -61,8 +61,6 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(LuaState.GcWhat.stop.rawValue, LUA_GCSTOP)
         XCTAssertEqual(LuaState.GcWhat.restart.rawValue, LUA_GCRESTART)
         XCTAssertEqual(LuaState.GcWhat.collect.rawValue, LUA_GCCOLLECT)
-        XCTAssertEqual(LuaState.GcMode.incremental.rawValue, LUASWIFT_GCINC)
-        XCTAssertEqual(LuaState.GcMode.generational.rawValue, LUASWIFT_GCGEN)
 
         for t in LuaType.allCases {
             XCTAssertEqual(t.tostring(), String(cString: lua_typename(L, t.rawValue)))

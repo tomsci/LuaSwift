@@ -337,7 +337,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/collectorCount()``
 - ``Lua/Swift/UnsafeMutablePointer/collectorStep(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/collectorSetIncremental(pause:stepmul:stepsize:)``
-- ``Lua/Swift/UnsafeMutablePointer/collectorSetGenerational(minormul:majormul:)``
+- ``Lua/Swift/UnsafeMutablePointer/collectorSetGenerational(minormul:majormul:minorMajorMul:majorMinorMul:)``
 
 ### Debugging
 

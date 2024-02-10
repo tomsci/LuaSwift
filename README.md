@@ -75,7 +75,7 @@ LuaSwift should currently be considered a 0.x version. Although the API is mostl
 
 ## More information
 
-See the [LuaState documentation](https://tomsci.github.io/LuaSwift/documentation/lua/luastate).
+See the [Lua framework documentation](https://tomsci.github.io/LuaSwift/documentation/lua).
 
 ## License
 

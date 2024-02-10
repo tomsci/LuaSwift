@@ -2650,7 +2650,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// This is the LuaSwift equivalent to [`lua_pcallk()`](https://www.lua.org/manual/5.4/manual.html#lua_pcallk).
     /// See [Handling Yields in C](https://www.lua.org/manual/5.4/manual.html#4.5) for more details. This function
     /// behaves similarly to `lua_pcallk`, with the exception that the continuation function is passed in as a
-    /// `LuaPcallContinuation` rather than a `lua_KFunction`, and does not need the additional explicit call to the
+    /// ``LuaPcallContinuation`` rather than a `lua_KFunction`, and does not need the additional explicit call to the
     /// continuation function in the case where no yield occurs.
     ///
     /// For example, where a yieldable `lua_CFunction` implemented in C might look like this:

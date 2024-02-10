@@ -122,7 +122,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     // MARK: - to...() functions
 
     public func toboolean() -> Bool {
-        if type == .nil {
+        if isNil {
             return false
         }
         push(onto: L)
@@ -132,7 +132,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tointeger() -> lua_Integer? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -142,7 +142,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func toint() -> Int? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -152,7 +152,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tonumber() -> lua_Number? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -162,7 +162,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func todata() -> [UInt8]? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -172,7 +172,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tostring(convert: Bool = false) -> String? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -182,7 +182,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func toany(guessType: Bool = true) -> Any? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -192,7 +192,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func tovalue<T>() -> T? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -206,7 +206,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     }
 
     public func touserdata<T>() -> T? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -223,7 +223,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position cannot be decoded to `T`.
     public func todecodable<T: Decodable>() -> T? {
-        if type == .nil {
+        if isNil {
             return nil
         }
         push(onto: L)
@@ -322,7 +322,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     // MARK: - Get/Set
 
     private func checkValid() throws {
-        if !valid() {
+        if isNil {
             throw LuaValueError.nilValue
         }
     }
@@ -345,9 +345,15 @@ public class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
-    /// Returns true if the instance represents a valid non-`nil` Lua value.
+    /// Deprecated, use !``isNil`` instead.
+    @available(*, deprecated, message: "Use !isNil instead")
     public func valid() -> Bool {
         return self.type != .nil
+    }
+
+    /// Returns true if the instance represents the `nil` Lua value.
+    public var isNil: Bool {
+        return self.type == .nil
     }
 
     /// Returns the value for the given key, assuming the Lua value associated with `self` supports indexing.
@@ -467,7 +473,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// - Precondition: When setting a metatable, the value must be of a type with per-value metatables, ie a table or userdata.
     public var metatable: LuaValue? {
         get {
-            if type == .nil {
+            if isNil {
                 return nil
             }
             L.push(self)

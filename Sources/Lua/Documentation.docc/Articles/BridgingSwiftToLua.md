@@ -36,7 +36,7 @@ We need to therefore call `register()` with a `Metatable` whose `fields` contain
 Since we are not making any customizations to the metatable (other than to add fields) we can omit all the other arguments to the `Metatable` constructor.
 
 ```swift
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "bar": .closure { L in
         // (1) Convert our Lua arguments back to Swift values...
         let foo: Foo = try L.checkArgument(1)
@@ -54,7 +54,7 @@ L.register(Metatable(for: Foo.self, fields: [
 All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` or `.value(myValue)` (using a ``lua_CFunction`` or ``LuaClosure`` or ``LuaValue`` respectively), but this can require quite bit of boilerplate, for example steps (1) and (3) in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-3vudd) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
 
 ```swift
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "bar": .memberfn { $0.bar() }
 ]))
 ```
@@ -62,7 +62,7 @@ L.register(Metatable(for: Foo.self, fields: [
 Here we're using Swift shortcuts and type inference to save having to specify explicit parameter names, types and return types. It could equivalently be written in a more verbose fashion:
 
 ```swift
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "bar": .memberfn { (obj: Foo) -> Bool in
         return obj.bar()
     }
@@ -115,7 +115,7 @@ L.setglobal(name: "foo", value: Foo())
 The examples used above defined only a very simple metatable which bridged a single member function. One obvious addition would be to bridge properties, as well as functions. This can be done in a similar way to `memberfn`, by using [`property { ... }`](doc:Metatable/FieldType/property(get:set:)). Here is an example which exposes both `Foo.bar()` and `Foo.prop`:
 
 ```swift
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "bar": .memberfn { $0.bar() },
     "prop": .property { $0.prop },
 ]))
@@ -124,7 +124,7 @@ L.register(Metatable(for: Foo.self, fields: [
 `property` may also be used to define read-write properties, by specifying both `get:` and `set:`:
 
 ```swift
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "prop": .property(get: { $0.prop }, set: { $0.prop = $1 }),
 ]))
 ```
@@ -134,7 +134,7 @@ L.register(Metatable(for: Foo.self, fields: [
 To customize the bridging above and beyond adding fields to the userdata, we can pass in custom metafields. For example, to make `Foo` callable and closable (see [to-be-closed variables](https://www.lua.org/manual/5.4/manual.html#3.3.8)), we'd add `call` and `close` arguments to the `Metatable` constructor:
 
 ```swift
-L.register(Metatable(for: Foo.self,
+L.register(Metatable<Foo>(
     call: .memberfn { obj in
         print("I have no idea what this should do")
     },
@@ -152,7 +152,7 @@ Under the hood, the implementation of support for `fields` uses a synthesized `i
 Explicitly providing a `index` metafield using `.closure` is the most flexible option, but means we must handle all functions, properties and type conversions manually. The following would be one way to define such a metafield for the example `Foo` class defined earlier (omitting the `call` and `close` definitions):
 
 ```swift
-L.register(Metatable(for: Foo.self,
+L.register(Metatable<Foo>(
     index: .closure { L in
         let foo: Foo = try L.checkArgument(1)
         let memberName: String = try L.checkArgument(2)
@@ -186,7 +186,7 @@ L.register(Metatable(for: Foo.self,
 Since `index` and `newindex` both support `.memberfn` the above can be simplified slightly if desired (for `newindex` the new value is the third argument passed to the closure, and is represented as a ``LuaValue``):
 
 ```swift
-L.register(Metatable(for: Foo.self,
+L.register(Metatable<Foo>(
     index: .memberfn { obj, memberName in
         switch memberName {
         case "bar":
@@ -217,11 +217,11 @@ For this simple example, the explicit `index` metafield may look simpler than us
 The examples throughout this article lean heavily on Swift's convenience syntax for conciseness. For example the following two calls are equivalent:
 
 ```swift
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "prop": .property { $0.prop }
 ]))
 
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "prop": Metatable<Foo>.FieldType.property(get:
         { (obj: Foo) -> String in
             return obj.prop
@@ -245,7 +245,7 @@ class Foo {
     // .. rest of definition as before
 }
 
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "baz": .staticfn { Foo.baz($0) },
 ]))
 

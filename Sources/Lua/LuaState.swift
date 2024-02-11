@@ -587,8 +587,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
         // While we're here, register ClosureWrapper
         // Are we doing too much non-deferred initialization in getState() now?
-        register(Metatable(for: LuaClosureWrapper.self))
-        register(Metatable(for: LuaContinuationWrapper.self))
+        register(Metatable<LuaClosureWrapper>())
+        register(Metatable<LuaContinuationWrapper>())
 
         return state
     }

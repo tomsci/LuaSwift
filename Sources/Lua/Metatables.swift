@@ -116,16 +116,18 @@ public struct DefaultMetatable {
 ///
 /// `Metatable` is usually used directly in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn`` like:
 /// ```swift
-/// L.register(Metatable(for: /* type */,
-///                      fields: [ /* ... */ ],
-///                      /* metafields ... */
-/// )
+/// L.register(Metatable</*type*/>(
+///     fields: [ /* ... */ ],
+///     /* metafields ... */
+/// ))
 /// ```
 /// `fields` defines all the properties and functions that the value should have in Lua. It is a dictionary of names to
 /// some form of closure, depending on the field type. It is a convenience alternative to specifying an explicit
 /// `index` metafield (see below) using type inference on the closure to avoid some of the type conversion boilerplate
 /// that would otherwise have to be written. Various helper functions are defined by ``Metatable/FieldType`` for 
-/// different types of field. See <doc:BridgingSwiftToLua#Defining-a-metatable> for examples.
+/// different types of field.
+///
+/// See <doc:BridgingSwiftToLua#Defining-a-metatable> for examples.
 ///
 /// `fields`, and all other metafields that can be specified in the constructor such as `call`, `tostring` etc, are
 /// all optional - the resulting metatable contains only the (meta)fields specified. A completely empty metatable which
@@ -142,7 +144,7 @@ public struct DefaultMetatable {
 /// Metafield names in Swift are defined without the leading underscores used in the Lua names - so for example the
 /// `index` argument to the `Metatable` constructor refers to the `__index` metafield in Lua.
 ///
-/// [init]: doc:Metatable/init(for:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
+/// [init]: doc:Metatable/init(fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
 public struct Metatable<T> {
     internal let mt: [MetafieldName: InternalMetafieldValue]
     internal let unsynthesizedFields: [String: FieldType]?
@@ -289,7 +291,7 @@ public struct Metatable<T> {
         ///     // .. rest of definition as applicable
         /// }
         /// 
-        /// L.register(Metatable(for: Foo.self,
+        /// L.register(Metatable<Foo>(
         ///     close: .synthesize // This will call Foo.close()
         /// ))
         /// ```
@@ -339,7 +341,7 @@ public struct Metatable<T> {
         ///
         /// // ...
         ///
-        /// L.register(Metatable(for: Foo.self, tostring: .synthesize))
+        /// L.register(Metatable<Foo>(tostring: .synthesize))
         /// L.push(userdata: Foo())
         /// print(L.tostring(-1, convert: true))
         /// // Outputs "MyCustomDescription"
@@ -374,8 +376,67 @@ public struct Metatable<T> {
     }
 
     /// See ``Metatable``.
+    @available(*, deprecated, message: "Use constructor without the 'for:'")
     public init(
         for type: T.Type,
+        fields: [String: FieldType]? = nil,
+        add: FunctionType? = nil,
+        sub: FunctionType? = nil,
+        mul: FunctionType? = nil,
+        div: FunctionType? = nil,
+        mod: FunctionType? = nil,
+        pow: FunctionType? = nil,
+        unm: FunctionType? = nil,
+        idiv: FunctionType? = nil,
+        band: FunctionType? = nil,
+        bor: FunctionType? = nil,
+        bxor: FunctionType? = nil,
+        bnot: FunctionType? = nil,
+        shl: FunctionType? = nil,
+        shr: FunctionType? = nil,
+        concat: FunctionType? = nil,
+        len: FunctionType? = nil,
+        eq: EqType? = nil,
+        lt: LtType? = nil,
+        le: LeType? = nil,
+        index: IndexType? = nil,
+        newindex: NewIndexType? = nil,
+        call: CallType? = nil,
+        close: CloseType? = nil,
+        tostring: TostringType? = nil,
+        pairs: PairsType? = nil)
+    {
+        self.init(
+            fields: fields,
+            add: add,
+            sub: sub,
+            mul: mul,
+            div: div,
+            mod: mod,
+            pow: pow,
+            unm: unm,
+            idiv: idiv,
+            band: band,
+            bor: bor,
+            bxor: bxor,
+            bnot: bnot,
+            shl: shl,
+            shr: shr,
+            concat: concat,
+            len: len,
+            eq: eq,
+            lt: lt,
+            le: le,
+            index: index,
+            newindex: newindex,
+            call: call,
+            close: close,
+            tostring: tostring,
+            pairs: pairs)
+    }
+
+    /// See ``Metatable``.
+    public init(
         fields: [String: FieldType]? = nil,
         add: FunctionType? = nil,
         sub: FunctionType? = nil,
@@ -562,7 +623,7 @@ extension Metatable.FieldType {
     /// The `prop` property could be (readonly) exposed to Lua with:
     ///
     /// ```swift
-    /// L.register(Metatable(for: Foo.self, fields: [
+    /// L.register(Metatable<Foo>(fields: [
     ///     "prop": .property { $0.prop }
     /// ]))
     /// ```
@@ -570,7 +631,7 @@ extension Metatable.FieldType {
     /// To make it so `prop` can be assigned to from Lua, specify both `get:` and `set:` closures:
     ///
     /// ```swift
-    /// L.register(Metatable(for: Foo.self, fields: [
+    /// L.register(Metatable<Foo>(fields: [
     ///     "prop": .property(get: { $0.prop }, set: { $0.prop = $1 })
     /// ]))
     /// ```
@@ -626,7 +687,7 @@ extension Metatable.FieldType {
     /// The `inc()` function could be exposed to Lua by using `.memberfn` with a closure like:
     ///
     /// ```swift
-    /// L.register(Metatable(for: Foo.self, fields: [
+    /// L.register(Metatable<Foo>(fields: [
     ///     "inc": .memberfn { $0.inc() }
     /// ]))
     /// ```
@@ -656,7 +717,7 @@ extension Metatable.FieldType {
     /// The `inc()` function could be exposed to Lua by using `.memberfn` with a closure like:
     ///
     /// ```swift
-    /// L.register(Metatable(for: Foo.self, fields: [
+    /// L.register(Metatable<Foo>(fields: [
     ///     "inc": .memberfn { $0.inc(by: $1) }
     /// ]))
     /// ```

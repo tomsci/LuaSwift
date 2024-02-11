@@ -16,7 +16,7 @@ class Foo {
     }
 }
 
-L.register(Metatable(for: Foo.self, fields: [
+L.register(Metatable<Foo>(fields: [
     "prop": .property { $0.prop },
     "bar": .memberfn { $0.bar() }
 ))

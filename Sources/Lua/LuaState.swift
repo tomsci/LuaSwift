@@ -2946,6 +2946,58 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
     }
 
+    /// Register that values of type `NewType` should use the same metatable as `RegisteredType`.
+    ///
+    /// - Parameter type: The type to register a metatable for.
+    /// - Parameter usingExistingMetatableFor: The type whose metatable should also be used for `type`. Must refer to a
+    ///   type that is already registered.
+    ///
+    /// This is useful when there are multiple derived types whose Lua functionality depends only on a common base class
+    /// or protocol.
+    ///
+    /// For example, if you have a class hierarchy like this:
+    ///
+    /// ```swift
+    /// class Base {
+    ///     func foo() -> String { return "Base.foo" }
+    /// }
+    /// class SubClassOne: Base {
+    ///     override func foo() -> String { return "SubClassOne.foo" }
+    /// }
+    /// class SubClassTwo: Base {
+    ///     override func foo() -> String { return "SubClassTwo.foo" }
+    /// }
+    /// ```
+    ///
+    /// Then to declare a metatable for `Base` and its subclasses:
+    ///
+    /// ```swift
+    /// L.register(Metatable<Base>(fields: [
+    ///     "foo": .memberfn { $0.foo() }
+    /// ])
+    /// L.register(type: SubClassOne.self, usingExistingMetatableFor: Base.self)
+    /// L.register(type: SubClassTwo.self, usingExistingMetatableFor: Base.self)
+    /// ```
+    ///
+    /// > Note: It is not (currently) possible for the compiler to enforce that `NewType` implements or inherits
+    ///   `RegisteredType`. It is up to the caller to ensure that `NewType` is compatible with the metatable definitions
+    ///   in `RegisteredType`.
+    ///
+    /// - Precondition: `NewType` must not already have a metatable registered for it. `RegisteredType` must
+    ///   already have a metatable registered for it.
+    public func register<NewType, RegisteredType>(type: NewType.Type, usingExistingMetatableFor: RegisteredType.Type) {
+        let existingTypeName = makeMetatableName(for: RegisteredType.self)
+        if luaL_getmetatable(self, existingTypeName) == LUA_TNIL {
+            preconditionFailure("\(RegisteredType.self) must already have a metatable registered for it")
+        }
+        let newTypeName = makeMetatableName(for: NewType.self)
+        if luaL_getmetatable(self, newTypeName) != LUA_TNIL {
+            preconditionFailure("Metatable for type \(NewType.self) is already registered")
+        }
+        pop()
+        rawset(LUA_REGISTRYINDEX, utf8Key: newTypeName) // pops existingTypeName metatable
+    }
+
     @available(*, deprecated, message: "Will be removed in v1.0.0. Use register(DefaultMetatable) instead.")
     public func registerDefaultMetatable(functions: [String: MetafieldType]) {
         deprecated_registerDefaultMetatable(functions: functions)
@@ -2992,15 +3044,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             // The legacy APIs always set __close
             metafields[.close] = Metatable<Any>.CloseType.synthesize.value
         }
-        return Metatable(for: T.self, legacyApiMetafields: metafields)
+        return Metatable<T>(mt: metafields, unsynthesizedFields: nil)
     }
 
-    private func addNonPropertyFieldsToMetatable<T>(_ fields: [String: Metatable<T>.FieldType]) {
+    private func addNonPropertyFieldsToMetatable(_ fields: [String: InternalUserdataField]) {
         push(index: -1)
         rawset(-2, utf8Key: "__index")
 
         for (k, v) in fields {
-            switch v.value {
+            switch v {
             case .function(let function):
                 push(function: function)
             case .closure(let closure):

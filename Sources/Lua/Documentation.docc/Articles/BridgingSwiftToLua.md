@@ -260,9 +260,14 @@ In addition to defining metatables for individual types, you can define a defaul
 
 Because the default metatable is not bound to a specific type, `fields` cannot be configured in the default metatable, nor do any of the metamethods support type-inferencing overloads like `.memberfn`.
 
+## Declarative metatables
+
+The pattern described above using `register(Metatable(...))` and `push(userdata:)` is the most flexible and least intrusive option for bridging objects into Lua, without introducing a dependency on `Lua` into the objects' implementation. There is an alternative option which is for the type itself to declare what its metatable is. This is done by declaring conformance to ``PushableWithMetatable``. Types conforming to `PushableWithMetatable` do not need to call `register()`, and automatically become `Pushable`. See ``PushableWithMetatable`` for more information.
+
 ## See Also
 
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``
 - ``Metatable``
 - ``DefaultMetatable``
+- ``PushableWithMetatable``

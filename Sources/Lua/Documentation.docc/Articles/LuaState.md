@@ -274,6 +274,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``
+- ``Lua/Swift/UnsafeMutablePointer/register(type:usingExistingMetatableFor:)``
 - ``Lua/Swift/UnsafeMutablePointer/isMetatableRegistered(for:)``
 - ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``
 - ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:)``

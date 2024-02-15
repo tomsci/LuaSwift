@@ -147,7 +147,7 @@ public struct DefaultMetatable {
 /// [init]: doc:Metatable/init(fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
 public struct Metatable<T> {
     internal let mt: [MetafieldName: InternalMetafieldValue]
-    internal let unsynthesizedFields: [String: FieldType]?
+    internal let unsynthesizedFields: [String: InternalUserdataField]?
 
     // Sooo much boilerplate so the caller doesn't have it.
 
@@ -376,7 +376,7 @@ public struct Metatable<T> {
     }
 
     /// See ``Metatable``.
-    @available(*, deprecated, message: "Use constructor without the 'for:'")
+    @available(*, deprecated, message: "Will be removed in v1.0.0. Use constructor without the 'for:'")
     public init(
         for type: T.Type,
         fields: [String: FieldType]? = nil,
@@ -501,7 +501,7 @@ public struct Metatable<T> {
                 }
                 unsynthesizedFields = nil
             } else {
-                unsynthesizedFields = fields
+                unsynthesizedFields = fields.mapValues { $0.value }
             }
         } else {
             unsynthesizedFields = nil
@@ -540,10 +540,28 @@ public struct Metatable<T> {
         self.mt = mt
     }
 
-    // Only for supporting legacy registerMetatable() API
-    internal init(for type: T.Type, legacyApiMetafields: [MetafieldName: InternalMetafieldValue]) {
-        mt = legacyApiMetafields
-        unsynthesizedFields = nil
+    internal init(mt: [MetafieldName: InternalMetafieldValue], unsynthesizedFields: [String: InternalUserdataField]?) {
+        self.mt = mt
+        self.unsynthesizedFields = unsynthesizedFields
+    }
+
+    /// Returns the type object for this metatable, ie `T.self`.
+    public var type: T.Type {
+        return T.self
+    }
+}
+
+extension Metatable { // Swift doesn't yet support `where Base: AnyObject, T: Base`
+    /// Cast a Metatable to a different type.
+    ///
+    /// This API is only for use by types implementing ``PushableWithMetatable`` in a derived class, in order to
+    /// satisfy the type constraints of the protocol. In any other circumstances it will produce a Metatable that won't
+    /// do anything useful.
+    ///
+    /// As such, `T` should derive from `Base` (and `Base` must be a class type). The Swift compiler does not yet
+    /// enforce this however. This constraint may be added in a future `LuaSwift` release.
+    public func downcast<Base>() -> Metatable<Base> {
+        return Metatable<Base>(mt: self.mt, unsynthesizedFields: self.unsynthesizedFields)
     }
 }
 
@@ -764,5 +782,110 @@ extension Metatable.FieldType {
 
     public static func staticfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (Arg1, Arg2, Arg3) throws -> Ret) -> Metatable.FieldType {
         return .closure(LuaState.makeClosure(accessor))
+    }
+}
+
+/// Protocol for types which declare their own metatable.
+///
+/// Types conforming to this protocol do not need to call ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``, and
+/// automatically become `Pushable` without needing to implement ``Pushable/push(onto:)``. The only thing the type
+/// needs to do is to declare a static (or class) member `metatable`. For example:
+///
+/// ```swift
+/// struct Foo: PushableWithMetatable {
+///     // Normal struct definition...
+///     func foo() -> String { return "Foo.foo" }
+/// 
+///     // PushableWithMetatable conformance here:
+///     static let metatable = Metatable<Foo>(fields: [
+///         "foo": .memberfn { $0.foo() }
+///     ])
+/// }
+///
+/// // No need to call L.register(Foo.metatable)
+/// L.push(Foo())
+/// ```
+///
+/// The `PushableWithMetatable` conformance can also be declared in an extension:
+///
+/// ```swift
+/// struct Foo {
+///     func foo() -> String { return "Foo.foo" }
+/// }
+/// 
+/// extension Foo: PushableWithMetatable {
+///     static let metatable = Metatable<Foo>(fields: [
+///         "foo": .memberfn { $0.foo() }
+///     ])
+/// }
+/// ```
+///
+/// The metatable is registered the first time an instance of this type is pushed using
+/// ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``, if it isn't already registered. If this protocol is
+/// implemented by a base class, instances of derived classes inherit the same metatable as the base class (unless a
+/// different metatable was explicitly registered prior to when the first instance of the derived type is pushed).
+///
+/// It is possible to override a metatable in a derived class, providing the base class metatable was declared as a
+/// `class var`. The derived metatable must still use the base class type however, casting if necessary. The
+/// ``Metatable/downcast()`` API can be used to facilitate this. For example:
+///
+/// ```swift
+/// class Base: PushableWithMetatable {
+///     func foo() -> String { return "Base.foo" }
+///     class var metatable: Metatable<Base> {
+///         return Metatable(fields: [
+///             "foo": .memberfn { $0.foo() }
+///         ])
+///     }
+/// }
+/// class Derived: Base {
+///     override func foo() -> String { return "Derived.foo" }
+///     func bar() -> String { return "Derived.bar" }
+///     class override var metatable: Metatable<Base> {
+///         return Metatable<Derived>(fields: [
+///             "foo": .memberfn { $0.foo() },
+///             "bar": .memberfn { $0.bar() }
+///         ]).downcast()
+///     }
+/// }
+/// ```
+///
+/// Note that if a type is using `PushableWithMetatable`, it should not be pushed using `L.push(userdata: value)`,
+/// because that risks bypassing the automatic registration logic. Always use `L.push(value)` or `L.push(any: value)`
+/// instead, ie the `Pushable` overload.
+///
+/// It is also possible to declare a metatable for protocols, by declaring the protocol conforms to
+/// `PushableWithMetatable` and then extending it with a metatable. This should only be done when there's no possible
+/// other way an object conforming to the protocol might want to be represented in Lua, however.
+///
+/// ```swift
+/// protocol MyProtocol: PushableWithMetatable {
+///     func foo() -> String
+/// }
+/// 
+/// extension MyProtocol {
+///     static var metatable: Metatable<any MyProtocol> {
+///         get {
+///             return Metatable(fields: [
+///                 "foo": .memberfn { $0.foo() }
+///             ])
+///         }
+///     }
+/// }
+/// ```
+public protocol PushableWithMetatable: Pushable {
+    associatedtype ValueType
+    static var metatable: Metatable<ValueType> { get }
+}
+
+public extension PushableWithMetatable {
+    func push(onto state: LuaState) {
+        if !state.isMetatableRegistered(for: Self.metatable.type) {
+            state.register(Self.metatable)
+        }
+        if Self.self != Self.metatable.type && !state.isMetatableRegistered(for: Self.self) {
+            state.register(type: Self.self, usingExistingMetatableFor: Self.metatable.type)
+        }
+        state.push(userdata: self)
     }
 }

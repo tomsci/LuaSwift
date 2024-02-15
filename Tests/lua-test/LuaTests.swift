@@ -30,6 +30,32 @@ class ClosableDeinitChecker : DeinitChecker, Closable {
     }
 }
 
+
+protocol TestMetatabledProtocol: PushableWithMetatable {
+    func foo() -> String
+}
+
+extension TestMetatabledProtocol {
+    static var metatable: Metatable<any TestMetatabledProtocol> {
+        get {
+            return Metatable(fields: [
+                "foo": .memberfn { $0.foo() }
+            ])
+        }
+    }
+}
+
+// Declare this here so we're testing that you can declare conformance via an extension
+class test_PushableWithMetatable_Base {
+    func foo() -> String { return "Base.foo" }
+}
+
+extension test_PushableWithMetatable_Base: PushableWithMetatable {
+    static let metatable = Metatable<test_PushableWithMetatable_Base>(fields: [
+        "foo": .memberfn { $0.foo() }
+    ])
+}
+
 final class LuaTests: XCTestCase {
 
     var L: LuaState!
@@ -1308,6 +1334,69 @@ final class LuaTests: XCTestCase {
         try L.pcall(nargs: 2, nret: 1)
         XCTAssertEqual(L.tostring(-1), "!")
         L.pop()
+    }
+
+    func test_PushableWithMetatable_struct() throws {
+        struct Foo: PushableWithMetatable {
+            func foo() -> String { return "Foo.foo" }
+
+            static let metatable = Metatable<Foo>(fields: [
+                "foo": .memberfn { $0.foo() }
+            ])
+        }
+
+        let val = L.ref(any: Foo())
+        XCTAssertEqual(try val.pcall(member: "foo").tostring(), "Foo.foo")
+    }
+
+    func test_PushableWithMetatable_class() throws {
+        class Derived: test_PushableWithMetatable_Base {
+            override func foo() -> String { return "Derived.foo" }
+        }
+
+        let derived = L.ref(any: Derived())
+        XCTAssertEqual(try derived.pcall(member: "foo").tostring(), "Derived.foo")
+    }
+
+    func test_PushableWithMetatable_derivedCustomMt() throws {
+        class Base: PushableWithMetatable {
+            func foo() -> String { return "Base.foo" }
+            class var metatable: Metatable<Base> {
+                return Metatable(fields: [
+                    "foo": .memberfn { $0.foo() }
+                ])
+            }
+        }
+        class Derived: Base {
+            override func foo() -> String { return "Derived.foo" }
+            func bar() -> String { return "Derived.bar" }
+            class override var metatable: Metatable<Base> {
+                return Metatable<Derived>(fields: [
+                    "foo": .memberfn { $0.foo() },
+                    "bar": .memberfn { $0.bar() }
+                ]).downcast()
+            }
+        }
+
+        let derived = L.ref(any: Derived())
+        XCTAssertEqual(try derived.pcall(member: "foo").tostring(), "Derived.foo")
+        XCTAssertEqual(try derived.pcall(member: "bar").tostring(), "Derived.bar")
+    }
+
+    func test_PushableWithMetatable_protocol() throws {
+        class Base: TestMetatabledProtocol {
+            func foo() -> String { return "Base.foo" }
+        }
+
+        let base = L.ref(any: Base())
+        XCTAssertEqual(try base.pcall(member: "foo").tostring(), "Base.foo")
+
+        class Derived: Base {
+            override func foo() -> String { return "Derived.foo" }
+        }
+
+        let derived = L.ref(any: Derived())
+        XCTAssertEqual(try derived.pcall(member: "foo").tostring(), "Derived.foo")
     }
 
     func test_legacy_registerDefaultMetatable() throws {

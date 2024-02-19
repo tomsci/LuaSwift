@@ -84,15 +84,19 @@ struct EmbedLua {
     }
 
     static func escape(_ data: [UInt8]) -> String {
-        var result = ["["]
+        var result = "[\n"
+        // Each line of the generated format is 104 chars
+        result.reserveCapacity(104 * ((data.count / 16) + 1) + 8)
         var i = 0
         while i != data.count {
             let n = min(16, data.count - i)
-            result.append("        " + data[i..<i+n].map({ b in String(format: "0x%02X, ", b) }).joined())
+            result.append("        ")
+            result.append(data[i..<i+n].map({ b in String(format: "0x%02X, ", b) }).joined())
+            result.append("\n")
             i = i + n
         }
         result.append("    ]")
-        return result.joined(separator: "\n")
+        return result
     }
 
     static func getModuleName(_ url: URL, dirsWithLuaFiles: Set<URL>) -> (moduleName: String, displayPath: String) {

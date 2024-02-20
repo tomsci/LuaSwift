@@ -45,16 +45,12 @@ require("example")
 
 ```swift
 let lua_sources: [String: [UInt8]] = [
-    "example": [
-        /* ...data... */
-    ],
-    "someothermodule": [
-        /* ...data... */
-    ],
+    "example": /* ...data... */,
+    "someothermodule": /* ...data... */,
 ]
 ```
 
-So if you need to load the Lua code from Swift you can access an individual module and call ``Lua/Swift/UnsafeMutablePointer/load(data:name:mode:)`` or ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)``:
+To enable parallel compilation, the actual data may be split across multiple generated source files, but that doesn't affect how you should access it by using `lua_sources`. If you need to load the Lua code from Swift you can access an individual module and call ``Lua/Swift/UnsafeMutablePointer/load(data:name:mode:)`` or ``Lua/Swift/UnsafeMutablePointer/requiref(name:global:closure:)``:
 
 ```swift
 try L.load(data: lua_sources["example"]!, mode: .binary)
@@ -67,7 +63,7 @@ try L.requiref(name: "example") {
 }
 ```
 
-> Note: When adding additional Lua files to a SwiftPM project, you may have to run `File -> Packages -> Reset Package Cache` and then clean the project, in order for the new files to be noticed by the build system.
+> Note: When adding or removing Lua files from a SwiftPM project, you may have to run `File -> Packages -> Reset Package Cache` and then clean the project, in order for the new files to be noticed by the build system.
 
 ## Nested modules
 
@@ -100,15 +96,9 @@ This will produce a `lua_sources` like this:
 
 ```swift
 let lua_sources: [String: [UInt8]] = [
-    "topmod": [
-        /* ...data... */
-    ],
-    "DirA.firstmod": [
-        /* ...data... */
-    ],
-    "DirB.secondmod": [
-        /* ...data... */
-    ],
+    "topmod": /* ...data... */,
+    "DirA.firstmod": /* ...data... */,
+    "DirB.secondmod": /* ...data... */,
 ]
 ```
 

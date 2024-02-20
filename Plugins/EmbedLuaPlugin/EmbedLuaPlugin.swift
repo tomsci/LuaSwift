@@ -4,62 +4,81 @@
 import PackagePlugin
 import Foundation
 
-func commonBase(path: String, prevBase: String?) -> String? {
-    var candidate = prevBase ?? (path as NSString).deletingLastPathComponent
-    while true {
-        if candidate.count <= 1 {
-            return nil
-        } else if path.hasPrefix(candidate + "/") {
-            return candidate
+struct PluginError: Error, CustomStringConvertible {
+    let description: String
+}
+
+func getModuleName(_ path: Path, dirsWithLuaFiles: Set<Path>) -> String {
+    var parts: [String] = []
+    var currentPath = path
+    while !currentPath.string.isEmpty {
+        let part = currentPath.lastComponent
+        let parent = currentPath.removingLastComponent()
+        if !dirsWithLuaFiles.contains(parent) {
+            break
         } else {
-            candidate = (candidate as NSString).deletingLastPathComponent
+            parts.insert(part, at: 0)
+            currentPath = parent
+            // And go round again
         }
     }
+    parts[parts.count - 1] = Path(parts.last!).stem
+    let moduleName = parts.joined(separator: ".")
+    return moduleName
 }
 
-// String why do you suck so much JUST GIVE ME INTEGER BASED INDEXES
-func substring(_ str: String, start: Int, len: Int? = nil) -> String {
-    let startIdx = str.index(str.startIndex, offsetBy: start)
-    let endIdx: String.Index
-    if let len {
-        endIdx = str.index(startIdx, offsetBy: len)
-    } else {
-        endIdx = str.endIndex
+func makeCommands(inputs: [Path], workDir: Path, executable: Path) throws -> [Command] {
+    // Work out module names
+    var dirsWithLuaFiles: Set<Path> = []
+    for input in inputs {
+        let dirName = input.removingLastComponent()
+        dirsWithLuaFiles.insert(dirName)
     }
-    return String(str[startIdx ..< endIdx])
-}
 
-func makeCommand(inputs: [Path], workDir: Path) -> (outputs: [Path], args: [String])? {
-    var base: String? = nil
-    for inputFile in inputs {
-        base = commonBase(path: inputFile.string, prevBase: base)
-        if base == nil {
-            fatalError("No common base found between source files")
+    var moduleNameMap: [String: Path] = [:]
+    for input in inputs {
+        let moduleName = getModuleName(input, dirsWithLuaFiles: dirsWithLuaFiles)
+        if let existing = moduleNameMap[moduleName] {
+            throw PluginError(description: "Duplicate module name: \(existing) and \(input) both map to \(moduleName)")
         }
+        moduleNameMap[moduleName] = input
     }
-    guard let base else {
-        // Only way to hit this is if there are no Lua files, in which case no commands needed
-        return nil
-    }
-    let basePrefix = base + "/"
-    // debugPrint("Common base: \(basePrefix)")
+    let sortedModules: [String] = moduleNameMap.keys.sorted()
 
-    var outputs: [Path] = [
-        workDir.appending("LuaSources.swift")
-    ]
-    var args: [String] = [
-        workDir.string
-    ]
+    var cmds: [Command] = []
     let outPrefix = workDir.appending("LuaSources").string
-    for inputFile in inputs {
-        let relPath = substring(inputFile.string, start: basePrefix.count).replacingOccurrences(of: "/", with: "_")
-        let output = "\(outPrefix)_\(relPath).swift"
-        // debugPrint("Output: \(output)")
-        outputs.append(Path(output))
-        args.append(inputFile.string)
+    var luaSourcesInputs: [Path] = []
+    for moduleName in sortedModules {
+        let input = moduleNameMap[moduleName]!
+        let relPath = moduleName.replacingOccurrences(of: ".", with: "_")
+        let output = Path("\(outPrefix)_\(relPath).swift")
+        cmds.append(.buildCommand(displayName: "Compiling \(moduleName).lua", executable: executable, arguments: [
+            "compile",
+            moduleName,
+            input,
+            output
+        ], inputFiles: [input], outputFiles: [output]))
+        // Really the inputs to the LuaSources cmd should be the generated .swift files, but the swiftpm
+        // dependency tracker really doesn't like that, so the next best thing is to make it dependent on the
+        // inputs instead.
+        luaSourcesInputs.append(input)
+        // debugPrint("\(output) depends on \(input)")
     }
 
-    return (outputs: outputs, args: args)
+    let luaSourcesOutput = "\(outPrefix).swift"
+    var generateArgs = ["sources", luaSourcesOutput] //+ sortedModules
+    for moduleName in sortedModules {
+        generateArgs.append(moduleName)
+        generateArgs.append(moduleNameMap[moduleName]!.string)
+    }
+    cmds.append(.buildCommand(displayName: "Generating LuaSources.swift", executable: executable,
+        arguments: generateArgs,
+        inputFiles: luaSourcesInputs,
+        outputFiles: [Path(luaSourcesOutput)]))
+
+    debugPrint("\(luaSourcesOutput) depends on \(luaSourcesInputs)")
+
+    return cmds
 }
 
 @main
@@ -71,15 +90,8 @@ struct EmbedLuaPlugin: BuildToolPlugin {
         let inputFiles = target.sourceFiles(withSuffix: ".lua").map { $0.path }
         // debugPrint("inputs: inputFiles)")
 
-        guard let cmd = makeCommand(inputs: inputFiles, workDir: context.pluginWorkDirectory) else {
-            return []
-        }
-
-        return [.buildCommand(displayName: "Compiling Lua sources",
-                              executable: try context.tool(named: "embedlua").path,
-                              arguments: cmd.args,
-                              inputFiles: inputFiles,
-                              outputFiles: cmd.outputs)]
+        let exe = try context.tool(named: "embedlua").path
+        return try makeCommands(inputs: inputFiles, workDir: context.pluginWorkDirectory, executable: exe)
     }
 }
 
@@ -87,7 +99,6 @@ struct EmbedLuaPlugin: BuildToolPlugin {
 import XcodeProjectPlugin
 
 extension EmbedLuaPlugin: XcodeBuildToolPlugin {
-    /// This entry point is called when operating on an Xcode project.
     func createBuildCommands(context: XcodePluginContext, target: XcodeTarget) throws -> [Command] {
         // debugPrint(target)
         let inputFiles = target.inputFiles.compactMap { file in
@@ -99,15 +110,8 @@ extension EmbedLuaPlugin: XcodeBuildToolPlugin {
         }
         // debugPrint(inputFiles)
 
-        guard let cmd = makeCommand(inputs: inputFiles, workDir: context.pluginWorkDirectory) else {
-            return []
-        }
-
-        return [.buildCommand(displayName: "Compiling Lua sources",
-                              executable: try context.tool(named: "embedlua").path,
-                              arguments: cmd.args,
-                              inputFiles: inputFiles,
-                              outputFiles: cmd.outputs)]
+        let exe = try context.tool(named: "embedlua").path
+        return try makeCommands(inputs: inputFiles, workDir: context.pluginWorkDirectory, executable: exe)
     }
 }
 #endif

@@ -2706,7 +2706,7 @@ final class LuaTests: XCTestCase {
             try L.load(string: "return require('\(name)')")
             try L.pcall(nargs: 0, nret: 1)
             XCTAssertEqual(L.tostring(-1, key: "name"), name)
-            L.rawget(-1, key: "fn")
+            try L.get(-1, key: "fn")
             let info = L.getTopFunctionInfo(what: [.source])
             // Check we're not leaking build machine info into the function debug info
             let expectedDisplayName = name.replacingOccurrences(of: ".", with: "/") + ".lua"
@@ -2717,6 +2717,9 @@ final class LuaTests: XCTestCase {
         try checkModule("nesttest.module")
         try checkModule("nesttest.awk%ward")
         try checkModule("nesttest.subdir.sub2.module")
+
+        // Since this is an empty _.lua module, it should not appear in lua_sources
+        XCTAssertNil(lua_sources["nesttest.subdir._"])
     }
 
     func test_flattened_lua_sources() throws {

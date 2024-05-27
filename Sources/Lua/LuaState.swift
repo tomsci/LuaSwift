@@ -3686,6 +3686,262 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return lua_tothread(self, -1)!
     }
 
+    /// Swift wrapper around `string.match()`.
+    ///
+    /// This helper function allows Lua-style pattern matching on Swift Strings. See
+    /// [`string.match()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.match) for details.
+    ///
+    /// - Parameter string: The string to search in.
+    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described
+    ///   [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+    /// - Parameter pos: The position in `string` to start searching from. Note this is a _Lua_ string offset, ie is
+    ///   one-based and dependent on what byte sequence the default string encoding outputs. By default `pos` is 1, ie
+    ///   the search starts from the beginning of `string`.
+    /// - Returns: An array of the pattern captures, or `nil` if the pattern was not found. Each array item will be
+    ///   either a String, or an Int if the pattern was `()`. Note that string indexes returned by `()` will _not_
+    ///   be adjusted to be zero-based - they will be exactly the values returned by `string.match()`.
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `string.match()`, for example because of an invalid
+    ///   pattern item in `pattern`, or if a result `string` is not decodable using the default String encoding.
+    /// - Precondition: The `string` library must be opened in this LuaState.
+    public func match(string: String, pattern: String, pos: Int = 1) throws -> [AnyHashable]? {
+        let top = gettop()
+        defer {
+            settop(top)
+        }
+        let t = getglobal("string")
+        precondition(t == .table, "String library not opened?")
+        rawget(-1, utf8Key: "match")
+        lua_remove(self, -2) // string
+
+        push(string)
+        push(pattern)
+        push(pos)
+        do {
+            try pcall(nargs: 3, nret: MultiRet, traceback: false)
+        } catch let error as LuaCallError {
+            throw LuaArgumentError(errorString: error.errorString)
+        }
+        if isnil(top + 1) {
+            return nil
+        }
+        var result: [AnyHashable] = []
+        for arg in top + 1 ... gettop() {
+            if isinteger(arg) {
+                result.append(tointeger(arg)!)
+            } else {
+                // No need to check it's of Lua type string, there's nothing else match will return
+                guard let str = tostring(arg) else {
+                    let resultIdx = arg - top
+                    throw LuaArgumentError(errorString: "Match result #\(resultIdx) is not decodable using the default String encoding")
+                }
+                result.append(str)
+            }
+        }
+        return result
+    }
+
+    private func checkStringMatch(array: [AnyHashable], index: Int) throws -> String {
+        guard let result = array[index] as? String else {
+            throw LuaArgumentError(errorString: "Match result #\(index+1) is not a string")
+        }
+        return result
+    }
+
+    private func checkMatchSize(_ array: [AnyHashable], _ size: Int) throws {
+        if array.count != size {
+            throw LuaArgumentError(errorString: "Expected \(size) match results, actually got \(array.count)")
+        }
+    }
+
+    /// Convenience wrapper around `match()` for when the pattern results in a single string.
+    ///
+    /// As per ``match(string:pattern:pos:)`` except that `pattern` must contain exactly zero or one captures, and the
+    /// single result is returned as an optional String rather than an optional array with a single element.
+    ///
+    /// > Note: Attempting to use a `()` capture will result in `LuaArgumentError` being thrown (if the pattern
+    ///   matches). Call ``match(string:pattern:pos:)`` instead to use `()` captures.
+    ///
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `match()`, for example because of an invalid pattern
+    ///   item in `pattern`, or if `match()` did not return nil or exactly one String result.
+    public func matchString(string: String, pattern: String, pos: Int = 1) throws -> String? {
+        guard let result = try match(string: string, pattern: pattern, pos: pos) else {
+            return nil
+        }
+        try checkMatchSize(result, 1)
+        return try checkStringMatch(array: result, index: 0)
+    }
+
+    /// Convenience wrapper around `match()` for when the pattern results in exactly two strings.
+    ///
+    /// As per ``match(string:pattern:pos:)`` except that `pattern` must contain exactly two string captures, and the
+    /// result is returned as a tuple rather than an array.
+    ///
+    /// > Note: Attempting to use a `()` capture will result in `LuaArgumentError` being thrown (if the pattern
+    ///   matches). Call ``match(string:pattern:pos:)`` instead to use `()` captures.
+    ///
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `match()`, for example because of an invalid pattern
+    ///   item in `pattern`, or if `match()` did not return nil or exactly two String results.
+    public func matchStrings(string: String, pattern: String, pos: Int = 1) throws -> (String, String)? {
+        guard let result = try match(string: string, pattern: pattern, pos: pos) else {
+            return nil
+        }
+        try checkMatchSize(result, 2)
+        return (
+            try checkStringMatch(array: result, index: 0),
+            try checkStringMatch(array: result, index: 1)
+        )
+    }
+
+    /// Convenience wrapper around `match()` for when the pattern results in exactly three strings.
+    ///
+    /// As per ``match(string:pattern:pos:)`` except that `pattern` must contain exactly three string captures, and the
+    /// result is returned as a tuple rather than an array.
+    ///
+    /// > Note: Attempting to use a `()` capture will result in `LuaArgumentError` being thrown (if the pattern
+    ///   matches). Call ``match(string:pattern:pos:)`` instead to use `()` captures.
+    ///
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `match()`, for example because of an invalid pattern
+    ///   item in `pattern`, or if `match()` did not return nil or exactly three String results.
+    public func matchStrings(string: String, pattern: String, pos: Int = 1) throws -> (String, String, String)? {
+        guard let result = try match(string: string, pattern: pattern, pos: pos) else {
+            return nil
+        }
+        try checkMatchSize(result, 3)
+        return (
+            try checkStringMatch(array: result, index: 0),
+            try checkStringMatch(array: result, index: 1),
+            try checkStringMatch(array: result, index: 2)
+        )
+    }
+
+    /// Convenience wrapper around `match()` for when the pattern results in exactly four strings.
+    ///
+    /// As per ``match(string:pattern:pos:)`` except that `pattern` must contain exactly four string captures, and the
+    /// result is returned as a tuple rather than an array.
+    ///
+    /// > Note: Attempting to use a `()` capture will result in `LuaArgumentError` being thrown (if the pattern
+    ///   matches). Call ``match(string:pattern:pos:)`` instead to use `()` captures.
+    ///
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `match()`, for example because of an invalid pattern
+    ///   item in `pattern`, or if `match()` did not return nil or exactly four String results.
+    public func matchStrings(string: String, pattern: String, pos: Int = 1) throws -> (String, String, String, String)? {
+        guard let result = try match(string: string, pattern: pattern, pos: pos) else {
+            return nil
+        }
+        try checkMatchSize(result, 4)
+        return (
+            try checkStringMatch(array: result, index: 0),
+            try checkStringMatch(array: result, index: 1),
+            try checkStringMatch(array: result, index: 2),
+            try checkStringMatch(array: result, index: 3)
+        )
+    }
+
+    // Top item of stack must be repl
+    private func dogsub(string: String, pattern: String, maxReplacements: Int?) throws -> String {
+        let t = getglobal("string")
+        precondition(t == .table, "String library not opened?")
+        rawget(-1, utf8Key: "gsub")
+        lua_remove(self, -2) // string
+
+        push(string)
+        push(pattern)
+        lua_rotate(self, -4, -1) // Puts repl on top of stack
+        push(maxReplacements)
+
+        do {
+            try pcall(nargs: 4, nret: 1, traceback: false)
+        } catch let error as LuaCallError {
+            throw LuaArgumentError(errorString: error.errorString)
+        }
+        defer {
+            pop(1)
+        }
+        guard let result = tostring(-1) else {
+            throw LuaArgumentError(errorString: "Result of gsub is not decodable using the default String encoding")
+        }
+        return result
+    }
+
+    /// Swift wrapper around `string.gsub()`.
+    ///
+    /// This helper function allows Lua-style pattern string replacements from Swift. See
+    /// [`string.match()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
+    ///
+    /// - Parameter string: The string to search in.
+    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described
+    ///   [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+    /// - Parameter repl: What to replace `pattern` with. This string can include `%1` etc patterns as described in the
+    ///   `string.gsub()` documentation.
+    /// - Parameter maxReplacements: If specified, only replace up to this number of occurrences of `pattern`.
+    /// - Returns: A copy of `string` with occurrences of `pattern` replaced by `repl`.
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `string.gsub()`, for example because of an invalid
+    ///   pattern item in `pattern`, or if the resulting `string` is not decodable using the default String encoding.
+    /// - Precondition: The `string` library must be opened in this LuaState.
+    public func gsub(string: String, pattern: String, repl: String, maxReplacements: Int? = nil) throws -> String {
+        push(repl)
+        return try dogsub(string: string, pattern: pattern, maxReplacements: maxReplacements)
+    }
+
+    /// Swift wrapper around `string.gsub()`.
+    /// 
+    /// This helper function allows Lua-style pattern string replacements from Swift. See
+    /// [`string.match()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
+    /// 
+    /// - Parameter string: The string to search in.
+    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described
+    ///   [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+    /// - Parameter repl: What to replace `pattern` with. As with `string.gsub()` the first capture is looked up in
+    ///   this dictionary and if a value is found, it is used as the replacement string.
+    /// - Parameter maxReplacements: If specified, only replace up to this number of occurrences of `pattern`.
+    /// - Returns: A copy of `string` with occurrences of `pattern` replaced by `repl`.
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `string.gsub()`, for example because of an invalid
+    ///   pattern item in `pattern`, or if the resulting `string` is not decodable using the default String encoding.
+    /// - Precondition: The `string` library must be opened in this LuaState.
+    public func gsub(string: String, pattern: String, repl: [String: String], maxReplacements: Int? = nil) throws -> String {
+        push(repl)
+        return try dogsub(string: string, pattern: pattern, maxReplacements: maxReplacements)
+    }
+
+    /// Swift wrapper around `string.gsub()`.
+    ///
+    /// This helper function allows Lua-style pattern string replacements from Swift. See
+    /// [`string.match()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
+    ///
+    /// - Parameter string: The string to search in.
+    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described
+    ///   [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+    /// - Parameter repl: A closure which returns what to replace the matched pattern with. Will be called once for each
+    ///   match, receiving the captures as an array and should return the replacement String, or `nil` to not replace
+    ///   that instance.
+    /// - Parameter maxReplacements: If specified, only replace up to this number of occurrences of `pattern`.
+    /// - Returns: A copy of `string` with occurrences of `pattern` replaced by `repl`.
+    /// - Throws: ``LuaArgumentError`` if an error was thrown by `string.gsub()`, for example because of an invalid
+    ///   pattern item in `pattern`, or if the resulting `string` is not decodable using the default String encoding.
+    /// - Precondition: The `string` library must be opened in this LuaState.
+    public func gsub(string: String, pattern: String, repl: ([String]) -> String?, maxReplacements: Int? = nil) throws -> String {
+        return try withoutActuallyEscaping(repl) { escapingRepl in
+            var replVar = escapingRepl
+            let closure: LuaClosure = { L in
+                var args: [String] = []
+                for i in 1 ... L.gettop() {
+                    guard let str = L.tostring(i) else {
+                        throw LuaArgumentError(errorString: "Capture \(i) is not decodable using the default String encoding")
+                    }
+                    args.append(str)
+                }
+                let result = replVar(args)
+                L.push(result)
+                return 1
+            }
+            defer {
+                replVar = { _ in return nil }
+            }
+            push(closure)
+            return try dogsub(string: string, pattern: pattern,	 maxReplacements: maxReplacements)
+        }
+    }
+
     // MARK: - Loading code
 
     public enum LoadMode: String {

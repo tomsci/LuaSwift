@@ -219,4 +219,8 @@ extension LuaValueError: LocalizedError {
    public var errorDescription: String? { return self.description }
 }
 
+extension LuaArgumentError: LocalizedError {
+   public var errorDescription: String? { return self.description }
+}
+
 #endif

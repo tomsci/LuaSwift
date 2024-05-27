@@ -366,6 +366,17 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/checkArgument(_:type:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkOption(_:default:)``
 
+### String matching
+
+- ``Lua/Swift/UnsafeMutablePointer/match(string:pattern:pos:)``
+- ``Lua/Swift/UnsafeMutablePointer/matchString(string:pattern:pos:)``
+- ``Lua/Swift/UnsafeMutablePointer/matchStrings(string:pattern:pos:)-5g0g4``
+- ``Lua/Swift/UnsafeMutablePointer/matchStrings(string:pattern:pos:)-6arli``
+- ``Lua/Swift/UnsafeMutablePointer/matchStrings(string:pattern:pos:)-4dggs``
+- ``Lua/Swift/UnsafeMutablePointer/gsub(string:pattern:repl:maxReplacements:)-4q8in``
+- ``Lua/Swift/UnsafeMutablePointer/gsub(string:pattern:repl:maxReplacements:)-sg1t``
+- ``Lua/Swift/UnsafeMutablePointer/gsub(string:pattern:repl:maxReplacements:)-4tcdv``
+
 ### Miscellaneous
 
 - ``Lua/Swift/UnsafeMutablePointer/requiref(name:function:global:)``

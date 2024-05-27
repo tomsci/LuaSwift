@@ -2759,7 +2759,7 @@ final class LuaTests: XCTestCase {
         L.push(1234) // 1
         L.push("woop") // 2
         L.push([11, 22, 33, 44, 55]) // 3
-        lua_newtable(L)
+        lua_newtable(L) // mt for 3
         L.setfuncs([
             "__len": { (L: LuaState!) -> CInt in
                 L.push(999)
@@ -3425,5 +3425,67 @@ final class LuaTests: XCTestCase {
 
         let sneakyFrac: [AnyHashable: Any] = [1: 111, 2: 222, 2.5: "wat", 3: 333]
         XCTAssertNil((sneakyFrac as! [AnyHashable: AnyHashable]).luaTableToArray())
+    }
+
+    private func assertThrowsLuaArgumentError<T>(_ expr: @autoclosure () throws -> T,
+                                         errorString: String,
+                                         file: StaticString = #filePath,
+                                         line: UInt = #line) {
+        XCTAssertThrowsError(try expr(), "Expected LuaArgumentError to be thrown", file: file, line: line) { error in
+            guard let argerr = error as? LuaArgumentError else {
+                XCTFail("Expected thrown error to be a LuaArgumentError, not \(error)", file: file, line: line)
+                return
+            }
+            XCTAssertEqual(argerr.errorString, errorString, file: file, line: line)
+        }
+    }
+
+    func test_match() throws {
+        L.openLibraries([.string])
+        L.push(123) // Just to check LuaArgumentError is numbering results correctly
+        let nope = try L.match(string: "asdf", pattern: "123")
+        XCTAssertNil(nope)
+
+        let hw = try L.match(string: "Hello world", pattern: "()(world)")
+        XCTAssertEqual(hw, [7, "world"])
+
+        assertThrowsLuaArgumentError(try L.match(string: "whatevs", pattern: "("),
+                                     errorString: "unfinished capture")
+
+        assertThrowsLuaArgumentError(try L.matchString(string: "abc", pattern: "()abc"),
+                                     errorString: "Match result #1 is not a string")
+
+        // Oof, the syntax to force the correct overload of matchStrings in an autoclosure is gnarly
+        assertThrowsLuaArgumentError(try { () -> (String, String)? in
+            try self.L.matchStrings(string: "abc", pattern: "(a)(b)(c)")
+        }(), errorString: "Expected 2 match results, actually got 3")
+
+        let (h, w) = try XCTUnwrap(L.matchStrings(string: "Hello world", pattern: "(%w+) (%w+)"))
+        XCTAssertEqual(h, "Hello")
+        XCTAssertEqual(w, "world")
+
+        // A single char from the UTF-8 representation of é is 0xC3 which is not on its own valid UTF-8
+        assertThrowsLuaArgumentError(try L.match(string: "é", pattern: "()(.)"),
+                                     errorString: "Match result #2 is not decodable using the default String encoding")
+    }
+
+    func test_gsub() throws {
+        L.openLibraries([.string])
+        
+        XCTAssertEqual(try L.gsub(string: "hello world", pattern: "(%w+)", repl: "%1 %1"), "hello hello world world")
+
+        XCTAssertEqual(try L.gsub(string: "hello world", pattern: "%w+", repl: "%0 %0", maxReplacements: 1),
+                       "hello hello world")
+        
+        XCTAssertEqual(try L.gsub(string: "hello world from Lua", pattern: "(%w+)%s*(%w+)", repl: "%2 %1"),
+                       "world hello Lua from")
+        
+        XCTAssertEqual(try L.gsub(string: "4+5 = $return 4+5$", pattern: "%$(.-)%$", repl: { s in
+            try! L.dostring(s[0])
+            return "\(L.tointeger(-1)!)"
+        }), "4+5 = 9")
+
+        XCTAssertEqual(try L.gsub(string: "$name-$version.tar.gz", pattern: "%$(%w+)", repl: ["name": "lua", "version": "5.4"]),
+                       "lua-5.4.tar.gz")
     }
 }

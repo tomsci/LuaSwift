@@ -120,3 +120,15 @@ extension LuaValueError: CustomStringConvertible {
        }
    }
 }
+
+/// Error thrown from `match` and `gsub` wrapper functions.
+///
+/// Indicates that the function arguments were not valid. For example, would be
+/// thrown by ``Lua/Swift/UnsafeMutablePointer/matchStrings(string:pattern:pos:)-5g0g4`` (which expects two String
+/// results) if `pattern` contained only one capture.
+///
+public struct LuaArgumentError : Error, Equatable, CustomStringConvertible {
+    public let errorString: String
+
+    public var description: String { return errorString }
+}

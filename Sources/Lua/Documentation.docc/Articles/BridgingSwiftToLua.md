@@ -8,7 +8,7 @@ Any Swift type can be made accessible from Lua. The process of defining what fie
 
 Basic Swift types are pushed by value -- that is to say they are copied and converted to the equivalent Lua type. A Swift `String` is made available to Lua by converting it to a Lua `string`, a Swift `Array` is converted to a Lua `table`, etc.
 
-Bridged values on the other hand are represented in Lua using the `userdata` Lua type, which from the Swift side behave as if there was an assignment like `var userdata: Any = myval`. So for classes, the `userdata` holds an additional reference to the object, and for structs the `userdata` holds a value copy of it. A `__gc` metamethod is automatically generated, which means that when the `userdata` is garbage collected by Lua, the equivalent of `userdata = nil` is performed.
+Bridged values on the other hand are represented in Lua using the `userdata` Lua type, which from the Swift side behave as if there was an assignment like `var userdataVar: Any = myval`. So for classes, the `userdata` holds an additional reference to the object, and for structs the `userdata` holds a value copy of it. A `__gc` metamethod is automatically generated, which means that when the `userdata` is garbage collected by Lua, the equivalent of `userdataVar = nil` is performed.
 
 As described so far, the `userdata` plays nicely with Lua and Swift object lifetimes and memory management, but does not allow you to do anything useful with it from Lua other than controlling when it goes out of scope. This is where defining a metatable comes in.
 
@@ -127,6 +127,13 @@ L.register(Metatable<Foo>(fields: [
 L.register(Metatable<Foo>(fields: [
     "prop": .property(get: { $0.prop }, set: { $0.prop = $1 }),
 ]))
+```
+
+Assuming `setglobal` was called as in the above example, there is now a `foo` global with a `prop` member:
+
+```lua
+print(foo.prop)
+--> Prints "example"
 ```
 
 ### Custom metamethods

@@ -42,14 +42,14 @@ public struct LuaVer {
         return releaseNum >= 50400
     }
 
-    // > 5.4.6 constructor
+    // > 5.4.7 constructor
     init(major: CInt, minor: CInt, release: CInt) {
         self.major = major
         self.minor = minor
         self.release = release
     }
 
-    // 5.4.6 and earlier constructor
+    // 5.4.7 and earlier constructor
     init(major: String, minor: String, release: String) {
         self.major = CInt(major)!
         self.minor = CInt(minor)!

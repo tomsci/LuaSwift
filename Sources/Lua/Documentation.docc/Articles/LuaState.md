@@ -156,7 +156,7 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 
 ### Support for different Lua versions
 
-LuaSwift by default includes Lua 5.4.6. The codebase will also work with any 5.3 or 5.4 release, but to do that you need to fork the repository and check out an appropriate branch of the submodule `Sources/CLua/lua`.
+LuaSwift by default includes Lua 5.4.7. The codebase will also work with any 5.3 or 5.4 release, but to do that you need to fork the repository and check out an appropriate branch of the submodule `Sources/CLua/lua`.
 
 Versions older than 5.3 are sufficiently different in their API that it's not straightforward to support.
 

@@ -195,7 +195,7 @@ int luaswift_loadfile(lua_State *L, const char *filename,
 #define LUASWIFT_CALLCLOSURE_YIELD (-5)
 
 int luaswift_callclosurewrapper(lua_State *L);
-_Bool luaswift_iscallclosurewrapper(lua_CFunction fn);
+bool luaswift_iscallclosurewrapper(lua_CFunction fn);
 int luaswift_continuation_regkey(lua_State *L);
 
 int luaswift_gettable(lua_State *L);

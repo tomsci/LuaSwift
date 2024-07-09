@@ -103,7 +103,7 @@ static int continuation(lua_State *L, int status, lua_KContext ctx) {
     return handleClosureResult(L, ret);
 }
 
-_Bool luaswift_iscallclosurewrapper(lua_CFunction fn) {
+bool luaswift_iscallclosurewrapper(lua_CFunction fn) {
     return fn == luaswift_callclosurewrapper;
 }
 

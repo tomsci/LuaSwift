@@ -7,6 +7,7 @@
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
+#include "stdbool.h"
 
 #ifndef LUASWIFT_MINIMAL_CLUA
 

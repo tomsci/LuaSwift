@@ -3460,6 +3460,11 @@ final class LuaTests: XCTestCase {
             try self.L.matchStrings(string: "abc", pattern: "(a)(b)(c)")
         }(), errorString: "Expected 2 match results, actually got 3")
 
+        let m = try L.matchString(string: "Huge success!", pattern: "su%w+")
+        XCTAssertEqual(m, "success")
+
+        XCTAssertNil(try L.matchString(string: "", pattern: "nope"))
+
         let (h, w) = try XCTUnwrap(L.matchStrings(string: "Hello world", pattern: "(%w+) (%w+)"))
         XCTAssertEqual(h, "Hello")
         XCTAssertEqual(w, "world")
@@ -3487,5 +3492,8 @@ final class LuaTests: XCTestCase {
 
         XCTAssertEqual(try L.gsub(string: "$name-$version.tar.gz", pattern: "%$(%w+)", repl: ["name": "lua", "version": "5.4"]),
                        "lua-5.4.tar.gz")
+
+        assertThrowsLuaArgumentError(try L.gsub(string: "3.14", pattern: "4", repl: "%2"),
+                                     errorString: "invalid capture index %2")
     }
 }

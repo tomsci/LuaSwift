@@ -3938,7 +3938,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 replVar = { _ in return nil }
             }
             push(closure)
-            return try dogsub(string: string, pattern: pattern,	 maxReplacements: maxReplacements)
+            return try dogsub(string: string, pattern: pattern, maxReplacements: maxReplacements)
         }
     }
 

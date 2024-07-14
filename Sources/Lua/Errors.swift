@@ -128,6 +128,10 @@ extension LuaValueError: CustomStringConvertible {
 /// results) if `pattern` contained only one capture.
 ///
 public struct LuaArgumentError : Error, Equatable, CustomStringConvertible {
+    public init(errorString: String) {
+        self.errorString = errorString
+    }
+
     public let errorString: String
 
     public var description: String { return errorString }

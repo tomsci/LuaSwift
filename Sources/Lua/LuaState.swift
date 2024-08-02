@@ -694,6 +694,16 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         lua_insert(self, index)
     }
 
+    /// Removes the element at the given valid index.
+    ///
+    /// Removes the element at the given valid index, shifting down the elements above this index to fill the gap.
+    ///
+    /// - Parameter index: The stack index remove.
+    @inlinable
+    public func remove(_ index: CInt) {
+        lua_remove(self, index)
+    }
+
     /// See [lua_gettop](https://www.lua.org/manual/5.4/manual.html#lua_gettop).
     @inlinable
     public func gettop() -> CInt {
@@ -2523,7 +2533,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let error = trypcall(nargs: nargs, nret: nret, msgh: index)
         if index != 0 {
             // Keep the stack balanced
-            lua_remove(self, index)
+            remove(index)
         }
         return error
     }
@@ -3343,7 +3353,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func getglobal(_ name: String) -> LuaType {
         pushglobals()
         let t = rawget(-1, utf8Key: name)
-        lua_remove(self, -2)
+        remove(-2)
         return t
     }
 
@@ -3711,7 +3721,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let t = getglobal("string")
         precondition(t == .table, "String library not opened?")
         rawget(-1, utf8Key: "match")
-        lua_remove(self, -2) // string
+        remove(-2) // string
 
         push(string)
         push(pattern)
@@ -3842,7 +3852,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         let t = getglobal("string")
         precondition(t == .table, "String library not opened?")
         rawget(-1, utf8Key: "gsub")
-        lua_remove(self, -2) // string
+        remove(-2) // string
 
         push(string)
         push(pattern)

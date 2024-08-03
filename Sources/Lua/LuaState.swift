@@ -3697,6 +3697,59 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return lua_tothread(self, -1)!
     }
 
+    /// Initializes a `luaL_Buffer` and runs the given code which uses it.
+    ///
+    /// See [the Lua documentation](https://www.lua.org/manual/5.4/manual.html#luaL_Buffer) for details of how
+    /// `luaL_Buffer` works in C.
+    ///
+    /// This function exists because `luaL_Buffer` cannot be treated like a Swift struct because the Lua buffer
+    /// functions internally assume the struct will not move in memory (between the calls to `luaL_buffinit()` and
+    /// `luaL_pushresult()`), and Swift makes no such guarantee by default. Calling `withBuffer()`, which forces the
+    /// code using it to be scoped, guarantees that the buffer object is not relocated, and also ensures
+    /// `luaL_pushresult()` is always called.
+    ///
+    /// Normally in Swift there isn't much need for `luaL_Buffer` -- Swift already has easy memory management -- but
+    /// sometimes when using Swift to interface with another C library, it can be useful to write code that's as
+    /// structurally similar as possible to what the C code to access it would be. At such points using `luaL_Buffer`
+    /// from Swift might be desirable, and `withBuffer()` exists to facilitate that.
+    ///
+    /// `luaL_buffinit()` and `luaL_pushresult()` are automatically called, and should not be called by `fn`. If
+    /// `fn` throws, `luaL_pushresult()` is still called. `withBuffer()` only `throws` if `fn` does, hence why the
+    /// example below does not need to write `try L.withBuffer()`.
+    ///
+    /// Example:
+    /// ```swift
+    /// import CLua
+    /// // ...
+    /// let chunksize = 2048
+    /// L.withBuffer() { b in
+    ///     // Populate b however is appropriate
+    ///     while true {
+    ///         let ptr = luaL_prepbuffsize(b, chunksize)!
+    ///         let n = fread(ptr, 1, chunksize, some_file)
+    ///         luaL_addsize(b, n)
+    ///         if n < chunksize {
+    ///             break
+    ///         }
+    ///     }
+    /// }
+    /// // The resulting string is left on the top of the stack
+    /// ```
+    ///
+    /// - Parameter fn: Closure which uses the `luaL_Buffer`.
+    public func withBuffer(_ fn: (UnsafeMutablePointer<luaL_Buffer>) throws -> Void) rethrows {
+        var buf = luaL_Buffer()
+        try withUnsafeMutablePointer(to: &buf) { b in
+            luaL_buffinit(self, b)
+            defer {
+                luaL_pushresult(b)
+            }
+            try fn(b)
+        }
+    }
+
+    // MARK: - String match/gsub
+
     /// Swift wrapper around `string.match()`.
     ///
     /// This helper function allows Lua-style pattern matching on Swift Strings. See

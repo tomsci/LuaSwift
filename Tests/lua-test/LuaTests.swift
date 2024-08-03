@@ -3496,4 +3496,20 @@ final class LuaTests: XCTestCase {
         assertThrowsLuaArgumentError(try L.gsub(string: "3.14", pattern: "4", repl: "%2"),
                                      errorString: "invalid capture index %2")
     }
+
+    func test_luaL_Buf() {
+        L.withBuffer() { b in
+            XCTAssertEqual(luaL_bufflen(b), 0)
+            let ptr = luaL_prepbuffsize(b, 64)!
+            XCTAssertEqual(luaL_bufflen(b), 0)
+            let data: [CChar] = [1,2,3,4,5,6,7,8,9,10]
+            ptr.update(from: data, count: 10)
+            luaL_addsize(b, data.count)
+            XCTAssertEqual(luaL_bufflen(b), 10)
+
+            luaL_pushresult(b)
+            XCTAssertEqual(L.rawlen(-1), 10)
+            L.pop()
+        }
+    }
 }

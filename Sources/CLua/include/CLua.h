@@ -183,6 +183,51 @@ static inline int luaswift_gc1(lua_State* L, int what, int arg1) {
     return lua_gc(L, what, arg1);
 }
 
+#if defined(luaL_bufflen) || LUA_VERSION_NUM < 504
+#undef luaL_bufflen
+static inline size_t luaL_bufflen(luaL_Buffer *bf) {
+    return bf->n;
+}
+#endif
+
+#if defined(luaL_buffaddr) || LUA_VERSION_NUM < 504
+#undef luaL_buffaddr
+static inline char *luaL_buffaddr(luaL_Buffer *bf) {
+    return bf->b;
+}
+#endif
+
+#ifdef luaL_addsize
+#undef luaL_addsize
+static inline void luaL_addsize(luaL_Buffer *bf, size_t sz) {
+    bf->n += sz;
+}
+#endif
+
+#if defined(luaL_buffsub) || LUA_VERSION_NUM < 504
+#undef luaL_buffsub
+static inline void luaL_buffsub(luaL_Buffer *bf, size_t sz) {
+    bf->n -= sz;
+}
+#endif
+
+#ifdef luaL_addchar
+#undef luaL_addchar
+static inline void luaL_addchar(luaL_Buffer *bf, char c) {
+    if (bf->n == bf->size) {
+        luaL_prepbuffsize(bf, 1);
+    }
+    bf->b[bf->n++] = c;
+}
+#endif
+
+#ifdef luaL_prepbuffer
+#undef luaL_prepbuffer
+static inline char *luaL_prepbuffer(luaL_Buffer *bf) {
+    return luaL_prepbuffsize(bf, LUAL_BUFFERSIZE);
+}
+#endif
+
 #endif // LUASWIFT_MINIMAL_CLUA
 
 int luaswift_loadfile(lua_State *L, const char *filename,

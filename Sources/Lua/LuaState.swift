@@ -730,7 +730,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter nrec: If specified, preallocate space in the table for this many non-array elements.
     @inlinable
     public func newtable(narr: CInt = 0, nrec: CInt = 0) {
-        lua_createtable(self, narr, nrec)
+        precondition(narr >= 0 && nrec >= 0, "Table size cannot be negative")
+        luaswift_createtable(self, narr, nrec)
     }
 
     // MARK: - to...() functions

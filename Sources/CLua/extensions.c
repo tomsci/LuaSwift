@@ -107,6 +107,14 @@ bool luaswift_iscallclosurewrapper(lua_CFunction fn) {
     return fn == luaswift_callclosurewrapper;
 }
 
+void luaswift_createtable(lua_State *L, int narray, int nrec) {
+#if LUA_VERSION_NUM <= 504
+    lua_createtable(L, narray, nrec);
+#else
+    lua_createtable(L, (unsigned)narray, (unsigned)nrec);
+#endif
+}
+
 int luaswift_gettable(lua_State *L) {
     lua_gettable(L, 1);
     return 1;

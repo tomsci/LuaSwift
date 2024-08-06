@@ -25,8 +25,8 @@ public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable 
         defer {
             L.pop()
         }
-        if L.type(-1) == .string {
-            return LuaCallError(L.tostring(-1)!)
+        if let str = L.tostring(-1) {
+            return LuaCallError(str)
         } else {
             return LuaCallError(L.ref(index: -1))
         }

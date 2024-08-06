@@ -1681,7 +1681,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Push the 3 values needed to iterate the value at the top of the stack.
     ///
-    /// This function only exposed for implementations of pairs iterators to use, thus usually should not be called
+    /// This function is only exposed for implementations of pairs iterators to use, thus usually should not be called
     /// directly. The value is popped from the stack.
     ///
     /// Returns: `false` (and pushes `next, value, nil`) if the value isn't iterable, otherwise `true`.

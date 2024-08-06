@@ -228,6 +228,7 @@ L.register(Metatable<Foo>(fields: [
     "prop": .property { $0.prop }
 ]))
 
+// is the same as:
 L.register(Metatable<Foo>(fields: [
     "prop": Metatable<Foo>.FieldType.property(get:
         { (obj: Foo) -> String in

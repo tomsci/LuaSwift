@@ -187,6 +187,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/absindex(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkstack(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/insert(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/remove(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/newtable(narr:nrec:)``
 
 ### to...() functions
@@ -391,3 +392,4 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/getMainThread()``
 - ``Lua/Swift/UnsafeMutablePointer/rawlen(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/len(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/withBuffer(_:)``

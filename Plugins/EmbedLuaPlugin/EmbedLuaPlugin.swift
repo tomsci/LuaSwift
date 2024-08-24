@@ -111,7 +111,21 @@ extension EmbedLuaPlugin: XcodeBuildToolPlugin {
         // debugPrint(inputFiles)
 
         let exe = try context.tool(named: "embedlua").path
-        return try makeCommands(inputs: inputFiles, workDir: context.pluginWorkDirectory, executable: exe)
+
+        // Work around the fact that Xcode is a hot mess---in Catalyst builds, Xcode expands the "${CONFIGURATION}"
+        // variable in our tool path incorrectly, giving us "Debug", instead of "Debug-maccatalyst". Unfortuantely, this
+        // is compounded by the fact that we don't seem to have any way of detecting our build configuration here, so we
+        // simply guess that if the 'embedlua' dependency isn't available, we're probably building for Catalyst.
+        // Let's hope this is fixed in the future.
+        let fixupExe = if FileManager.default.fileExists(atPath: exe.string) {
+            exe
+        } else {
+            Path(exe.string.replacingOccurrences(of: "${CONFIGURATION}", with: "Debug-maccatalyst"))
+        }
+
+        let commands = try makeCommands(inputs: inputFiles, workDir: context.pluginWorkDirectory, executable: fixupExe)
+
+        return commands
     }
 }
 #endif

@@ -62,7 +62,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             push(index: index)
             push(function: luaswift_tostring, toindex: -2) // Below the copy of index
             do {
-                try pcall(nargs: 1, nret: 1)
+                try pcall(nargs: 1, nret: 1, traceback: false)
             } catch {
                 return nil
             }

@@ -1789,6 +1789,11 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.push(tuple: empty), 0)
         XCTAssertEqual(L.gettop(), 0)
 
+        // Sanity check that a function returning void is also acceptable
+        let voidfn: () -> Void = {}
+        XCTAssertEqual(L.push(tuple: voidfn()), 0)
+        XCTAssertEqual(L.gettop(), 0)
+
         let singleNonTuple = "hello"
         XCTAssertEqual(L.push(tuple: singleNonTuple), 1)
         XCTAssertEqual(L.gettop(), 1)

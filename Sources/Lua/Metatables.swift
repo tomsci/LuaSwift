@@ -144,6 +144,8 @@ public struct DefaultMetatable {
 /// Metafield names in Swift are defined without the leading underscores used in the Lua names - so for example the
 /// `index` argument to the `Metatable` constructor refers to the `__index` metafield in Lua.
 ///
+/// > Note: declaring a `close` metafield will have no effect if running with a Lua version prior to 5.4.
+///
 /// [init]: doc:Metatable/init(fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
 public struct Metatable<T> {
     internal let mt: [MetafieldName: InternalMetafieldValue]

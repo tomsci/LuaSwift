@@ -142,8 +142,9 @@ extension LuaType {
 
     /// Construct a LuaType from a C type integer.
     ///
+    /// Returns a `LuaType` representing the given type, or `nil` if `ctype` is `LUA_TNONE`.
+    ///
     /// - Parameter ctype: The C type to convert.
-    /// - Returns: A `LuaType` representing the given type, or `nil` if `ctype` is `LUA_TNONE`.
     /// - Precondition: `ctype` must be an integer in the range `LUA_TNONE...LUA_TTHREAD`.
     public init?(ctype: CInt) {
         if ctype == LUA_TNONE {
@@ -169,6 +170,8 @@ extension LuaType {
 /// which will call ``close()``.
 ///
 /// See also ``Metatable`` and [`.synthesize`](doc:Metatable/CloseType/synthesize).
+///
+/// > Note: Conformance to `Closable` has no effect if running with a Lua version prior to 5.4.
 public protocol Closable {
     /// This function will be called when a userdata representing this instance is closed by a Lua `close` event.
     ///
@@ -523,16 +526,16 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Lua 5.4 and later.
     ///
     /// > Warning: Collection parameter values are not portable between versions of Lua. Consult the appropriate
-    ///   [version of the manual](https://www.lua.org/manual/). The `majorMinorMul` and `minorMinorMul` parameters are
+    ///   [version of the manual](https://www.lua.org/manual/). The `minorMajorMul` and `majorMinorMul` parameters are
     ///   experimental and should not be considered part of the public API, until they are present in an official Lua
     ///   release.
     ///
     /// - Parameter minormul: the frequency of minor collections, or `nil` to leave the parameter unchanged.
     /// - Parameter majormul: the frequency of major collections, or `nil` to leave the parameter unchanged.
     ///   Only applicable on Lua v5.4, must be nil on later versions.
-    /// - Parameter majorMinorMul: the major-minor multiplier, or `nil` to leave the parameter unchanged.
+    /// - Parameter minorMajorMul: the minor-major multiplier, or `nil` to leave the parameter unchanged.
     ///   Only applicable post Lua v5.4, must be nil on earlier versions.
-    /// - Parameter minorMinorMul: the minor-minor multiplier, or `nil` to leave the parameter unchanged.
+    /// - Parameter majorMinorMul: the major-minor multiplier, or `nil` to leave the parameter unchanged.
     ///   Only applicable post Lua v5.4, must be nil on earlier versions.
     /// - Returns: The previous garbage collection mode.
     /// - Precondition: Do not call from within a finalizer, or when using Lua v5.3 or earlier. Do not specify a
@@ -911,8 +914,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Regardless of `guessType`, `LuaValue` may be used to represent values that cannot be expressed as Swift types,
     /// for example Lua functions which are not `lua_CFunction`.
     ///
-    /// Generally speaking, this API is not very useful, and you should normally use ``tovalue(_:)`` instead, when
-    /// needing to do any generics-based programming.
+    /// Generally speaking, this API is not very useful on its own, and you should normally use ``tovalue(_:)`` instead,
+    /// when needing to do any generics-based programming.
     ///
     /// - Parameter index: The stack index.
     /// - Parameter guessType: Whether to automatically convert `string` and `table` values based on heuristics.
@@ -979,6 +982,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Attempt to convert the value at the given stack index to type `T`.
     ///
+    /// This function attempts to convert a Lua value to the specified Swift type `T`, according to the rules outlined
+    /// below, returning `nil` if conversion to `T` was not possible. Generally speaking, it supports the inverse of
+    /// the conversions that ``push(any:)`` supports. Recursively converting nested data structures is supported if
+    /// `T` is an `Array` or `Dictionary` type.
+    ///
     /// The Lua types are each handled as follows:
     /// * `number` can be converted to `lua_Number` or to any integer type providing the value can be represented
     ///    as such, based on what `T` is. A Lua integer can always be converted to a `lua_Number` (ie `Double`)
@@ -1014,14 +1022,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
     /// called. Tuples are not supported and conversion to a tuple type will always fail and return `nil`.
     ///
-    /// Converting the `nil` Lua value when `T` is `Optional<U>` always succeeds and returns `.some(.none)`. This is the
-    /// only case where the Lua `nil` value does not return `nil`. Any behavior described above like "converts to
-    /// `SomeType`" or "when `T` is `SomeType`" also applies for any level of nested `Optional` of that type, such as
-    /// `SomeType??`.
+    /// Converting the `nil` Lua value when `T` is `Optional<U>` (thus the return type of `tovalue()` is
+    /// `Optional<Optional<U>>`) always succeeds and returns `.some(.none)`. This is the only case where the Lua `nil`
+    /// value does not return `nil`. Any behavior described above like "converts to `SomeType`" or "when `T` is
+    /// `SomeType`" also applies for any level of nested `Optional` of that type, such as `SomeType??`.
     ///
     /// If the value cannot be represented by type `T` for any other reason, then `nil` is returned. This includes
-    /// numbers being out of range, and tables with keys whose Swift value (according to the rules of `tovalue()`) is
-    /// not `Hashable`.
+    /// numbers being out of range or requiring rounding, tables with keys whose Swift value (according to the rules of
+    /// `tovalue()`) is not `Hashable`, strings not being decodable using the default string encoding, etc.
     ///
     /// Converting large tables is relatively expensive, due to the large number of dynamic casts required to correctly
     /// check all the types, although generally this shouldn't be an issue until hundreds of thousands of elements are
@@ -1271,6 +1279,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: The stack index of the table (or table-like object with a `__index` metafield).
     /// - Parameter key: The key to look up.
+    /// - Parameter convert: If true and the value for the given key is not a Lua string, it will be converted to a
+    ///   string (invoking `__tostring` metamethods if necessary) before being decoded.
     /// - Returns: The value as a `String`, or `nil` if: the key was not found; the value was not a string (and
     ///   `convert` was false); the value could not be converted to a String using the default encoding; or if a
     ///   metamethod errored.
@@ -1509,6 +1519,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: Stack index of the value to iterate.
     /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
+    /// - Parameter type: The expected type of the elements being iterated. If any element fails to convert, the
+    ///   iteration will be halted early (as if `.breakIteration` was returned).
     /// - Parameter block: The code to execute.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
     ///   does not support indexing. Rethrows anything `block` throws.
@@ -1541,6 +1553,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: Stack index of the value to iterate.
     /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
+    /// - Parameter type: The expected type of the elements being iterated. If any element fails to convert, the
+    ///   iteration will be halted early.
     /// - Parameter block: The code to execute.
     /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
     ///   does not support indexing. Rethrows anything `block` throws.
@@ -1946,7 +1960,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Note: If `LUASWIFT_NO_FOUNDATION` is defined, this function behaves identically to ``push(string:toindex:)``.
     ///
-    /// - Parameter utf8String: The `String` to push.
+    /// - Parameter string: The `String` to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push(utf8String string: String, toindex: CInt = -1) {
 #if LUASWIFT_NO_FOUNDATION
@@ -3139,7 +3153,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Precondition: The value at `index` must be a table.
     /// - Parameter index: The stack index of the table.
-    /// - Parameter utf8Key: The key to use, which will always be pushed using UTF-8 encoding.
+    /// - Parameter key: The key to use, which will always be pushed using UTF-8 encoding.
     /// - Returns: The type of the resulting value.
     @discardableResult @inlinable
     public func rawget(_ index: CInt, utf8Key key: String) -> LuaType {
@@ -4030,7 +4044,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// On return, the function representing the file is left on the top of the stack.
     ///
-    /// - Parameter file: Path to a Lua text or binary file.
+    /// - Parameter path: Path to a Lua text or binary file.
     /// - Parameter displayPath: If set, use this instead of `file` in Lua stacktraces.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
     /// - Throws: [`LuaLoadError.fileError`](doc:Lua/LuaLoadError/fileError(_:)) if `file` cannot be opened.
@@ -4113,7 +4127,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Any values returned from the file are left on the top of the stack.
     ///
-    /// - Parameter file: Path to a Lua text or binary file.
+    /// - Parameter path: Path to a Lua text or binary file.
     /// - Parameter mode: Whether to only allow text files, compiled binary chunks, or either.
     /// - Throws: [`LuaLoadError.fileError`](doc:Lua/LuaLoadError/fileError(_:)) if `file` cannot be opened.
     ///   [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the file cannot be parsed.
@@ -4127,6 +4141,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Any values returned from the chunk are left on the top of the stack.
     ///
     /// - Parameter string: The Lua script to load.
+    /// - Parameter name: The name to give to the resulting chunk. If not specified, the string parameter itself will
+    ///   be used as the name.
     /// - Throws: [`LuaLoadError.parseError`](doc:Lua/LuaLoadError/parseError(_:)) if the string cannot be parsed.
     public func dostring(_ string: String, name: String? = nil) throws {
         try load(string: string, name: name)
@@ -4379,7 +4395,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// then `let arg: Foo = try L.checkOption(1)` when argument 1 is the string "bar" will set `arg` to `Foo.bar`.
     ///
     /// - Parameter arg: Stack index of the argument.
-    /// - Parameter default: If specified, this value is returned if the argument is none or nil. If not specified then
+    /// - Parameter def: If specified, this value is returned if the argument is none or nil. If not specified then
     ///   a nil or omitted argument will throw an error.
     /// - Returns: An instance of `T`, assuming `T(rawValue: <argval>)` succeeded.
     /// - Throws: An ``argumentError(_:_:)`` if the specified argument was not of the correct raw type or could not be

@@ -676,6 +676,7 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// ```
     ///
     /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
+    /// - Parameter block: The code to execute on each iteration.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
     ///           ``LuaCallError`` if an error is thrown during an `__index` call.
@@ -754,7 +755,6 @@ public class LuaValue: Equatable, Hashable, Pushable {
     /// }
     /// ```
     ///
-    /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter block: The code to execute.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
     ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.

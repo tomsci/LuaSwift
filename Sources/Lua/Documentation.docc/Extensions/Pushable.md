@@ -6,7 +6,7 @@ Protocol adopted by any Swift type that can unambiguously be converted to a basi
 
 Any type which conforms to `Pushable` (either due to an extension provided by the `Lua` module, or by an implementation from anywhere else) can be pushed on to the Lua stack using ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``. Several functions have convenience overloads allowing `Pushable` values to be passed in directly, shortcutting the need to push them on to the stack then refer to them by stack index, such as ``Lua/Swift/UnsafeMutablePointer/setglobal(name:value:)``.
 
-Most basic data types, such as `String`, `Int`, `Bool`, `Array` and `Dictionary` are `Pushable`. In the case of `Array` and `Dictionary`, they are `Pushable` only if their element types are. It is an error to treat a `String` as `Pushable` if it is not valid in the default string encoding, see ``Lua/Swift/UnsafeMutablePointer/getDefaultStringEncoding()``.
+Most basic data types, such as `String`, `Int`, `Bool`, `Array` and `Dictionary` are `Pushable`, and convert to the expected Lua types `string`, `number`, `boolean`, and `table` respectively. `Array` and `Dictionary` are both represented as `table`, meaning `tovalue()` has additional logic to disambiguate when converting the other way. In the case of `Array` and `Dictionary`, they are `Pushable` only if their element types are. It is an error to treat a `String` as `Pushable` if it is not valid in the default string encoding, see ``Lua/Swift/UnsafeMutablePointer/getDefaultStringEncoding()``, although since the default string encoding is UTF-8, by default all `Strings` will be representable.
 
 For example:
 
@@ -21,7 +21,7 @@ L.push(["abc", "def"])
 L.setglobal(name: "foo", value: "bar")
 ```
 
-Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`. Perhaps surprisingly, `LuaState` is itself `Pushable`: this is because `LuaState` is also used to represent Lua threads (coroutines).
+Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`. Similarly `UInt64` is also not `Pushable`, because it can represent numbers larger than the Lua integral number type and thus there is ambiguity - should it wrap, assert, promote to float, etc. Perhaps surprisingly, `LuaState` is itself `Pushable`: this is because `LuaState` is also used to represent Lua threads (coroutines).
 
 For types like `LuaClosure` and `lua_CFunction` which conceptually should be pushable but the Swift type system does not permit to conform to `Pushable`, the helper functions ``function(_:)`` and ``closure(_:)`` can be used anywhere a `Pushable` is expected, allowing code like:
 

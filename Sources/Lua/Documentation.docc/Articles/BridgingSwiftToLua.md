@@ -51,7 +51,7 @@ L.register(Metatable<Foo>(fields: [
 ]))
 ```
 
-All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` or `.value(myValue)` (using a ``lua_CFunction`` or ``LuaClosure`` or ``LuaValue`` respectively), but this can require quite bit of boilerplate, for example steps (1) and (3) in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-3vudd) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
+All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` or `.value(myValue)` (using a ``lua_CFunction`` or ``LuaClosure`` or ``LuaValue`` respectively), but this can require quite bit of boilerplate, for example steps (1) and (3) in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-3vudd) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types (including returning multiple values) providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
 
 ```swift
 L.register(Metatable<Foo>(fields: [

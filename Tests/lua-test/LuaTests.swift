@@ -3512,4 +3512,32 @@ final class LuaTests: XCTestCase {
             L.pop()
         }
     }
+
+    func test_c_functions() {
+        let closure: LuaClosure = { L in
+            print("Hello")
+            return 0
+        }
+        L.push(closure)
+        L.push(closure)
+        XCTAssertTrue(L.iscfunction(1))
+        // The same closure pushed twice will result in different GCObjects (because LuaClosures always have upvalues)
+        // hence will always be different
+        XCTAssertFalse(L.rawequal(1, 2))
+        L.push(index: 1)
+        // Although any particular instance should compare equal to itself
+        XCTAssertTrue(L.rawequal(1, 3))
+
+        L.settop(0)
+
+        // C Functions on the other hand should always be equal (providing they are pushed using push(function:) ofc)
+        let fn: lua_CFunction = { L in
+            print("Hello")
+            return 0
+        }
+        L.push(function: fn)
+        L.push(function: fn)
+        XCTAssertTrue(L.iscfunction(1))
+        XCTAssertTrue(L.rawequal(1, 2))
+    }
 }

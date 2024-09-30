@@ -46,8 +46,7 @@ L.push({ L in
 })
 ```
 
-The way this is implemented is that the function responsible for pushing `LuaClosure`, ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``, actually pushes a wrapper function which is responsible for calling the `LuaClosure`, catching any errors and translating them to Lua errors. Part of this support is provided by the `LuaClosureWrapper` class, although that is an implementation detail. The `type()` of a pushed `LuaClosure` is always `function`, not `userdata`.
-
+The way this is implemented is that the function responsible for pushing `LuaClosure`, ``Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)``, actually pushes a wrapper function which is responsible for calling the `LuaClosure`, catching any errors and translating them to Lua errors. Part of this support is provided by the `LuaClosureWrapper` class, although that is an implementation detail. The `type()` of a pushed `LuaClosure` is always `function`, not `userdata`. Similarly the ``Lua/Swift/UnsafeMutablePointer/iscfunction(_:)`` API returns `true` for a `LuaClosure` regardless of it being in Swift rather than C.
 
 ## See Also
 

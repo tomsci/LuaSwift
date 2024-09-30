@@ -317,6 +317,7 @@ All of the [`push()`](#push()-functions) APIs take an optional parameter `toinde
 - ``Lua/Swift/UnsafeMutablePointer/isnil(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/isnoneornil(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/isinteger(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/iscfunction(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/rawequal(_:_:)``
 - ``Lua/Swift/UnsafeMutablePointer/equal(_:_:)``
 - ``Lua/Swift/UnsafeMutablePointer/compare(_:_:_:)``

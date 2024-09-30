@@ -673,6 +673,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return lua_isinteger(self, index) != 0
     }
 
+    /// Returns true if the value is a C (or Swift) function.
+    ///
+    /// This will also return true for a `LuaClosure` pushed using `push(_ closure: LuaClosure)`; no distinction is
+    /// made by this API between functions implemented in C and functions/closures implemented in Swift. Any
+    /// function not written in Lua is considered a 'C function' for the purposes of this API.
+    ///
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: `true` if the value is a function written in C (or Swift).
+    public func iscfunction(_ index: CInt) -> Bool {
+        return lua_iscfunction(self, index) != 0
+    }
+
     /// Pops `nitems` elements from the stack.
     ///
     /// - Parameter nitems: The number of items to pop from the stack.

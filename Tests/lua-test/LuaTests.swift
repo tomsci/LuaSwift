@@ -1336,6 +1336,24 @@ final class LuaTests: XCTestCase {
         L.pop()
     }
 
+    func test_registerMetatable_name() throws {
+        class SomeClass {}
+        class SomeNamedClass {}
+
+        L.register(Metatable<SomeClass>())
+        L.register(Metatable<SomeNamedClass>(fields: [
+            "__name": .constant("SomeNamedClass")
+        ]))
+
+        L.push(userdata: SomeClass())
+        let s1 = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertTrue(s1.hasPrefix("LuaSwift_Type_SomeClass: "))
+
+        L.push(userdata: SomeNamedClass())
+        let s2 = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertTrue(s2.hasPrefix("SomeNamedClass: "))
+    }
+
     func test_PushableWithMetatable_struct() throws {
         struct Foo: PushableWithMetatable {
             func foo() -> String { return "Foo.foo" }

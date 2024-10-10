@@ -115,36 +115,38 @@ public struct DefaultMetatable {
 /// ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)`` are accessible from Lua.
 ///
 /// `Metatable` is usually used directly in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn`` like:
+///
 /// ```swift
 /// L.register(Metatable</*type*/>(
 ///     fields: [ /* ... */ ],
-///     /* metafields ... */
+///     /* metamethods ... */
 /// ))
 /// ```
+///
 /// `fields` defines all the properties and functions that the value should have in Lua. It is a dictionary of names to
 /// some form of closure, depending on the field type. It is a convenience alternative to specifying an explicit
-/// `index` metafield (see below) using type inference on the closure to avoid some of the type conversion boilerplate
+/// `index` metamethod (see below) using type inference on the closure to avoid some of the type conversion boilerplate
 /// that would otherwise have to be written. Various helper functions are defined by ``Metatable/FieldType`` for 
 /// different types of field.
 ///
 /// See <doc:BridgingSwiftToLua#Defining-a-metatable> for examples.
 ///
-/// `fields`, and all other metafields that can be specified in the constructor such as `call`, `tostring` etc, are
+/// `fields`, and all other metamethods that can be specified in the constructor such as `call`, `tostring` etc, are
 /// all optional - the resulting metatable contains only the (meta)fields specified. A completely empty metatable which
 /// does nothing except define a unique type Lua-side is perfectly valid and can be useful in some circumstances.
 ///
-/// The remaining optional parameters to the `Metatable` constructor are for defining metafields -- each argument
+/// The remaining optional parameters to the `Metatable` constructor are for defining metamethods -- each argument
 /// usually defines a function which is called when the relevant Lua metamethod event occurs. Various helpers are
 /// defined to assist with this -- from `.closure { ... }` which provides the most flexibility, to `.memberfn
 /// { ... }` which uses type inference to reduce the amount of boilerplate that needs to be written, at the cost of
-/// slightly limiting expressiveness. See [`init(...)`][init] for the complete list of metafields. These correspond to
-/// all the metafields [defined by Lua](https://www.lua.org/manual/5.4/manual.html#2.4) that are valid for userdata and
+/// slightly limiting expressiveness. See [`init(...)`][init] for the complete list of metamethods. These correspond to
+/// all the metamethods [defined by Lua](https://www.lua.org/manual/5.4/manual.html#2.4) that are valid for userdata and
 /// that aren't used internally by LuaSwift.
 ///
-/// Metafield names in Swift are defined without the leading underscores used in the Lua names - so for example the
-/// `index` argument to the `Metatable` constructor refers to the `__index` metafield in Lua.
+/// Metamethod names in Swift are defined without the leading underscores used in the Lua names - so for example the
+/// `index` argument to the `Metatable` constructor refers to the `__index` metamethod in Lua.
 ///
-/// > Note: declaring a `close` metafield will have no effect if running with a Lua version prior to 5.4.
+/// > Note: declaring a `close` metamethod will have no effect if running with a Lua version prior to 5.4.
 ///
 /// [init]: doc:Metatable/init(fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
 public struct Metatable<T> {
@@ -225,6 +227,8 @@ public struct Metatable<T> {
                     L.push(closure)
                 case .value(let value):
                     L.push(value)
+                case .constant(let closure):
+                    return try closure(L)
                 case .none:
                     L.pushnil()
                 }
@@ -624,6 +628,7 @@ internal enum InternalUserdataField {
     case value(LuaValue)
     case property(LuaClosure)
     case rwproperty(LuaClosure, LuaClosure)
+    case constant(LuaClosure)
 }
 
 /// Helper struct used in the registration of metatables.
@@ -677,6 +682,19 @@ extension Metatable.FieldType {
         } else {
             return Metatable.FieldType(value: .property(getter))
         }
+    }
+
+    /// Add a constant value to the metatable.
+    ///
+    /// This value is shared by all instances using this metatable, and as such is only suitable to use if the value
+    /// will never change over the lifetime of the `LuaState`. For anything more dynamic, use `.property`. 
+    public static func constant<ValType>(_ value: ValType) -> Metatable.FieldType {
+        // This closure only exists to type-erase value
+        let getter: LuaClosure = { L in
+            L.push(any: value)
+            return 1
+        }
+        return Metatable.FieldType(value: .constant(getter))
     }
 
     public static func function(_ function: lua_CFunction) -> Metatable.FieldType {

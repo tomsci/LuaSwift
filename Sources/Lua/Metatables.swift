@@ -225,8 +225,6 @@ public struct Metatable<T> {
                     L.push(function: fn)
                 case .closure(let closure):
                     L.push(closure)
-                case .value(let value):
-                    L.push(value)
                 case .constant(let closure):
                     return try closure(L)
                 case .none:
@@ -625,7 +623,6 @@ extension Metatable.LeType where T: Comparable {
 internal enum InternalUserdataField {
     case function(lua_CFunction)
     case closure(LuaClosure)
-    case value(LuaValue)
     case property(LuaClosure)
     case rwproperty(LuaClosure, LuaClosure)
     case constant(LuaClosure)
@@ -703,10 +700,6 @@ extension Metatable.FieldType {
 
     public static func closure(_ closure: @escaping LuaClosure) -> Metatable.FieldType {
         return Metatable.FieldType(value: .closure(closure))
-    }
-
-    public static func value(_ value: LuaValue) -> Metatable.FieldType {
-        return Metatable.FieldType(value: .value(value))
     }
 
     /// Used to define a zero-arguments member function in a metatable.

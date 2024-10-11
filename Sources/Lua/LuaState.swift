@@ -3097,8 +3097,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 push(function: function)
             case .closure(let closure):
                 push(closure)
-            case .value(let value):
-                push(value)
             case .constant(let closure):
                 // Guaranteed not to throw, because closure will always be the one defined by
                 // Metatable.FieldType.constant() which does not throw and is only a LuaClosure so it can capture the

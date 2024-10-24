@@ -2989,7 +2989,8 @@ final class LuaTests: XCTestCase {
         XCTAssertFalse(L.isinteger(4))
     }
 
-#if !LUASWIFT_NO_FOUNDATION
+#if !LUASWIFT_NO_FOUNDATION && !os(Linux)
+
     func test_push_NSNumber() throws {
         let n: NSNumber = 1234
         let nd: NSNumber = 1234.0

@@ -11,7 +11,9 @@ import CLua
 /// This enum exists because CoreFoundation contains many encodings not supported by `String.Encoding`.
 public enum LuaStringEncoding {
     case stringEncoding(String.Encoding)
+#if !os(Linux)
     case cfStringEncoding(CFStringEncodings)
+#endif
 }
 
 extension String {
@@ -19,6 +21,7 @@ extension String {
         switch encoding {
         case .stringEncoding(let enc):
             self.init(data: data, encoding: enc)
+#if !os(Linux)
         case .cfStringEncoding(let enc):
             let nsenc =  CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(enc.rawValue))
             if let nsstring = NSString(data: data, encoding: nsenc) {
@@ -26,6 +29,7 @@ extension String {
             } else {
                 return nil
             }
+#endif
         }
     }
 
@@ -33,10 +37,12 @@ extension String {
         switch encoding {
         case .stringEncoding(let enc):
             return self.data(using: enc)
+#if !os(Linux)
         case .cfStringEncoding(let enc):
             let nsstring = self as NSString
             let nsenc = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(enc.rawValue))
             return nsstring.data(using: nsenc)
+#endif
         }
     }
 }

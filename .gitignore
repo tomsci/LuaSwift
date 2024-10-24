@@ -1,3 +1,4 @@
 .build
 .swiftpm
+.vscode
 docs-from-main

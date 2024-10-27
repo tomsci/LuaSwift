@@ -984,8 +984,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// This function attempts to convert a Lua value to the specified Swift type `T`, according to the rules outlined
     /// below, returning `nil` if conversion to `T` was not possible. Generally speaking, it supports the inverse of
-    /// the conversions that ``push(any:)`` supports. Recursively converting nested data structures is supported if
-    /// `T` is an `Array` or `Dictionary` type.
+    /// the conversions that [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)) supports. Recursively
+    /// converting nested data structures is supported if `T` is an `Array` or `Dictionary` type.
     ///
     /// The Lua types are each handled as follows:
     /// * `number` can be converted to `lua_Number` or to any integer type providing the value can be represented
@@ -1003,20 +1003,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   `Dictionary<AnyHashable, Any>` is always returned, regardless of whether the Lua table looks more like an
     ///   array or a dictionary. Call ``Lua/Swift/Dictionary/luaTableToArray()-7jqqs`` subsequently if desired.
     ///   Similarly, if `T` is `AnyHashable`, a `Dictionary<AnyHashable, AnyHashable>` will always be returned
-    ///   (providing both key and value can be converted to `AnyHashable`).
+    ///   (providing both key and value can be converted to `AnyHashable`). When converting to an `Array`, only the
+    ///   integer keys from 1 upwards are considered (and are adjusted to be zero-based), any other keys will be
+    ///   ignored. When converting to a `Dictionary`, all keys are considered and integer indexes are not adjusted.
     /// * `userdata` - providing the value was pushed via
     ///   [`push<U>(userdata:)`](doc:Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)), converts to `U` or
     ///   anything `U` can be cast to. If the value was not pushed via `push(userdata:)` (a "foreign" userdata) then it
     ///   converts to `UnsafeRawPointer` or `UnsafeMutableRawPointer`. If `T` is `Any` or `AnyHashable` and the value is
     ///   a foreign userdata, a `UnsafeMutableRawPointer` is returned.
     /// * `function` - if the function is a C function, it is represented by `lua_CFunction`. If the function was pushed
-    ///   with ``push(_:numUpvalues:toindex:)``, is represented by ``LuaClosure``. Otherwise it is represented by
+    ///   with [`push(_ closure:)`](doc:Lua/Swift/UnsafeMutablePointer/push(_:numUpvalues:toindex:)), is represented by ``LuaClosure``. Otherwise it is represented by
     ///   ``LuaValue``. The conversion succeeds if the represented type can be cast to `T`.
     /// * `thread` converts to `LuaState`.
     /// * `lightuserdata` converts to `UnsafeRawPointer?` or `UnsafeMutableRawPointer?`. If `T` is `Any` or
     ///   `AnyHashable`, a `UnsafeMutableRawPointer?` is returned. If the value is definitely not the null pointer,
     ///   then the non-optional types `UnsafeRawPointer` or `UnsafeMutableRawPointer` can be used -- the null pointer
-    ///   lightuserdata will not convert to the non-optional types (because in swift a non-optional raw pointer is not
+    ///   lightuserdata will not convert to the non-optional types (because in Swift a non-optional raw pointer is not
     ///   allowed to be null).
     ///
     /// If `T` is `LuaValue`, the conversion will always succeed for all Lua value types as if ``ref(index:)`` were
@@ -2260,8 +2262,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// * If `value` is one of the Foundation types `NSNumber`, `NSString` or `NSData`, or is a Core Foundation type
     ///   that is toll-free bridged to one of those types, then it is pushed as a `NSNumber`, `String`, or `Data`
     ///   respectively.
-    /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, `push(any:)` is called recursively to push
-    ///   its elements.
+    /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, a `table` is created and `push(any:)`
+    ///   is called recursively to push its elements. In the case of an `Array`, the Lua table uses Lua 1-based array
+    ///   indexing conventions, so the first element of `value` will be at index 1.
     /// * If `value` is a `lua_CFunction`, ``push(function:toindex:)`` is used.
     /// * If `value` is a `LuaClosure`, ``push(_:numUpvalues:toindex:)`` is used (with `numUpvalues=0`).
     /// * If `value` is a zero-argument closure that returns `Void` or `Any?`, it is pushed using `push(closure:)`.
@@ -3094,8 +3097,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 push(function: function)
             case .closure(let closure):
                 push(closure)
-            case .value(let value):
-                push(value)
+            case .constant(let closure):
+                // Guaranteed not to throw, because closure will always be the one defined by
+                // Metatable.FieldType.constant() which does not throw and is only a LuaClosure so it can capture the
+                // value and type-erase it.
+                let _ = try! closure(self)
             case .property(_), .rwproperty(_, _):
                 fatalError() // By definition cannot hit this
             }

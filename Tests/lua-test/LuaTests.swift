@@ -1174,7 +1174,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.gettop(), 0)
 
         // Avoid calling lua_toclose, to make this test still compile with Lua 5.3
-        try! L.load(string: """
+        try L.load(string: """
             val = ...
             local arg <close> = val
             """)
@@ -1185,7 +1185,7 @@ final class LuaTests: XCTestCase {
             let valUserdata: DeinitChecker? = L.touserdata(-1)
             XCTAssertNotNil(valUserdata)
         }
-        try! L.pcall(nargs: 1, nret: 0)
+        try L.pcall(nargs: 1, nret: 0)
         XCTAssertEqual(deinited, 1)
         XCTAssertEqual(L.getglobal("val"), .userdata)
         do {
@@ -1213,7 +1213,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.gettop(), 0)
 
         // Avoid calling lua_toclose, to make this test still compile with Lua 5.3
-        try! L.load(string: """
+        try L.load(string: """
             val = ...
             local arg <close> = val
             """)
@@ -1225,7 +1225,7 @@ final class LuaTests: XCTestCase {
             let valUserdata: DeinitChecker? = L.touserdata(-1)
             XCTAssertNotNil(valUserdata)
         }
-        try! L.pcall(nargs: 1, nret: 0)
+        try L.pcall(nargs: 1, nret: 0)
         XCTAssertEqual(deinited, 0)
         XCTAssertEqual(closed, 1)
         XCTAssertEqual(L.getglobal("val"), .userdata)
@@ -1336,6 +1336,24 @@ final class LuaTests: XCTestCase {
         L.pop()
     }
 
+    func test_registerMetatable_name() throws {
+        class SomeClass {}
+        class SomeNamedClass {}
+
+        L.register(Metatable<SomeClass>())
+        L.register(Metatable<SomeNamedClass>(fields: [
+            "__name": .constant("SomeNamedClass")
+        ]))
+
+        L.push(userdata: SomeClass())
+        let s1 = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertTrue(s1.hasPrefix("LuaSwift_Type_SomeClass: "))
+
+        L.push(userdata: SomeNamedClass())
+        let s2 = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertTrue(s2.hasPrefix("SomeNamedClass: "))
+    }
+
     func test_PushableWithMetatable_struct() throws {
         struct Foo: PushableWithMetatable {
             func foo() -> String { return "Foo.foo" }
@@ -1412,7 +1430,7 @@ final class LuaTests: XCTestCase {
                 return 0
             }
         ])
-        try! L.load(string: "obj = ...; return obj.woop()")
+        try L.load(string: "obj = ...; return obj.woop()")
         // Check that Foo gets the default metatable with a woop() fn
         L.push(userdata: Foo())
         try L.pcall(nargs: 1, nret: 1)
@@ -1432,7 +1450,7 @@ final class LuaTests: XCTestCase {
                 return 1
             }
         ))
-        try! L.load(string: "obj = ...; return obj()")
+        try L.load(string: "obj = ...; return obj()")
         // Check that Foo gets the default metatable and is callable
         L.push(userdata: Foo())
         try L.pcall(nargs: 1, nret: 1)
@@ -1622,7 +1640,7 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(L.toany(1))
         L.pop()
 
-        try! L.dostring("function foo() end")
+        try L.dostring("function foo() end")
         L.getglobal("foo")
         XCTAssertNotNil(L.toany(1) as? LuaValue)
         L.pop()
@@ -2066,7 +2084,7 @@ final class LuaTests: XCTestCase {
     }
 
     func test_tovalue_userdata_dict() throws {
-        let ud: UnsafeMutableRawPointer = lua_newuserdata(L, 8)!
+        let ud: UnsafeMutableRawPointer = lua_newuserdata(L, 8)
         let udVal: LuaValue = L.popref()
         let lud: UnsafeMutableRawPointer = malloc(4)
         defer {
@@ -2161,10 +2179,10 @@ final class LuaTests: XCTestCase {
     }
 
     func test_ref_scoping() {
-        var ref: LuaValue? = L.ref(any: "hello")
-        XCTAssertEqual(ref!.type, .string) // shut up compiler complaining about unused ref
+        var ref: LuaValue! = L.ref(any: "hello")
+        XCTAssertEqual(ref.type, .string) // shut up compiler complaining about unused ref
         L.close()
-        XCTAssertNil(ref!.internal_get_L())
+        XCTAssertNil(ref.internal_get_L())
         // The act of nilling this will cause a crash if the close didn't nil ref.L
         ref = nil
 
@@ -2281,7 +2299,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(intVal, 3)
 
         // This is a test for tovalue(_:type:) really
-        // XCTAssertEqual(Int8(L.tovalue(1, type: Int.self)!), 3)
+        XCTAssertEqual(Int8(try XCTUnwrap(L.tovalue(1, type: Int.self))), 3)
 
         let integerVal: lua_Integer? = L.tovalue(1)
         XCTAssertEqual(integerVal, 3)

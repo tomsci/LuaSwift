@@ -935,9 +935,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return ptr
         case .number:
             if let intVal = tointeger(index) {
+#if LUASWIFT_ANYHASHABLE_BROKEN
+                return intVal
+#else
                 // Integers are returned type-erased (thanks to AnyHashable) meaning fewer cast restrictions in
                 // eg tovalue()
                 return AnyHashable(intVal)
+#endif
             } else {
                 return tonumber(index)
             }
@@ -1116,6 +1120,48 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 return UnsafeRawPointer(mutptr) as? T
             }
         }
+
+#if LUASWIFT_ANYHASHABLE_BROKEN
+        // Then the directCast clause above won't have worked, and we need to try every integer type
+        if t == .number, let intVal = value as? lua_Integer {
+            if let intSubType = Int(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = Int8(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = Int16(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = Int32(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = Int64(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = UInt(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = UInt8(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = UInt16(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = UInt32(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let intSubType = UInt64(exactly: intVal), let ret = intSubType as? T {
+                return ret
+            }
+            if let dbl = Double(exactly: intVal), let ret = dbl as? T {
+                return ret
+            }
+            if let flt = Float(exactly: intVal), let ret = flt as? T {
+                return ret
+            }
+        }
+#endif
 
         return nil
     }

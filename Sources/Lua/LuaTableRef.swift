@@ -88,6 +88,7 @@ public struct LuaTableRef {
         }
     }
 
+    // ElementType will only ever be Any or AnyHashable (needed when resolving Dictionary keys)
     private func doResolveArray<ElementType>(test: (Array<ElementType>) -> Bool) -> Array<ElementType>? {
         var testArray = Array<ElementType>()
         func good(_ val: Any) -> Bool {
@@ -119,7 +120,11 @@ public struct LuaTableRef {
             elementType = .rawpointer
             acceptsAny = false
         } else {
+#if LUASWIFT_ANYHASHABLE_BROKEN
+            elementType = TypeConstraint(intTest: good)
+#else
             elementType = nil
+#endif
             acceptsAny = false
         }
 
@@ -162,6 +167,10 @@ public struct LuaTableRef {
                     result.append(ref.guessType()) // as per tovalue() docs
                 case .dict, .array, .hashableDict, .hashableArray, .direct, .rawpointer: // None of these are applicable for TypeConstraint(stringTest:)
                     fatalError()
+#if LUASWIFT_ANYHASHABLE_BROKEN
+                case .int, .int8, .int16, .int32, .int64, .uint, .uint8, .uint16, .uint32, .uint64: // Ditto
+                    fatalError()
+#endif
                 case .none: // TypeConstraint(stringTest:) failed to find any compatible type
                     return nil
                 }
@@ -193,10 +202,14 @@ public struct LuaTableRef {
                         resolvedVal = nil
                     }
                 case .string, .bytes, .direct, .rawpointer: // None of these are applicable for TypeConstraint(tableTest:)
-                    return nil
+                    fatalError()
+#if LUASWIFT_ANYHASHABLE_BROKEN
+                case .int, .int8, .int16, .int32, .int64, .uint, .uint8, .uint16, .uint32, .uint64: // Ditto
+                    fatalError()
+#endif
 #if !LUASWIFT_NO_FOUNDATION
                 case .data: // ditto
-                    return nil
+                    fatalError()
 #endif
                 case .none: // TypeConstraint(tableTest:) failed to find any compatible type
                     return nil
@@ -211,6 +224,19 @@ public struct LuaTableRef {
             } else if elementType == .rawpointer, let mut = value as? UnsafeMutableRawPointer {
                 result.append(UnsafeRawPointer(mut))
             } else {
+#if LUASWIFT_ANYHASHABLE_BROKEN
+                if let elementType {
+                    switch elementType {
+                    case .int, .int8, .int16, .int32, .int64, .uint, .uint8, .uint16, .uint32, .uint64:
+                        // Reuse PossibleValue's actualValue cos I'm lazy (L isn't actually used but must be specified...)
+                        result.append(PossibleValue(type: elementType, testValue: value).actualValue(L, 0, value)!)
+                        continue
+                    default:
+                        break
+                    }
+                    
+                }
+#endif
                 // Nothing from toany has made T happy, give up
                 return nil
             }
@@ -330,6 +356,10 @@ public struct LuaTableRef {
             case .data: self.testValue = emptyData
 #endif
             case .direct: self.testValue = testValue!
+#if LUASWIFT_ANYHASHABLE_BROKEN
+            case .int, .int8, .int16, .int32, .int64, .uint, .uint8, .uint16, .uint32, .uint64:
+                self.testValue = testValue!
+#endif
             case .luavalue: self.testValue = LuaValue.nilValue
             case .anyhashable: self.testValue = opaqueHashable
             case .rawpointer: self.testValue = dummyRawPtr
@@ -346,6 +376,18 @@ public struct LuaTableRef {
             case .array, .hashableArray: fatalError("Can't call actualValue on an array")
             case .dict, .hashableDict: fatalError("Can't call actualValue on a dict")
             case .direct: return anyVal
+#if LUASWIFT_ANYHASHABLE_BROKEN
+            case .int: return Int(exactly: anyVal as! lua_Integer)
+            case .int8: return Int8(exactly: anyVal as! lua_Integer)
+            case .int16: return Int16(exactly: anyVal as! lua_Integer)
+            case .int32: return Int32(exactly: anyVal as! lua_Integer)
+            case .int64: return Int64(exactly: anyVal as! lua_Integer)
+            case .uint: return UInt(exactly: anyVal as! lua_Integer)
+            case .uint8: return UInt8(exactly: anyVal as! lua_Integer)
+            case .uint16: return UInt16(exactly: anyVal as! lua_Integer)
+            case .uint32: return UInt32(exactly: anyVal as! lua_Integer)
+            case .uint64: return UInt64(exactly: anyVal as! lua_Integer)
+#endif
             case .luavalue: return L.ref(index: index)
             case .anyhashable:
                 if let stringRef {
@@ -416,6 +458,46 @@ public struct LuaTableRef {
                 if type == nil || type == .direct {
                     result.append(PossibleValue(type: .direct, testValue: value))
                 }
+#if LUASWIFT_ANYHASHABLE_BROKEN
+                if value is lua_Integer {
+                    if type == nil || type == .int {
+                        result.append(PossibleValue(type: .int, testValue: 0 as Int))
+                    }
+                    if type == nil || type == .int8 {
+                        result.append(PossibleValue(type: .int8, testValue: 0 as Int8))
+                    }
+                    if type == nil || type == .int16 {
+                        result.append(PossibleValue(type: .int16, testValue: 0 as Int16))
+                    }
+                    if type == nil || type == .int16 {
+                        result.append(PossibleValue(type: .int16, testValue: 0 as Int16))
+                    }
+                    if type == nil || type == .int32 {
+                        result.append(PossibleValue(type: .int32, testValue: 0 as Int32))
+                    }
+                    if type == nil || type == .int64 {
+                        result.append(PossibleValue(type: .int64, testValue: 0 as Int64))
+                    }
+                    if type == nil || type == .uint {
+                        result.append(PossibleValue(type: .uint, testValue: 0 as UInt))
+                    }
+                    if type == nil || type == .uint8 {
+                        result.append(PossibleValue(type: .uint8, testValue: 0 as UInt8))
+                    }
+                    if type == nil || type == .uint16 {
+                        result.append(PossibleValue(type: .uint16, testValue: 0 as UInt16))
+                    }
+                    if type == nil || type == .uint16 {
+                        result.append(PossibleValue(type: .uint16, testValue: 0 as UInt16))
+                    }
+                    if type == nil || type == .uint32 {
+                        result.append(PossibleValue(type: .uint32, testValue: 0 as UInt32))
+                    }
+                    if type == nil || type == .uint64 {
+                        result.append(PossibleValue(type: .uint64, testValue: 0 as UInt64))
+                    }
+                }
+#endif
                 if type == nil || type == .rawpointer {
                     result.append(PossibleValue(type: .rawpointer))
                 }
@@ -462,6 +544,18 @@ enum TypeConstraint {
     case anyhashable // AnyHashable (or Any, in some contexts)
     case luavalue
     case rawpointer // UnsafeRawPointer (relevant when we have UnsafeMutableRawPointer from a [light]userdata)
+#if LUASWIFT_ANYHASHABLE_BROKEN
+    case int
+    case int8
+    case int16
+    case int32
+    case int64
+    case uint
+    case uint8
+    case uint16
+    case uint32
+    case uint64
+#endif
 }
 
 extension TypeConstraint {
@@ -495,6 +589,34 @@ extension TypeConstraint {
             return nil
         }
     }
+
+#if LUASWIFT_ANYHASHABLE_BROKEN
+    init?(intTest test: (Any) -> Bool) {
+        if test(0 as Int) {
+            self = .int
+        } else if test(0 as Int8) {
+            self = .int8
+        } else if test(0 as Int16) {
+            self = .int16
+        } else if test(0 as Int32) {
+            self = .int32
+        } else if test(0 as Int64) {
+            self = .int64
+        } else if test(0 as UInt) {
+            self = .uint
+        } else if test(0 as UInt8) {
+            self = .uint8
+        } else if test(0 as UInt16) {
+            self = .uint16
+        } else if test(0 as UInt32) {
+            self = .uint32
+        } else if test(0 as UInt64) {
+            self = .uint64
+        } else {
+            return nil
+        }
+    }
+#endif
 }
 
 fileprivate func isArrayType<T>(_: T?) -> Bool {
@@ -517,9 +639,9 @@ extension Dictionary where Key == AnyHashable, Value == Any {
     ///
     /// This function is also defined on `Dictionary<AnyHashable, AnyHashable>`, see ``luaTableToArray()-3ngmn``.
     public func luaTableToArray() -> [Any]? {
-        var intKeys: [Int] = []
+        var intKeys: [lua_Integer] = []
         for (k, _) in self {
-            if let intKey = k as? Int, intKey > 0 {
+            if let intKey = k as? lua_Integer, intKey > 0 {
                 intKeys.append(intKey)
             } else {
                 // Non integer key found, doom
@@ -530,9 +652,9 @@ extension Dictionary where Key == AnyHashable, Value == Any {
         // Now check all those integer keys are a sequence and build the result
         intKeys.sort()
         var result: [Any] = []
-        var i = 1
+        var i: lua_Integer = 1
         while i <= intKeys.count {
-            if intKeys[i-1] == i {
+            if intKeys[Int(i-1)] == i {
                 result.append(self[i]!)
                 i = i + 1
             } else {
@@ -557,9 +679,9 @@ extension Dictionary where Key == AnyHashable, Value == AnyHashable {
     ///
     /// This function is also defined on `Dictionary<AnyHashable, Any>`, see ``luaTableToArray()-7jqqs``.
     public func luaTableToArray() -> [AnyHashable]? {
-        var intKeys: [Int] = []
+        var intKeys: [lua_Integer] = []
         for (k, _) in self {
-            if let intKey = k as? Int, intKey > 0 {
+            if let intKey = k as? lua_Integer, intKey > 0 {
                 intKeys.append(intKey)
             } else {
                 // Non integer key found, doom
@@ -570,9 +692,9 @@ extension Dictionary where Key == AnyHashable, Value == AnyHashable {
         // Now check all those integer keys are a sequence and build the result
         intKeys.sort()
         var result: [AnyHashable] = []
-        var i = 1
+        var i: lua_Integer = 1
         while i <= intKeys.count {
-            if intKeys[i-1] == i {
+            if intKeys[Int(i-1)] == i {
                 result.append(self[i]!)
                 i = i + 1
             } else {

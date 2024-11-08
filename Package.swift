@@ -34,6 +34,7 @@ let package = Package(
             resources: [],
             swiftSettings: [
                 // .define("LUASWIFT_NO_FOUNDATION")
+                .define("LUASWIFT_ANYHASHABLE_BROKEN", .when(platforms: [.linux]))
             ]
         ),
         .target(
@@ -82,6 +83,7 @@ let package = Package(
             ],
             swiftSettings: [
                 // .define("LUASWIFT_NO_FOUNDATION")
+                .define("LUASWIFT_ANYHASHABLE_BROKEN", .when(platforms: [.linux]))
             ],
             plugins: [
                 .plugin(name: "EmbedLuaPlugin")

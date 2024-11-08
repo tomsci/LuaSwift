@@ -4,6 +4,7 @@
 #if !LUASWIFT_NO_FOUNDATION // canImport(Foundation)
 
 import Foundation
+import CoreFoundation
 import CLua
 
 /// Represents all the String encodings that this framework can convert strings to and from.

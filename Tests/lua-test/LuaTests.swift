@@ -4,6 +4,10 @@
 import XCTest
 import Lua
 import CLua
+#if !LUASWIFT_NO_FOUNDATION
+import Foundation
+import CoreFoundation
+#endif
 
 fileprivate func dummyFn(_ L: LuaState!) -> CInt {
     return 0
@@ -2421,8 +2425,11 @@ final class LuaTests: XCTestCase {
         let asciiByteArray: [UInt8] = [0x64, 0x65, 0x66]
         let nonUtf8ByteArray: [UInt8] = [0xFF, 0xFF, 0xFF]
         let intArray = [11, 22, 33]
+        let luaIntegerArray: [lua_Integer] = [11, 22, 33]
         let intArrayAsDict = [1: 11, 2: 22, 3: 33]
+        let intArrayAsLuaIntegerDict: [lua_Integer: lua_Integer] = [1: 11, 2: 22, 3: 33]
         let stringIntDict = ["aa": 11, "bb": 22, "cc": 33]
+        let stringLuaIntegerDict: [String: lua_Integer] = ["aa": 11, "bb": 22, "cc": 33]
         let stringArrayIntDict: Dictionary<[String], Int> = [ ["abc"]: 123 ]
         let whatEvenIsThis: Dictionary<Dictionary<String, Dictionary<Int, Int>>, Int> = [ ["abc": [123: 456]]: 789 ]
 
@@ -2442,12 +2449,20 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tovalue(3, type: Any.self) as? [UInt8], nonUtf8ByteArray)
         XCTAssertEqual(L.tovalue(3, type: AnyHashable.self) as? [UInt8], nonUtf8ByteArray)
 
+        XCTAssertEqual(L.tovalue(4, type: Any.self) as? Dictionary<lua_Integer, lua_Integer>, intArrayAsLuaIntegerDict)
+        XCTAssertEqual((L.tovalue(4, type: Any.self) as? Dictionary<AnyHashable, Any>)?.luaTableToArray() as? Array<lua_Integer>, luaIntegerArray)
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertEqual(L.tovalue(4, type: Dictionary<AnyHashable, Any>.self) as? Dictionary<Int, Int>, intArrayAsDict)
         XCTAssertEqual(L.tovalue(4, type: Any.self) as? Dictionary<Int, Int>, intArrayAsDict)
         XCTAssertEqual((L.tovalue(4, type: Any.self) as? Dictionary<AnyHashable, Any>)?.luaTableToArray() as? Array<Int>, intArray)
+#endif
+
+        XCTAssertEqual(L.tovalue(5, type: Dictionary<AnyHashable, Any>.self) as? Dictionary<String, lua_Integer>, stringLuaIntegerDict)
+        XCTAssertEqual(L.tovalue(5, type: Any.self) as? Dictionary<String, lua_Integer>, stringLuaIntegerDict)
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertEqual(L.tovalue(5, type: Dictionary<AnyHashable, Any>.self) as? Dictionary<String, Int>, stringIntDict)
         XCTAssertEqual(L.tovalue(5, type: Any.self) as? Dictionary<String, Int>, stringIntDict)
-
+#endif
 
         let tableKeyDict = L.tovalue(6, type: Dictionary<[String], Int>.self)
         XCTAssertEqual(tableKeyDict, stringArrayIntDict)
@@ -2458,8 +2473,12 @@ final class LuaTests: XCTestCase {
 
         // tables _can_ now be returned as AnyHashable - they will always convert to Dictionary<AnyHashable, AnyHashable>.
         let anyHashableDict: AnyHashable = try XCTUnwrap(L.tovalue(5))
+        XCTAssertEqual(anyHashableDict as? [String: lua_Integer], stringLuaIntegerDict)
+        XCTAssertEqual((L.tovalue(4, type: AnyHashable.self) as? Dictionary<AnyHashable, AnyHashable>)?.luaTableToArray() as? Array<lua_Integer>, luaIntegerArray)
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertEqual(anyHashableDict as? [String: Int], stringIntDict)
         XCTAssertEqual((L.tovalue(4, type: AnyHashable.self) as? Dictionary<AnyHashable, AnyHashable>)?.luaTableToArray() as? Array<Int>, intArray)
+#endif
     }
 
     // There are 2 basic Any pathways to worry about, which are tovalue<Any> and tovalue<AnyHashable>.
@@ -2471,9 +2490,15 @@ final class LuaTests: XCTestCase {
     func test_tovalue_any_int() {
         L.push(123)
         let anyVal: Any? = L.tovalue(1)
+        XCTAssertNotNil(anyVal as? lua_Integer)
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertNotNil(anyVal as? Int)
+#endif
         let anyHashable: AnyHashable? = L.tovalue(1)
+        XCTAssertNotNil(anyHashable as? lua_Integer)
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertNotNil(anyHashable as? Int)
+#endif
     }
 
     func test_tovalue_any_string() {
@@ -2520,12 +2545,18 @@ final class LuaTests: XCTestCase {
         L.push(["abc": 123])
 
         let anyDict: Dictionary<AnyHashable, Any> = try XCTUnwrap(L.tovalue(1))
+        XCTAssertEqual(anyDict as? [String: lua_Integer], ["abc": 123])
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertEqual(anyDict as? [String: Int], ["abc": 123])
+#endif
 
         // Check T=Any does in fact behave the same as T=Dictionary<AnyHashable, Any>
         let anyVal: Any = try XCTUnwrap(L.tovalue(1))
         XCTAssertTrue(type(of: anyVal) == Dictionary<AnyHashable, Any>.self)
+        XCTAssertEqual(anyVal as? [String: lua_Integer], ["abc": 123])
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertEqual(anyVal as? [String: Int], ["abc": 123])
+#endif
     }
 
     func test_tovalue_stringanydict() throws {
@@ -2534,7 +2565,10 @@ final class LuaTests: XCTestCase {
         L.rawset(-1, key: "123", value: 456)
         let anyDict: Dictionary<String, Any> = try XCTUnwrap(L.tovalue(1))
         XCTAssertEqual(anyDict["abc"] as? String, "def")
+        XCTAssertEqual(anyDict["123"] as? lua_Integer, 456)
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         XCTAssertEqual(anyDict["123"] as? Int, 456)
+#endif
     }
 
     func test_tovalue_luavalue() throws {
@@ -2682,9 +2716,12 @@ final class LuaTests: XCTestCase {
 
         XCTAssertThrowsError(try L.load(string: "woop woop"), "", { err in
             let expected = #"[string "woop woop"]:1: syntax error near 'woop'"#
-            XCTAssertEqual((err as? LuaLoadError), .parseError(expected))
-            XCTAssertEqual((err as CustomStringConvertible).description, "LuaLoadError.parseError(\(expected))")
-            XCTAssertEqual(err.localizedDescription, "LuaLoadError.parseError(\(expected))")
+            // Note, casting err directly to CustomStringConvertible does _not_ pick up the LuaLoadError impl when
+            // testing on Linux...
+            let loadErr = err as? LuaLoadError
+            XCTAssertEqual(loadErr, .parseError(expected))
+            XCTAssertEqual((loadErr as CustomStringConvertible?)?.description, "LuaLoadError.parseError(\(expected))")
+            XCTAssertEqual(loadErr?.localizedDescription, "LuaLoadError.parseError(\(expected))")
         })
 
         XCTAssertThrowsError(try L.load(string: "woop woop", name: "@nope.lua"), "", { err in
@@ -3020,7 +3057,11 @@ final class LuaTests: XCTestCase {
         // CF bridging is _weird_: I cannot write L.push(cfn) ie CFNumber does not directly conform to Pushable, but
         // the conversion to Pushable will always succeed, presumably because NSNumber is Pushable?
         let cfn_pushable = try XCTUnwrap(cfn as? Pushable)
+#if !os(Linux) // CF bridging seems to be entirely lacking on Linux...
         L.push(cfn as NSNumber) // 3 - CFNumber as NSNumber (Pushable)
+#else
+        L.pushnil()
+#endif
         L.push(cfn_pushable) // 4 - CFNumber as Pushable
         L.push(any: cfn) // 5 - CFNumber as Any
         L.push(nd) // 6 - integer-representable NSNumber from a double
@@ -3032,7 +3073,9 @@ final class LuaTests: XCTestCase {
 
         XCTAssertEqual(L.toint(1), 1234)
         XCTAssertEqual(L.toint(2), 1234)
+#if !os(Linux)
         XCTAssertEqual(L.tonumber(3), 1234.5678)
+#endif
         XCTAssertEqual(L.tonumber(4), 1234.5678)
         XCTAssertEqual(L.tonumber(5), 1234.5678)
     }
@@ -3424,9 +3467,11 @@ final class LuaTests: XCTestCase {
         let emptyDict: [AnyHashable: Any] = [:]
         XCTAssertEqual(emptyDict.luaTableToArray() as? [Bool], [])
 
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         let dict: [AnyHashable: Any] = [1: 111, 2: 222, 3: 333]
         XCTAssertEqual(dict.luaTableToArray() as? [Int], [111, 222, 333])
         XCTAssertEqual((dict as! [AnyHashable: AnyHashable]).luaTableToArray() as? [Int], [111, 222, 333])
+#endif
 
         // A Lua array table shouldn't have an index 0
         let zerodict: [AnyHashable: Any] = [0: 0, 1: 111, 2: 222, 3: 333]
@@ -3441,10 +3486,12 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(gap.luaTableToArray())
         XCTAssertNil((gap as! [AnyHashable: AnyHashable]).luaTableToArray())
 
+#if !LUASWIFT_ANYHASHABLE_BROKEN
         // This should succeed because AnyHashable type-erases numbers so 2.0 should be treated just like 2
         let sneakyDouble: [AnyHashable: Any] = [1: 111, 2.0: 222, 3: 333]
         XCTAssertEqual(sneakyDouble.luaTableToArray() as? [Int], [111, 222, 333])
         XCTAssertEqual((sneakyDouble as! [AnyHashable: AnyHashable]).luaTableToArray() as? [Int], [111, 222, 333])
+#endif
 
         let sneakyFrac: [AnyHashable: Any] = [1: 111, 2: 222, 2.5: "wat", 3: 333]
         XCTAssertNil((sneakyFrac as! [AnyHashable: AnyHashable]).luaTableToArray())

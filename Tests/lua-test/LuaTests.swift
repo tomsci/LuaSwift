@@ -3610,4 +3610,17 @@ final class LuaTests: XCTestCase {
         XCTAssertTrue(L.iscfunction(1))
         XCTAssertTrue(L.rawequal(1, 2))
     }
+
+    func test_anyhashable_docs_example() {
+        let descriptions: [AnyHashable: Any] = [
+            42: "an Int",
+            43 as Int8: "an Int8",
+            ["a", "b"] as Set: "a set of strings"
+        ]
+        print(descriptions[42]!)                // prints "an Int"
+        print(descriptions[42 as Int8]!)        // prints "an Int"
+        print(descriptions[43 as Int8]!)        // prints "an Int8"
+        print(descriptions[44])                 // prints "nil"
+        print(descriptions[["a", "b"] as Set]!) // prints "a set of strings"
+    }
 }

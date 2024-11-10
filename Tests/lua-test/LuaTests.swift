@@ -1321,6 +1321,12 @@ final class LuaTests: XCTestCase {
         try L.set(1, key: "member", value: "anewval")
         XCTAssertEqual(val.member, "anewval")
 
+        try L.set(1, key: "member", value: .nilValue)
+        XCTAssertNil(val.member)
+        try L.get(1, key: "member")
+        XCTAssertNil(L.tovalue(-1, type: String.self))
+        L.pop()
+
         try L.get(1, key: "data")
         XCTAssertEqual(L.todata(-1), [1, 2, 3])
         L.pop()

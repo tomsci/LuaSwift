@@ -671,7 +671,7 @@ extension Metatable.FieldType {
             let setter: LuaClosure = { L in
                 let obj: T = try L.checkArgument(1)
                 // Arg 2 is the member name in a __newindex call
-                let newVal: ValType = try L.checkArgument(3, type: ValType.self) // TODO: handle optional types...
+                let newVal: ValType = try L.checkArgument(3, type: ValType.self)
                 set(obj, newVal)
                 return 0
             }

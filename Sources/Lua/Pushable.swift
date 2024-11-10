@@ -77,7 +77,7 @@ extension String: Pushable {
 
 extension Array: Pushable where Element: Pushable {
     public func push(onto L: LuaState) {
-        L.newtable(narr: CInt(self.count))
+        L.newtable(narr: CInt(clamping: self.count))
         for (i, val) in self.enumerated() {
             val.push(onto: L)
             lua_rawseti(L, -2, lua_Integer(i + 1))
@@ -87,7 +87,7 @@ extension Array: Pushable where Element: Pushable {
 
 extension Dictionary: Pushable where Key: Pushable, Value: Pushable {
     public func push(onto L: LuaState) {
-        L.newtable(nrec: CInt(self.count))
+        L.newtable(nrec: CInt(clamping: self.count))
         for (k, v) in self {
             L.push(k)
             L.push(v)

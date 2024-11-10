@@ -2362,13 +2362,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             push(UnsafeRawBufferPointer(start: data.bytes, count: data.length))
 #endif
         case let array as Array<Any>:
-            newtable(narr: CInt(array.count))
+            newtable(narr: CInt(clamping: array.count))
             for (i, val) in array.enumerated() {
                 push(any: val)
                 lua_rawseti(self, -2, lua_Integer(i + 1))
             }
         case let dict as Dictionary<AnyHashable, Any>:
-            newtable(nrec: CInt(dict.count))
+            newtable(nrec: CInt(clamping: dict.count))
             for (k, v) in dict {
                 push(any: k)
                 push(any: v)

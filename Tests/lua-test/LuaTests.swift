@@ -2898,6 +2898,172 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.todecodable(7, type: Foo.self), Foo(bar: "sheep", baz: 321, bat: [true, false]))
     }
 
+    func test_encodable() throws {
+        try L.push(encodable: 123)
+        XCTAssertEqual(L.tovalue(-1), 123)
+        L.pop()
+
+        // Check uints can encode. Anything <= lua_Integer.max will encode as an integer
+        let encodableUint: UInt64 = UInt64(lua_Integer.max)
+        try L.push(encodable: encodableUint)
+        XCTAssertTrue(L.isinteger(-1))
+        L.pop()
+
+        let top = L.gettop()
+        XCTAssertThrowsError(try L.push(encodable: encodableUint + 1))
+        XCTAssertEqual(L.gettop(), top) // An error during encoding should mean stack is unmodified
+
+#if !LUASWIFT_NO_FOUNDATION
+        let data = Data([0x61, 0x62, 0x63])
+        try L.push(encodable: data)
+        XCTAssertEqual(L.tostring(-1), "abc")
+#endif
+
+        struct Foo: Equatable, Codable {
+            let bar: Int
+            let baz: String
+        }
+        let foo = Foo(bar: 1234, baz: "baaa")
+        let fooAsDict: Dictionary<AnyHashable, AnyHashable> = [
+            "bar": 1234 as lua_Integer,
+            "baz": "baaa"
+        ]
+        try L.push(encodable: foo)
+        XCTAssertEqual(L.tovalue(-1, type: Dictionary<AnyHashable, AnyHashable>.self), fooAsDict)
+        XCTAssertEqual(L.todecodable(-1), foo)
+        L.pop()
+
+        let arr = [foo]
+        try L.push(encodable: arr)
+        XCTAssertEqual(L.tovalue(-1, type: Array<Dictionary<AnyHashable, AnyHashable>>.self), [fooAsDict])
+        L.pop()
+
+        var optArr: [Int?] = [1, 2]
+        try L.push(encodable: optArr)
+        XCTAssertEqual(L.tovalue(-1, type: [Int].self), [1, 2])
+        L.pop()
+        optArr.insert(nil, at: 1)
+        XCTAssertThrowsError(try L.push(encodable: optArr), "") { err in
+            switch err as? EncodingError {
+            case .none:
+                XCTFail("expected EncodingError got \(err)")
+            case .invalidValue(_, let context):
+                XCTAssertEqual(context.debugDescription, "nil is not representable within arrays")
+            default:
+                XCTFail("expected EncodingError got \(err)")
+            }
+        }
+
+        struct AllTheThings: Equatable, Codable {
+            let int: Int
+            let int8: Int8
+            let int16: Int16
+            let int32: Int32
+            let int64: Int64
+            let uint: UInt
+            let uint8: UInt8
+            let uint16: UInt16
+            let uint32: UInt32
+            let uint64: UInt64
+            let bool: Bool
+            let boolArray: [Bool]
+            let str: String
+            let fooArray: [Foo]
+            let float: Float
+            let double: Double
+            let arrDict: [Dictionary<String, Set<Int>>]
+        }
+        let a = AllTheThings(int: 1,
+                             int8: 2,
+                             int16: 3,
+                             int32: 4,
+                             int64: 5,
+                             uint: 6,
+                             uint8: 7,
+                             uint16: 8,
+                             uint32: 9,
+                             uint64: 10,
+                             bool: true,
+                             boolArray: [true, false],
+                             str: "Yes",
+                             fooArray: [Foo(bar: 11, baz: "baa")],
+                             float: 12.0,
+                             double: 13.1,
+                             arrDict: [["foo": [123, 456], "bar": [789]]])
+        try L.push(encodable: a)
+        let decodeda: AllTheThings = try XCTUnwrap(L.todecodable(-1))
+        XCTAssertEqual(decodeda, a)
+    }
+
+    func test_encodable_super() throws {
+        // A good explanation of super encoder/decoder support here:
+        // https://stackoverflow.com/questions/71495745/what-is-superencoder-for-in-unkeyedencodingcontainer-and-keyedencodingcontainerp#71498569
+
+        class A: Codable {
+            private enum CodingKeys: String, CodingKey {
+                case aval
+            }
+
+            init(aval: Int) { self.aval = aval }
+
+            required init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                self.aval = try container.decode(Int.self, forKey: .aval)
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(aval, forKey: .aval)
+            }
+
+            let aval: Int
+        }
+
+        class B: A, Equatable {
+            // Just for fun let's make this encode using integer keys
+            enum CodingKeys: Int, CodingKey {
+                case bval
+                case `super`
+            }
+
+            init(aval: Int, bval: String) {
+                self.bval = bval
+                super.init(aval: aval)
+            }
+            
+            required init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                self.bval = try container.decode(String.self, forKey: .bval)
+                try super.init(from: container.superDecoder(forKey: .super))
+            }
+
+            override func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(bval, forKey: .bval)
+                try super.encode(to: c.superEncoder(forKey: .super))
+            }
+            static func == (lhs: B, rhs: B) -> Bool {
+                return lhs.aval == rhs.aval && lhs.bval == rhs.bval
+            }
+
+            let bval: String
+        }
+        let b = B(aval: 123, bval: "def")
+        try L.push(encodable: b)
+        let bdict: Dictionary<AnyHashable, AnyHashable> = try XCTUnwrap(L.tovalue(-1))
+        let expectedAdict: Dictionary<AnyHashable, AnyHashable> = ["aval": 123]
+        let expectedBdict: Dictionary<AnyHashable, AnyHashable> = [
+            B.CodingKeys.super.rawValue: expectedAdict,
+            B.CodingKeys.bval.rawValue: "def"
+        ]
+
+        XCTAssertEqual(bdict, expectedBdict)
+
+        // Now round-trip the encoded table through LuaDecoder
+        let decodedb: B = try XCTUnwrap(L.todecodable(-1))
+        XCTAssertEqual(decodedb, b)
+    }
+
     func test_get_set() throws {
         L.push([11, 22, 33, 44, 55])
         // Do all accesses here with negative indexes to make sure they are handled right.

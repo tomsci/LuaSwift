@@ -1989,7 +1989,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Push a String on to the stack, using the default string encoding.
     ///
-    /// See ``getDefaultStringEncoding()``.
+    /// This function expects the string to be representable in the default String encoding, and will halt the program
+    /// if not. To have an error thrown instead, use ``push(encodable:toindex:)``.
+    ///
+    /// See also ``getDefaultStringEncoding()``.
     ///
     /// - Parameter string: The `String` to push.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
@@ -2300,13 +2303,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// To convert the value, the following logic is applied in order, stopping at the first matching clause:
     ///
     /// * If `value` is `nil`, `Void` (ie the empty tuple), or `.some(.none)` it is pushed as `nil`.
-    /// * If `value` conforms to ``Pushable``, Pushable's ``Pushable/push(onto:)`` is used.
-    /// * If `value` is `[UInt8]`, ``push(_:toindex:)-171ku`` is used.
+    /// * If `value` conforms to ``Pushable``, the value's ``Pushable/push(onto:)`` is used.
     /// * If `value` is `UInt8`, it is pushed as an integer. This special case is required because `UInt8` is not
     ///   `Pushable`.
-    /// * If `value` conforms to `ContiguousBytes` (which includes `Data`), then ``push(bytes:toindex:)`` is used.
+    /// * If `value` is `[UInt8]` or otherwise conforms to `ContiguousBytes` (which includes `Data`,
+    ///   `UnsafeRawBufferPointer` and others), it is pushed as a `string` of those bytes.
     /// * If `value` is one of the Foundation types `NSNumber`, `NSString` or `NSData`, or is a Core Foundation type
-    ///   that is toll-free bridged to one of those types, then it is pushed as a `NSNumber`, `String`, or `Data`
+    ///   that is toll-free bridged to one of those types, then it is treated like an integer, `String`, or `Data`
     ///   respectively.
     /// * If `value` is an `Array` or `Dictionary` that is not `Pushable`, a `table` is created and `push(any:)`
     ///   is called recursively to push its elements. In the case of an `Array`, the Lua table uses Lua 1-based array
@@ -2317,6 +2320,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   Due to limitations in Swift type inference, these are the only closure types that are handled in this way.
     /// * If `value` is a `UnsafeMutableRawPointer`, ``push(lightuserdata:toindex:)`` is used.
     /// * Any other type is pushed as a `userdata` using ``push(userdata:toindex:)``.
+    ///
+    /// Note that whether the type is `Encodable` or not, does not affect how the value is pushed - in other words
+    /// `push(any:)` will not use `push(encodable:)` for `Encodable` types. To make a type be pushed using its
+    /// `Encodable` representation, make the type implement `Pushable` and have the implementation call `push
+    /// (encodable:)`.
     ///
     /// - Parameter value: The value to push on to the Lua stack.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
@@ -2540,6 +2548,48 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Push a raw pointer on to the stack as a light userdata.
     public func push(lightuserdata: UnsafeMutableRawPointer?, toindex: CInt = -1) {
         lua_pushlightuserdata(self, lightuserdata)
+        if toindex != -1 {
+            insert(toindex)
+        }
+    }
+
+    /// Encodes the value as a Lua value and pushes on to the stack.
+    ///
+    /// Structs and classes are converted to a Lua `table` (without a metatable), in a similar way to how
+    /// `JSONEncoder.encode()` behaves (but the result is a Lua table left on the stack, rather than a serialised JSON
+    /// object returned as a `Data`).
+    ///
+    /// Note that this function takes a copy of `value`, and changes made to the resulting Lua value will not affect the
+    /// original `value`. Also note that encoding the value only copies its data; any functions it defines will not
+    /// be available on the resulting Lua value. Consider [bridging](doc:BridgingSwiftToLua) the type instead, in that
+    /// case.
+    ///
+    /// As with ``push(any:toindex:)``, `[UInt8]` and any values conforming to `ContiguousBytes` are encoded as strings.
+    ///
+    /// Some Swift values cannot be represented in Lua, and this function will throw `EncodingError.invalidValue` if
+    /// one is encountered while encoding `value`. Unsupported values include:
+    ///
+    /// * Unsigned integers whose values will not fit in a `lua_Integer`.
+    /// * Arrays (or ordered collections) which contain `nil` elements.
+    /// * Strings which are not representable in the default string encoding.
+    ///
+    /// If an error is thrown, the Lua stack will be unchanged.
+    ///
+    /// Use ``todecodable(_:)`` to convert Lua values back to Swift types (assuming the type also implements
+    ///  `Decodable`).
+    ///
+    /// - Parameter value: The value to push on to the Lua stack, which must implement `Encodable`.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    /// - Throws: `EncodingError` if the value cannot be represented in Lua.
+    public func push(encodable value: Encodable, toindex: CInt = -1) throws {
+        do {
+            let encoder = LuaEncoder(state: self)
+            try encoder.encode(value)
+        } catch {
+            pop() // encoder going out of scope will have reset the stack to one more than when we started
+            throw error
+        }
+
         if toindex != -1 {
             insert(toindex)
         }

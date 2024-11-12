@@ -1,13 +1,28 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
-
-import CLua
 
 #if !LUASWIFT_NO_FOUNDATION
 import Foundation
 #endif
 
-struct LuaDecoder: Decoder, SingleValueDecodingContainer {
+internal struct LuaKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+
+    static let `super` = LuaKey(stringValue: "super")!
+}
+
+internal struct LuaDecoder: Decoder, SingleValueDecodingContainer {
     private let L: LuaState
     private let index: CInt
 
@@ -148,6 +163,7 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
             return UInt64(result)
         }
         // See if it's a double representable as a UInt64 (which covers everything up to about 2^53)
+        // (This can only be hit if lua_Integer is 32-bit)
         if let dblVal = L.tonumber(index), let result = UInt64(exactly: dblVal) {
             return result
         }
@@ -164,23 +180,8 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
         return try T(from: self)
     }
 
-    private struct _LuaKey: CodingKey {
-        var stringValue: String
-        var intValue: Int?
-
-        init?(stringValue: String) {
-            self.stringValue = stringValue
-            self.intValue = nil
-        }
-
-        init?(intValue: Int) {
-            self.stringValue = "\(intValue)"
-            self.intValue = intValue
-        }
-    }
-
     struct KeyedContainer<Key: CodingKey>: KeyedDecodingContainerProtocol {
-        let decoder: LuaDecoder
+        private let decoder: LuaDecoder
         var codingPath: [CodingKey]
         var allKeys: [Key] {
             let L = decoder.L
@@ -208,16 +209,14 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
         func decoderForKey<LocalKey: CodingKey>(_ key: LocalKey) throws -> LuaDecoder {
             decoder.push(key: key)
             try decoder.L.get(decoder.index)
-            var newPath = self.codingPath
-            newPath.append(key)
-            return decoder.nestedDecoderForIndex(-1, codingPath: newPath)
+            return decoder.nestedDecoderForIndex(-1, codingPath: self.codingPath + [key])
         }
 
         func get<T: Decodable>(_ type: T.Type, forKey key: Key) throws -> T {
             let L = decoder.L
-            let top = lua_gettop(L)
+            let top = L.gettop()
             defer {
-                lua_settop(L, top)
+                L.settop(top)
             }
             let dec = try decoderForKey(key)
             return try dec.decode(type)
@@ -309,11 +308,11 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
         }
 
         func superDecoder() throws -> Decoder {
-            fatalError()
+            return try decoderForKey(LuaKey.super)
         }
 
         func superDecoder(forKey key: Key) throws -> Decoder {
-            fatalError()
+            return try decoderForKey(key)
         }
     }
 
@@ -331,16 +330,16 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
         init(decoder: LuaDecoder) {
             self.decoder = decoder
             self.codingPath = decoder.codingPath
-            self.isAtEnd = lua_rawgeti(decoder.L, decoder.index, 1) == LUA_TNIL
+            self.isAtEnd = decoder.L.rawget(decoder.index, key: 1) == .nil
             decoder.L.pop()
         }
 
         mutating func decoderForNext() throws -> LuaDecoder {
-            lua_rawgeti(decoder.L, decoder.index, idx)
+            decoder.L.rawget(decoder.index, key: idx)
             var newPath = self.codingPath
-            newPath.append(_LuaKey(intValue: currentIndex)!)
+            newPath.append(LuaKey(intValue: currentIndex)!)
             idx = idx + 1
-            isAtEnd = lua_rawgeti(decoder.L, decoder.index, idx) == LUA_TNIL
+            isAtEnd = decoder.L.rawget(decoder.index, key: idx) == .nil
             decoder.L.pop()
             return decoder.nestedDecoderForIndex(-1, codingPath: newPath)
         }
@@ -436,7 +435,10 @@ struct LuaDecoder: Decoder, SingleValueDecodingContainer {
         }
 
         mutating func superDecoder() throws -> Decoder {
-            fatalError()
+            let key = LuaKey.super
+            decoder.push(key: key)
+            try decoder.L.get(decoder.index)
+            return decoder.nestedDecoderForIndex(-1, codingPath: self.codingPath + [key])
         }
 
     }

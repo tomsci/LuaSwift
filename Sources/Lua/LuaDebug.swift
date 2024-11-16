@@ -260,7 +260,7 @@ public struct LuaDebug {
 ///
 /// Objects of this type are only valid during the execution of
 /// ``Lua/Swift/UnsafeMutablePointer/withStackFrameFor(level:_:)``. Do not store the value for future use.
-public class LuaStackFrame {
+public final class LuaStackFrame {
     let L: LuaState
     var ar: lua_Debug
 

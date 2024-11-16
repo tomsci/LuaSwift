@@ -51,7 +51,7 @@ import CLua
 /// the same `luaL_ref` ref compare equal. Similarly `LuaValue` is `Hashable`, but will not return the same hash value
 /// as the underlying Lua value, in a similar way to how `AnyHashable` behaves.
 @dynamicCallable
-public class LuaValue: Equatable, Hashable, Pushable {
+public final class LuaValue: Equatable, Hashable, Pushable {
     internal var L: LuaState!
     private let ref: CInt
 

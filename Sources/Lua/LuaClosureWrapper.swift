@@ -37,7 +37,7 @@ internal class LuaContinuationWrapper {
 /// Do not use `push(userdata:)` to push a `LuaClosureWrapper` - it will not be callable. Use
 /// ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``, ``push(onto:)`` or
 /// ``push(onto:numUpvalues:)`` instead.
-public class LuaClosureWrapper: Pushable {
+public final class LuaClosureWrapper: Pushable {
 
     /// The number of internal upvalues used when pushing a ``LuaClosure``.
     ///

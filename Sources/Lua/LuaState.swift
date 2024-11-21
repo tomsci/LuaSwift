@@ -2245,9 +2245,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// To make the object usable from Lua, declare a metatable for the value's type using
     /// ``register(_:)-8rgnn``. Note that this function always uses the dynamic type of the value, and
     /// not whatever `T` is, when calculating what metatable to assign the object. Thus `push(userdata: foo)` and
-    /// `push(userdata: foo as Any)` will behave identically. Pushing a value of a type which has no metatable
-    /// previously registered will generate a warning, and the object will have no metamethods declared on it,
-    /// except for `__gc` which is always defined in order that Swift object lifetimes are preserved.
+    /// `push(userdata: foo as Any)` will behave identically.
+    ///
+    /// Pushing a value of a type which has no metatable previously registered will generate a warning, and the object
+    /// will have no metamethods declared on it, except for `__gc` which is always defined in order that Swift object
+    /// lifetimes are preserved. This does not apply to types which conform to ``PushableWithMetatable``, which will
+    /// automatically be registered if they are not already.
     ///
     /// - Note: This function always pushes a `userdata` - if `val` represents any other type (for example, an integer)
     ///   it will not be converted to that type in Lua. Use ``push(any:toindex:)`` instead to automatically convert
@@ -2255,6 +2258,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter userdata: The value to push on to the Lua stack.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<T>(userdata: T, toindex: CInt = -1) {
+        // Special case to permit PushableWithMetatable to auto register regardless of how it was pushed.
+        if let pushableWithMetatable = userdata as? any PushableWithMetatable {
+            pushableWithMetatable.checkRegistered(self)
+        }
         let anyval: Any = userdata
         let tname = makeMetatableName(for: Swift.type(of: anyval))
         pushuserdata(anyval, metatableName: tname)

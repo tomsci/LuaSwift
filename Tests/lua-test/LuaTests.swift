@@ -1427,6 +1427,27 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(try derived.pcall(member: "foo").tostring(), "Derived.foo")
     }
 
+    func test_PushableWithMetatable_autoRegister() throws {
+
+        struct Foo: PushableWithMetatable {
+            func foo() -> String { return "Foo.foo" }
+
+            // Intentionally conflict with the internal helper fn name, to make sure it doesn't get picked up
+            public func checkRegistered(state: LuaState) {
+                fatalError("Shouldn't be called")
+            }
+
+            static let metatable = Metatable<Foo>(fields: [
+                "foo": .memberfn { $0.foo() }
+            ])
+        }
+
+        L.push(userdata: Foo())
+        let val = L.popref()
+        let result = try val.pcall(member: "foo")
+        XCTAssertEqual(result.tostring(), "Foo.foo")
+    }
+
     func test_legacy_registerDefaultMetatable() throws {
         struct Foo {}
         var called = false

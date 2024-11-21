@@ -834,10 +834,10 @@ extension Metatable.FieldType {
 /// }
 /// ```
 ///
-/// The metatable is registered the first time an instance of this type is pushed using
-/// ``Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9``, if it isn't already registered. If this protocol is
-/// implemented by a base class, instances of derived classes inherit the same metatable as the base class (unless a
-/// different metatable was explicitly registered prior to when the first instance of the derived type is pushed).
+/// The metatable is registered the first time an instance of this type is pushed (using any of `push(pushable)`,
+/// `push(any:)` or `push(userdata:)`), if it isn't already registered. If this protocol is implemented by a base class,
+/// instances of derived classes inherit the same metatable as the base class (unless a different metatable was
+/// explicitly registered prior to when the first instance of the derived type is pushed).
 ///
 /// It is possible to override a metatable in a derived class, providing the base class metatable was declared as a
 /// `class var`. The derived metatable must still use the base class type however, casting if necessary. The
@@ -864,10 +864,6 @@ extension Metatable.FieldType {
 /// }
 /// ```
 ///
-/// Note that if a type is using `PushableWithMetatable`, it should not be pushed using `L.push(userdata: value)`,
-/// because that risks bypassing the automatic registration logic. Always use `L.push(value)` or `L.push(any: value)`
-/// instead, ie the `Pushable` overload.
-///
 /// It is also possible to declare a metatable for protocols, by declaring the protocol conforms to
 /// `PushableWithMetatable` and then extending it with a metatable. This should only be done when there's no possible
 /// other way an object conforming to the protocol might want to be represented in Lua, however.
@@ -886,7 +882,10 @@ extension Metatable.FieldType {
 ///         }
 ///     }
 /// }
+///
 /// ```
+/// > Note: Types conforming to `PushableWithMetatable` should not provide an implementation of
+/// ``Pushable/push(onto:)``. Always use the default implementation provided by `PushableWithMetatable`.
 public protocol PushableWithMetatable: Pushable {
     // Ideally ValueType would be constrained to be the same as Self but I don't think that can be
     // expressed in a way that works for classes (which given the need for downcast(), is fair
@@ -896,13 +895,16 @@ public protocol PushableWithMetatable: Pushable {
 }
 
 public extension PushableWithMetatable {
-    func push(onto state: LuaState) {
+    internal func checkRegistered(_ state: LuaState) {
         if !state.isMetatableRegistered(for: Self.metatable.type) {
             state.register(Self.metatable)
         }
         if Self.self != Self.metatable.type && !state.isMetatableRegistered(for: Self.self) {
             state.register(type: Self.self, usingExistingMetatableFor: Self.metatable.type)
         }
+    }
+
+    func push(onto state: LuaState) {
         state.push(userdata: self)
     }
 }

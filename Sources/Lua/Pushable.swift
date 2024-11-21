@@ -146,7 +146,7 @@ public struct LuaUserdataWrapper: Pushable {
     public func push(onto L: LuaState) {
         L.push(userdata: value)
     }
-}    
+}
 
 public struct _NonPushableTypesHelper: Pushable {
     private init() {}

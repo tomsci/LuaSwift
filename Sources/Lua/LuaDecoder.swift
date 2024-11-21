@@ -171,6 +171,9 @@ internal struct LuaDecoder: Decoder, SingleValueDecodingContainer {
     }
 
     func decode<T>(_ type: T.Type) throws -> T where T : Decodable {
+        if type == Array<UInt8>.self && L.type(index) == .string {
+            return L.todata(index)! as! T
+        }
 #if !LUASWIFT_NO_FOUNDATION
         if type == Data.self {
             try checkType(type, .string)

@@ -64,11 +64,11 @@ final class LuaTests: XCTestCase {
 
     var L: LuaState!
 
-    override func setUpWithError() throws {
+    override func setUp() {
         L = LuaState(libraries: [])
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() {
         if let L {
             L.close()
         }
@@ -2890,6 +2890,59 @@ final class LuaTests: XCTestCase {
         XCTAssertThrowsError(try L.ref(index: 5).len, "", { err in
             XCTAssertEqual(err as? LuaValueError, .nilValue)
         })
+    }
+
+    func test_codable() throws {
+        // Tests the round trip through push(encodable:) and back through todecodable()
+        func check<T>(_ value: T) throws where T: Codable & Equatable {
+            try L.push(encodable: value)
+            defer {
+                L.pop()
+            }
+            let decoded: T = try XCTUnwrap(L.todecodable(-1))
+            // Sigh, NaNs are mathmatically great (probably) but computationally stupid
+            if let flt = value as? any FloatingPoint, flt.isNaN {
+                XCTAssertTrue((decoded as? any FloatingPoint)?.isNaN ?? false)
+            } else {
+                XCTAssertEqual(decoded, value)
+            }
+        }
+
+        try check(0)
+        try check(123)
+        try check(255 as UInt8)
+        try check(123.0)
+        try check(123.4)
+        try check(Double.nan)
+        try check(Double.infinity)
+        try check(-Double.infinity)
+        try check(Float.nan)
+        try check(Float.infinity)
+        try check(-Float.infinity)
+        try check(false)
+        try check("café £")
+        let emptyArray: [String] = []
+        try check(emptyArray)
+        let emptyDict: [String : Int] = [:]
+        try check(emptyDict)
+        try check([11, 22, 33])
+        try check(["abc": 11, "def": 22, "g": 33])
+        try check(Set<String>(arrayLiteral: "aaa", "bb", "c"))
+
+        struct Foo: Equatable, Codable {
+            let bar: Int
+            let baz: String
+        }
+        let foo = Foo(bar: 1234, baz: "baaa")
+        try check(foo)
+        try check([foo])
+        try check(["foo": foo, "bar": Foo(bar: 0, baz: "")])
+
+        let data: [UInt8] = [0x61, 0x62, 0x63]
+        try check(data)
+#if !LUASWIFT_NO_FOUNDATION
+        try check(Data(data))
+#endif
     }
 
     func test_todecodable() throws {

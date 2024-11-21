@@ -15,6 +15,8 @@ extension Bool: Pushable {
 }
 
 // Is there a cleaner way to make all integers Pushable with extensions and where clauses?
+// Answer: I don't think so, since you cannot extend a protocol like FixedWidthInteger to
+// implement another protocol.
 
 extension Int: Pushable {
     public func push(onto L: LuaState) {

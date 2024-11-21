@@ -12,7 +12,28 @@ It can therefore be constructed either using the explicit constructor provided, 
 
 See <https://www.lua.org/manual/5.4/manual.html> for documentation of the underlying Lua C APIs.
 
-Note that `LuaState` is an unsafe pointer type which is _not_ reference counted, meaning the state is not automatically destroyed when it goes out of scope. You must call ``Lua/Swift/UnsafeMutablePointer/close()``.
+Note that `LuaState` is an unsafe pointer type which is _not_ reference counted, meaning the state is not automatically destroyed when it goes out of scope. You must call ``Lua/Swift/UnsafeMutablePointer/close()``. Safe ways to do that include wrapping the `LuaState` in a class and calling close from `deinit`, or using a `defer` block:
+
+```swift
+class LuaStateWrapper {
+    let L: LuaState
+
+    init() {
+        L = LuaState(libraries: .all)
+    }
+    deinit {
+        L.close()
+    }
+}
+
+// or...
+
+let L = LuaState(libraries: .all)
+defer {
+    L.close()
+}
+// Use L here...
+```
 
 ## Using the LuaState API
 
@@ -120,7 +141,7 @@ func myClosure(_ L: LuaState) throws -> CInt {
 
 ## Thread safety
 
-As a result of `LuaState` being usable anywhere a C `lua_State` is, all the internal state needed by the `LuaState` (for example, tracking metatables and default string encodings) is stored inside the state itself (using the Lua registry), meaning each top-level `LuaState` is completely independent, just like a normal C `lua_State` is.
+As a result of `LuaState` being usable anywhere a C `lua_State` is, all the internal state needed by the `LuaState` (for example, tracking metatables and default string encodings) is stored inside the state itself, using the Lua registry. This means each top-level `LuaState` is completely independent, just like a normal C `lua_State` is.
 
 Therefore you can safely use different `LuaState` instances from different threads at the same time. More technically, all `LuaState` APIs are [_reentrant_ but _not_ thread-safe](https://doc.qt.io/qt-6/threads-reentrancy.html), in the same way that the Lua C API is.
 
@@ -162,7 +183,14 @@ Versions older than 5.3 are sufficiently different in their API that it's not st
 
 ### Push functions toindex parameter
 
-All of the [`push()`](#push()-functions) APIs take an optional parameter `toindex` which specifies where on the stack to put the new element. This is the stack index where the element should be on return of the function, and is allowed to be relative. So `-1` means push the element on to the top of the stack (the default), `-2` means put it just below the top of the stack, `1` means put it at the bottom of the stack, etc. Existing stack elements will be moved if necessary as per [`lua_insert()`](https://www.lua.org/manual/5.4/manual.html#lua_insert).
+All of the [`push()`](#push()-functions) APIs take an optional parameter `toindex` which specifies where on the stack to put the new element. This is the stack index where the element should be on return of the function, and is allowed to be relative. So `-1` means push the element on to the top of the stack (the default), `-2` means put it just below the top of the stack, `1` means put it at the bottom of the stack, etc. Existing stack elements will be moved if necessary as per ``Lua/Swift/UnsafeMutablePointer/insert(_:)``.
+
+Most of the time, the desired behavior is to leave the value on the top of the stack, in which case the `toindex` parameter can omitted:
+
+```swift
+let x = 1
+L.push(x)
+```
 
 ## Topics
 

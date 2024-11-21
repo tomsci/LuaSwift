@@ -120,6 +120,7 @@ public final class LuaClosureWrapper: Pushable {
     }
 
     public func push(onto L: LuaState, numUpvalues: CInt) {
+        // 255 is MAXUPVAL in lfunc.h
         precondition(numUpvalues >= 0 && numUpvalues <= 255 - Self.NumInternalUpvalues)
 
         // This only technically needs doing once but it's easier to just do it every time.

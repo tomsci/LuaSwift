@@ -800,9 +800,10 @@ extension Metatable.FieldType {
 
 /// Protocol for types which declare their own metatable.
 ///
-/// Types conforming to this protocol do not need to call ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``, and
-/// automatically become `Pushable` without needing to implement ``Pushable/push(onto:)``. The only thing the type
-/// needs to do is to declare a static (or class) member `metatable`. For example:
+/// Types conforming to this protocol do not need to call ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn`` to
+/// register their metatable, and automatically become `Pushable` without needing to implement
+/// ``Pushable/push(onto:)``. The only thing the type needs to do is to declare a static (or class) member `metatable`.
+/// For example:
 ///
 /// ```swift
 /// struct Foo: PushableWithMetatable {
@@ -887,6 +888,9 @@ extension Metatable.FieldType {
 /// }
 /// ```
 public protocol PushableWithMetatable: Pushable {
+    // Ideally ValueType would be constrained to be the same as Self but I don't think that can be
+    // expressed in a way that works for classes (which given the need for downcast(), is fair
+    // enough really).
     associatedtype ValueType
     static var metatable: Metatable<ValueType> { get }
 }

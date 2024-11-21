@@ -38,6 +38,7 @@ public struct LuaVer {
         return (major * 100 + minor) * 100 + release
     }
 
+    /// Returns true if the Lua version is 5.4 or later.
     public func is54orLater() -> Bool {
         return releaseNum >= 50400
     }
@@ -2781,7 +2782,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Make a protected call to a Lua function which is allowed to yield.
     ///
-    /// Make a yieldable call to a Lua function.
+    /// Make a yieldable call to a Lua function. Must be the last call in a `LuaClosure`, and is not valid to be called
+    /// from any other context.
     ///
     /// This is the LuaSwift equivalent to [`lua_pcallk()`](https://www.lua.org/manual/5.4/manual.html#lua_pcallk).
     /// See [Handling Yields in C](https://www.lua.org/manual/5.4/manual.html#4.5) for more details. This function

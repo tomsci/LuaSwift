@@ -1,6 +1,6 @@
 # ``Lua/Pushable``
 
-Protocol adopted by any Swift type that can unambiguously be converted to a basic Lua type.
+Protocol adopted by any Swift type that can unambiguously be converted to a Lua type.
 
 ## Overview
 

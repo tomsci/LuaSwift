@@ -2417,10 +2417,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:))  and `1` is returned.
     ///
     /// The empty tuple `()` (also written `Void`) results in zero values being pushed. An optional of any type which is
-    /// `.none` will result in 1 value (`nil`) being pushed. Due to limitations in the Swift type system, tuples with
-    /// more than 10 elements are not supported and will be pushed as a single userdata value as per the fallback
-    /// behavior of `push(any:)`. Nested tuples are also not supported. If the argument is a named tuple, the names
-    /// are ignored and it is treated the same as an unnamed tuple.
+    /// `.none` will result in 1 value (`nil`) being pushed. Nested tuples are not supported. If the argument is a
+    /// named tuple, the names are ignored and it is treated the same as an unnamed tuple.
     ///
     /// ```swift
     /// let numItems = L.push(tuple: (1, "hello", true)) // Pushes 3 values
@@ -2435,80 +2433,16 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             // Empty tuple, push zero values
             return 0
         }
-        switch tuple {
-        case let (a, b) as (Any, Any):
-            push(any: a)
-            push(any: b)
-            return 2
-        case let (a, b, c) as (Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            return 3
-        case let (a, b, c, d) as (Any, Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            push(any: d)
-            return 4
-        case let (a, b, c, d, e) as (Any, Any, Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            push(any: d)
-            push(any: e)
-            return 5
-        case let (a, b, c, d, e, f) as (Any, Any, Any, Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            push(any: d)
-            push(any: e)
-            push(any: f)
-            return 6
-        case let (a, b, c, d, e, f, g) as (Any, Any, Any, Any, Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            push(any: d)
-            push(any: e)
-            push(any: f)
-            push(any: g)
-            return 7
-        case let (a, b, c, d, e, f, g, h) as (Any, Any, Any, Any, Any, Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            push(any: d)
-            push(any: e)
-            push(any: f)
-            push(any: g)
-            push(any: h)
-            return 8
-        case let (a, b, c, d, e, f, g, h, i) as (Any, Any, Any, Any, Any, Any, Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            push(any: d)
-            push(any: e)
-            push(any: f)
-            push(any: g)
-            push(any: h)
-            push(any: i)
-            return 9
-        case let (a, b, c, d, e, f, g, h, i, j) as (Any, Any, Any, Any, Any, Any, Any, Any, Any, Any):
-            push(any: a)
-            push(any: b)
-            push(any: c)
-            push(any: d)
-            push(any: e)
-            push(any: f)
-            push(any: g)
-            push(any: h)
-            push(any: i)
-            push(any: j)
-            return 10
-        default: // Also covers the single-argument case
+
+        let mirror = Mirror(reflecting: tuple)
+        if mirror.displayStyle == .tuple {
+            let n = CInt(mirror.children.count)
+            checkstack(n)
+            for (_, child) in mirror.children {
+                push(any: child)
+            }
+            return n
+        } else {
             push(any: tuple)
             return 1
         }

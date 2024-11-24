@@ -34,7 +34,6 @@ internal enum MetafieldName: String {
 internal enum InternalMetafieldValue {
     case function(lua_CFunction)
     case closure(LuaClosure)
-    case value(LuaValue)
 }
 
 /// Describes a metatable to be used in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``.
@@ -47,7 +46,6 @@ public struct DefaultMetatable {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     public init(
@@ -166,7 +164,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `eq` metamethod.
@@ -174,7 +171,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> EqType { return EqType(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> EqType { return EqType(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `lt` metamethod.
@@ -182,7 +178,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `le` metamethod.
@@ -190,7 +185,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// Represents all the ways to implement a `index` metamethod.
@@ -198,7 +192,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
         public static func memberfn(_ indexfn: @escaping (T, String) throws -> Any?) -> Self {
             return .closure { L in
                 let obj: T = try L.checkArgument(1)
@@ -240,7 +233,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
         public static func memberfn(_ newindexfn: @escaping (T, String, LuaValue) throws -> Void) -> Self {
             return .closure { L in
                 let obj: T = try L.checkArgument(1)
@@ -259,7 +251,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
         public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Self {
             return .closure(LuaState.makeClosure(accessor))
         }
@@ -279,7 +270,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
 
         /// Synthesize a `close` metamethod in this metatable.
         ///
@@ -327,7 +317,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
 
         /// Synthesize a `tostring` metamethod in this metatable.
         ///
@@ -376,7 +365,6 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func value(_ v: LuaValue) -> Self { return Self(value: .value(v)) }
     }
 
     /// See ``Metatable``.

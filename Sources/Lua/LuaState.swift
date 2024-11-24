@@ -2987,8 +2987,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                     push(function: cfunction)
                 case .closure(let closure):
                     push(LuaClosureWrapper(closure))
-                case .value(let value):
-                    push(value)
                 }
                 rawset(-2, utf8Key: name.rawValue)
             }

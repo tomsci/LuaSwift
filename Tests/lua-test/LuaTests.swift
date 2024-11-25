@@ -3856,4 +3856,13 @@ final class LuaTests: XCTestCase {
         XCTAssertTrue(L.iscfunction(1))
         XCTAssertTrue(L.rawequal(1, 2))
     }
+
+    func test_tofilehandle() throws {
+        L.close()
+        L = LuaState(libraries: [.io])
+        L.getglobal("io")
+        L.rawget(-1, key: "stdout")
+        let f = L.tofilehandle(-1)
+        XCTAssertEqual(stdout, f)
+    }
 }

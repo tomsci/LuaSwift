@@ -1268,6 +1268,29 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return try? decoder.decode(T.self)
     }
 
+    /// Get the underlying `FILE` pointer from a Lua file handle on the stack.
+    ///
+    /// This function is for Lua file handles using the Lua-supplied metatable named
+    /// `LUA_FILEHANDLE` and a userdata starting with a
+    /// [`luaL_Stream`](https://www.lua.org/manual/5.4/manual.html#luaL_Stream). It returns `nil`
+    /// if the file handle has already been closed.
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: A `FILE` pointer or `nil` if the value at the given stack index is not a file
+    ///   handle, or has already been closed.
+    public func tofilehandle(_ index: CInt) -> UnsafeMutablePointer<FILE>? {
+        guard let rawptr = luaL_testudata(self, index, LUA_FILEHANDLE) else {
+            return nil
+        }
+        return rawptr.withMemoryRebound(to: luaL_Stream.self, capacity: 1) { pointer in
+            if pointer.pointee.closef != nil {
+                return pointer.pointee.f
+            } else {
+                return nil
+            }
+        }
+    }
+
     // MARK: - Convenience dict fns
 
     /// Convenience function that gets a key from the table at `index` and returns it as an `Int`.

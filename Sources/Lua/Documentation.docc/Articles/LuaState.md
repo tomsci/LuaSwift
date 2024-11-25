@@ -235,6 +235,7 @@ L.push(x)
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:type:)``
 - ``Lua/Swift/UnsafeMutablePointer/todecodable(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/todecodable(_:type:)``
+- ``Lua/Swift/UnsafeMutablePointer/tofilehandle(_:)``
 
 ### push() functions
 

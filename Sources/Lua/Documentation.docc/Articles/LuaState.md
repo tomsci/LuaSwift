@@ -94,7 +94,7 @@ lua_close(L)
 
 Those parts of the C API that are implemented as macros have been reimplemented as functions, so they can be callable from Swift without having to worry about the distinction.
 
-The `Lua` and `CLua` APIs can be freely mixed, a `lua_State` from `CLua` can be used as if it were a `LuaState` from `Lua`, and vice versa:
+The `Lua` and `CLua` APIs can be freely mixed, an `UnsafeMutablePointer<lua_State>` from `CLua` (bridged from the C `lua_State*` type) can be used as if it were a `LuaState` from `Lua`, and vice versa:
 
 ```swift
 import Lua
@@ -115,7 +115,7 @@ Keep in mind that the C API gives access to functions which are (or can be) unsa
 
 Lua errors (implemented in C using `longjmp`) have no direct equivalent in Swift, because `longjmp` is not safe to call from Swift (just as C++ exceptions are not safe to throw from or through a Swift function either). They are instead translated to and from instances of the Swift Error type ``LuaCallError`` at the appropriate API boundaries. Instead of `lua_call()` erroring using a `longjmp` or `lua_pcall()` returning an error code and leaving an error object on the Lua stack, LuaState's `pcall()` throws a Swift `LuaCallError` instead. This means that `pcall()` and any other LuaState Swift API which can error are annotated with `throws` and thus must be called with a `try`, making it obvious what can error and what can't. APIs like `lua_call()` which are impossible to implement safely in Swift have no equivalent in `LuaState`. Import `CLua` and call `lua_call()` directly if you are absolutely certain the call cannot error and a protected call is not desired.
 
-Any `Error` thrown by a `LuaClosure` (including `LuaCallError`) is automatically translated using ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)`` and then passed back to the Lua runtime using `lua_error()`.
+Any `Error` thrown by a `LuaClosure` (including `LuaCallError`) is automatically translated using ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)`` and then passed back to the Lua runtime using `lua_error()`. The LuaSwift wrappers ensure that the C `longjmp` does not cross a Swift API boundary when this happens.
 
 Where an error might be raised in a `lua_CFunction` written in C like this:
 
@@ -149,15 +149,17 @@ Therefore you can safely use different `LuaState` instances from different threa
 
 Swift structs and classes can be bridged into Lua in a type-safe and reference-counted manner, using Lua's userdata and metatable mechanisms. When the bridged Lua value is garbage collected by the Lua runtime, a reference to the Swift value is released.
 
-See <doc:BridgingSwiftToLua> for more infomation.
+See <doc:BridgingSwiftToLua> for more information.
 
-### Converting types using Any
+### Converting types between Swift and Lua
 
-Any Swift type can be converted to a Lua value by calling ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` (or any of the convenience functions which use it, such as `pcall(args...)` or ``Lua/Swift/UnsafeMutablePointer/ref(any:)``). See the documentation for ``Lua/Swift/UnsafeMutablePointer/push(any:toindex:)`` for exact details of the conversion.
+There are multiple ways in which values can be converted between Swift types and Lua types.
 
-A Lua value on the stack can be converted back to a Swift value of type `T?` by calling `tovalue<T>(index)`. `table` and `string` values are converted to whichever type is appropriate to satisfy the type `T`. If the type contraint `T` cannot be satisfied, `tovalue` returns nil. See ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)`` for the exact details. Broadly, the conversion rules for `push(any:)` and `tovalue()` attempt to behave consistently with each other.
-
-Any Lua value can be tracked as a Swift object, without converting back into a Swift type, by calling ``Lua/Swift/UnsafeMutablePointer/ref(index:)`` which returns a ``LuaValue`` object which acts as a proxy to the Lua value.
+* Primitive types which both languages have can be converted directly -- for example `Bool` maps directly to/from `boolean`, `String` with `string` and so on. These can be converted using the explicit typed functions like [`push<T:Pushable>(_:)`](doc:Lua/Swift/UnsafeMutablePointer/push(_:toindex:)-59fx9) (`Boolean` conforms to `Pushable`) and ``Lua/Swift/UnsafeMutablePointer/toboolean(_:)`` or the generic functions [`push(any:)`](``doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)) and [`tovalue<T>(_:)`](doc:Lua/Swift/UnsafeMutablePointer/tovalue(_:)) which can convert complex types as well as primitives.
+* Arrays and Dictionaries can be converted to/from Lua tables according to the rules described in ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``.
+* Classes and structs can be [bridged](doc:BridgingSwiftToLua) into Lua, in which a proxy Lua object is used to refer to the original Swift value.
+* Any Lua value can be tracked as a Swift object, without converting back into a Swift type, by calling ``Lua/Swift/UnsafeMutablePointer/ref(index:)`` which returns a ``LuaValue`` object which acts as a proxy to the Lua value. Broadly speaking this is equivalent to bridging a Swift value into Lua, as described above, just in the opposite direction.
+* Alternatively, types conforming to `Encodable` and/or `Decodable` can be represented in Lua using their `Codable` structure, using ``Lua/Swift/UnsafeMutablePointer/push(encodable:toindex:)`` and/or ``Lua/Swift/UnsafeMutablePointer/todecodable(_:)``.
 
 ## Remarks
 

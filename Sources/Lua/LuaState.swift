@@ -992,7 +992,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// the conversions that [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)) supports. Recursively
     /// converting nested data structures is supported if `T` is an `Array` or `Dictionary` type.
     ///
-    /// The Lua types are each handled as follows:
+    /// How the conversion is performed depends on what type the Lua value is:
+    ///
     /// * `number` can be converted to `lua_Number` or to any integer type providing the value can be represented
     ///    as such, based on what `T` is. A Lua integer can always be converted to a `lua_Number` (ie `Double`)
     ///    providing the value has an exact double-precision representation (ie is less than 2^53). Values are never

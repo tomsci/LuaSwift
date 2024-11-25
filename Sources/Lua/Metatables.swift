@@ -112,13 +112,21 @@ public struct DefaultMetatable {
 /// A metatable defines what properties and/or methods on a type used with
 /// ``Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)`` are accessible from Lua.
 ///
-/// `Metatable` is usually used directly in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn`` like:
+/// `Metatable` is usually used directly in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``, or in
+/// implementations of the ``PushableWithMetatable`` protocol. For example:
 ///
 /// ```swift
 /// L.register(Metatable</*type*/>(
 ///     fields: [ /* ... */ ],
 ///     /* metamethods ... */
 /// ))
+///
+/// // ...or...
+///
+/// class Foo: PushableWithMetatable {
+///     static let metatable = Metatable<Foo>(fields: [ /* ... */ ])
+///     /* ... */
+/// }
 /// ```
 ///
 /// `fields` defines all the properties and functions that the value should have in Lua. It is a dictionary of names to

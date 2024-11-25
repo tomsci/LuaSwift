@@ -272,6 +272,35 @@ Because the default metatable is not bound to a specific type, `fields` cannot b
 
 The pattern described above using `register(Metatable(...))` and `push(userdata:)` is the most flexible and least intrusive option for bridging objects into Lua, without introducing a dependency on `Lua` into the objects' implementation. There is an alternative option which is for the type itself to declare what its metatable is. This is done by declaring conformance to ``PushableWithMetatable``. Types conforming to `PushableWithMetatable` do not need to call `register()`, and automatically become `Pushable`. See ``PushableWithMetatable`` for more information.
 
+## Registering metatables for structs
+
+While it is permitted to register metatables for structs as well as classes, and bridge them into Lua, the Lua-side `userdata` always has reference (and not value) semantics. That is to say, assigning the `userdata` to a new Lua variable will not copy the struct like it would doing the same operation in Swift. Furthermore, the current implementation of bridging means that structs are immutable (from the Lua runtime's perspective) and cannot be modified from within their Metatable. Attempting to assign to a member or call a `mutating` function from within a metatable will result in a compiler error. 
+
+One way to have a bridged struct be mutable is to define a wrapper class for the struct, and use that for all values bridged to Lua:
+
+```swift
+// The struct to be bridged
+struct MyStruct {
+    var str: String
+
+    mutating func setStr(_ newVal: String) {
+        str = newVal
+    }
+}
+
+// Define a wrapper class for the struct
+class MyStructWrapper {
+    var value: MyStruct
+
+    init(_ value: MyStruct) { self.value = value }
+}
+
+// Define all metatable operations in terms of MyStructWrapper
+L.register(Metatable<MyStructWrapper>(fields: [
+    "str": .property(get: { $0.value.str }, set: { $0.value.setStr($1) })
+]))
+```
+
 ## See Also
 
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``

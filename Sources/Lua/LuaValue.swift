@@ -83,7 +83,7 @@ public final class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
-    internal static let nilValue = LuaValue()
+    internal static var nilValue: LuaValue { return LuaValue() }
 
     public static func == (lhs: LuaValue, rhs: LuaValue) -> Bool {
         return lhs.L == rhs.L && lhs.ref == rhs.ref

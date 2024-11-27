@@ -55,9 +55,9 @@ class test_PushableWithMetatable_Base {
 }
 
 extension test_PushableWithMetatable_Base: PushableWithMetatable {
-    static let metatable = Metatable<test_PushableWithMetatable_Base>(fields: [
+    static var metatable: Metatable<test_PushableWithMetatable_Base> { Metatable(fields: [
         "foo": .memberfn { $0.foo() }
-    ])
+    ])}
 }
 
 final class LuaTests: XCTestCase {
@@ -1368,9 +1368,9 @@ final class LuaTests: XCTestCase {
         struct Foo: PushableWithMetatable {
             func foo() -> String { return "Foo.foo" }
 
-            static let metatable = Metatable<Foo>(fields: [
+            static var metatable: Metatable<Foo> { return Metatable<Foo>(fields: [
                 "foo": .memberfn { $0.foo() }
-            ])
+            ])}
         }
 
         let val = L.ref(any: Foo())
@@ -1437,9 +1437,9 @@ final class LuaTests: XCTestCase {
                 fatalError("Shouldn't be called")
             }
 
-            static let metatable = Metatable<Foo>(fields: [
+            static var metatable: Metatable<Foo> { return Metatable<Foo>(fields: [
                 "foo": .memberfn { $0.foo() }
-            ])
+            ])}
         }
 
         L.push(userdata: Foo())

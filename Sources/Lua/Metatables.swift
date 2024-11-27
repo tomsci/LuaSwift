@@ -807,9 +807,9 @@ extension Metatable.FieldType {
 ///     func foo() -> String { return "Foo.foo" }
 /// 
 ///     // PushableWithMetatable conformance here:
-///     static let metatable = Metatable<Foo>(fields: [
+///     static var metatable: Metatable<Foo> { Metatable(fields: [
 ///         "foo": .memberfn { $0.foo() }
-///     ])
+///     ])}
 /// }
 ///
 /// // No need to call L.register(Foo.metatable)
@@ -824,9 +824,9 @@ extension Metatable.FieldType {
 /// }
 /// 
 /// extension Foo: PushableWithMetatable {
-///     static let metatable = Metatable<Foo>(fields: [
+///     static var metatable: Metatable<Foo> { Metatable(fields: [
 ///         "foo": .memberfn { $0.foo() }
-///     ])
+///     ])}
 /// }
 /// ```
 ///
@@ -871,11 +871,9 @@ extension Metatable.FieldType {
 /// 
 /// extension MyProtocol {
 ///     static var metatable: Metatable<any MyProtocol> {
-///         get {
-///             return Metatable(fields: [
-///                 "foo": .memberfn { $0.foo() }
-///             ])
-///         }
+///         return Metatable(fields: [
+///             "foo": .memberfn { $0.foo() }
+///         ])
 ///     }
 /// }
 ///

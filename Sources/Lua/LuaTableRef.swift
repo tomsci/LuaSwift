@@ -116,7 +116,7 @@ public struct LuaTableRef {
         } else if good(LuaValue.nilValue) { // Be sure to check this _after_ acceptsAny and anyhashable
             elementType = .luavalue
             acceptsAny = false
-        } else if good(dummyRawPtr) {
+        } else if good(dummyRawPtr()) {
             elementType = .rawpointer
             acceptsAny = false
         } else {
@@ -346,10 +346,10 @@ public struct LuaTableRef {
             self.stringRef = stringRef
             self.tableRef = tableRef
             switch type {
-            case .dict: self.testValue = emptyAnyDict
-            case .array: self.testValue = emptyAnyArray
-            case .hashableDict: self.testValue = emptyAnyHashableDict
-            case .hashableArray: self.testValue = emptyAnyHashableArray
+            case .dict: self.testValue = emptyAnyDict()
+            case .array: self.testValue = emptyAnyArray()
+            case .hashableDict: self.testValue = emptyAnyHashableDict()
+            case .hashableArray: self.testValue = emptyAnyHashableArray()
             case .string: self.testValue = emptyString
             case .bytes: self.testValue = dummyBytes
 #if !LUASWIFT_NO_FOUNDATION
@@ -362,7 +362,7 @@ public struct LuaTableRef {
 #endif
             case .luavalue: self.testValue = LuaValue.nilValue
             case .anyhashable: self.testValue = opaqueHashable
-            case .rawpointer: self.testValue = dummyRawPtr
+            case .rawpointer: self.testValue = dummyRawPtr()
             }
         }
 
@@ -516,16 +516,26 @@ internal let opaqueValue = OpaqueType()
 internal struct OpaqueHashableType : Hashable {}
 internal let opaqueHashable = OpaqueHashableType()
 
-fileprivate let emptyAnyArray = Array<Any>()
-fileprivate let emptyAnyDict = Dictionary<AnyHashable, Any>()
-fileprivate let emptyAnyHashableArray = Array<AnyHashable>()
-fileprivate let emptyAnyHashableDict = Dictionary<AnyHashable, AnyHashable>()
+fileprivate func emptyAnyArray() -> Array<Any> {
+    return Array<Any>()
+}
+fileprivate func emptyAnyDict() -> Dictionary<AnyHashable, Any> {
+    return Dictionary<AnyHashable, Any>()
+}
+fileprivate func emptyAnyHashableArray() -> Array<AnyHashable> {
+    return Array<AnyHashable>()
+}
+fileprivate func emptyAnyHashableDict() -> Dictionary<AnyHashable, AnyHashable> {
+    return Dictionary<AnyHashable, AnyHashable>()
+}
 internal let emptyString = ""
 internal let dummyBytes: [UInt8] = [0] // Not empty in case [] casts overly broadly
 #if !LUASWIFT_NO_FOUNDATION
 internal let emptyData = Data()
 #endif
-fileprivate let dummyRawPtr = UnsafeRawPointer(Unmanaged.passUnretained(LuaValue.nilValue).toOpaque())
+fileprivate func dummyRawPtr() -> UnsafeRawPointer {
+    return UnsafeRawPointer(Unmanaged.passUnretained(LuaValue.nilValue).toOpaque())
+}
 
 enum TypeConstraint {
     // string types
@@ -577,13 +587,13 @@ extension TypeConstraint {
     }
 
     init?(tableTest test: (Any) -> Bool) {
-        if test(emptyAnyArray) {
+        if test(emptyAnyArray()) {
             self = .array
-        } else if test(emptyAnyDict) {
+        } else if test(emptyAnyDict()) {
             self = .dict
-        } else if test(emptyAnyHashableArray) {
+        } else if test(emptyAnyHashableArray()) {
             self = .hashableArray
-        } else if test(emptyAnyHashableDict) {
+        } else if test(emptyAnyHashableDict()) {
             self = .hashableDict
         } else {
             return nil
@@ -620,7 +630,7 @@ extension TypeConstraint {
 }
 
 fileprivate func isArrayType<T>(_: T?) -> Bool {
-    if let _ = emptyAnyArray as? T {
+    if emptyAnyArray() is T {
         return true
     } else {
         return false

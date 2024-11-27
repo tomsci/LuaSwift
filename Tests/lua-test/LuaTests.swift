@@ -442,14 +442,14 @@ final class LuaTests: XCTestCase {
         let (nresults, yielded, err) = thread.resume(from: nil, nargs: 1)
         XCTAssertEqual(nresults, 0)
         XCTAssertEqual(yielded, false)
-        XCTAssertEqual(err?.errorString, "doom")
+        XCTAssertEqual((err as? LuaCallError)?.errorString, "doom")
         XCTAssertEqual(thread.gettop(), 2)
         XCTAssertEqual(thread.tostring(1), "arg")
         XCTAssertEqual(thread.tostring(2), "doom")
 
         if LUA_VERSION.is54orLater() {
             let closeErr = thread.closethread(from: nil)
-            XCTAssertEqual(closeErr?.errorString, "doom")
+            XCTAssertEqual((closeErr as? LuaCallError)?.errorString, "doom")
             XCTAssertEqual(thread.gettop(), 0) // closethread will have removed arg
         }
     }
@@ -3577,35 +3577,59 @@ final class LuaTests: XCTestCase {
 
     func test_traceback_tableerr() {
         try! L.load(string: "error({ err = 'doom' })")
+
+        // Check behaviour without a LuaErrorConverter set
+        L.push(index: -1)
+        let err = L.trypcall(nargs: 0, nret: 1, msgh: nil)
+        XCTAssertTrue(((err as? LuaCallError)?.errorString ?? "").hasPrefix("table: "))
+
+        // And try it again with an error converter set
+        struct CustomError: Error, Equatable, Decodable {
+            let err: String
+        }
+        struct CustomErrorConverter: LuaErrorConverter {
+            func popErrorFromStack(_ L: LuaState) -> any Error {
+                if let err = L.todecodable(-1, type: CustomError.self) {
+                    return err
+                } else {
+                    return LuaCallError.popFromStack(L)
+                }
+            }
+        }
+        L.setErrorConverter(CustomErrorConverter())
+
         XCTAssertThrowsError(try L.pcall()) { err in
-            guard let errVal = (err as? LuaCallError)?.errorValue else {
+            guard let customErr = err as? CustomError else {
                 XCTFail()
                 return
             }
-            XCTAssertEqual(errVal.type, .table)
-            XCTAssertEqual(errVal["err"].tostring(), "doom")
-            // Decode it, why not
-            struct ErrStruct : Equatable, Decodable {
-                let err: String
-            }
-            let errStruct: ErrStruct? = errVal.todecodable()
-            XCTAssertEqual(errStruct, ErrStruct(err: "doom"))
+            XCTAssertEqual(customErr, CustomError(err: "doom"))
         }
     }
 
     func test_traceback_userdataerr() {
         try! L.load(string: "local errObj = ...; error(errObj)")
-        struct ErrStruct : Equatable {
+        struct ErrStruct: Error, Equatable {
             let err: Int
+        }
+        struct CustomErrorConverter: LuaErrorConverter {
+            func popErrorFromStack(_ L: LuaState) -> any Error {
+                if let err: ErrStruct = L.touserdata(-1) {
+                    return err
+                } else {
+                    return LuaCallError.popFromStack(L)
+                }
+            }
         }
         L.register(Metatable<ErrStruct>())
         L.push(userdata: ErrStruct(err: 1234))
+        L.setErrorConverter(CustomErrorConverter())
         XCTAssertThrowsError(try L.pcall(nargs: 1, nret: 0)) { err in
-            guard let errVal = (err as? LuaCallError)?.errorValue else {
+            guard let customErr = (err as? ErrStruct) else {
                 XCTFail()
                 return
             }
-            XCTAssertEqual(errVal.tovalue(), ErrStruct(err: 1234))
+            XCTAssertEqual(customErr, ErrStruct(err: 1234))
         }
     }
 

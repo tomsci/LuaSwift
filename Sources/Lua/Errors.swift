@@ -1,63 +1,53 @@
 // Copyright (c) 2023-2024 Tom Sutcliffe
 // See LICENSE file for license information.
 
-/// An `Error` type representing an error thrown by the Lua runtime.
+/// An `Error` type representing a String error thrown by the Lua runtime.
+///
+/// Unless ``Lua/Swift/UnsafeMutablePointer/setErrorConverter(_:)`` has been called, this will be the error type used
+/// by all the `LuaState.pcall()` functions, plus anything which indirectly uses them, such as
+/// ``Lua/Swift/UnsafeMutablePointer/get(_:)``.
 public struct LuaCallError: Error, Equatable, CustomStringConvertible, Pushable {
-    private init(_ error: LuaValue) {
-        self.errorValue = error
-        // Construct this now in case the Error is not examined until the after the LuaState has gone out of scope
-        // (at which point you'll at least be able to still use the string version)
-        self.errorString = error.tostring(convert: true) ?? "<no error description available>"
-    }
 
-    /// Construct a `LuaCallError` with a string error. `errorValue` will be `nil`.
+    /// Construct a `LuaCallError` with the specified string error.
     public init(_ error: String) {
-        self.errorValue = nil
         self.errorString = error
     }
 
     /// Pops a value from the stack and constructs a `LuaCallError` from it.
     ///
-    /// If the value is a string decodable using the default string encoding, `errorString` in the resulting
-    /// `LuaCallError` will be set to that string and `errorValue` will be nil. Otherwise, the value will be stored
-    /// in `errorValue` and `errorString` will be set to the result of calling `tostring()` on the value.
+    /// The `errorString` member is constructed by calling `tostring(-1, convert: true)`. If that returns `nil` (eg due
+    /// to a string not being valid in the default encoding, or a `__tostring` metamethod erroring), `errorString` will
+    /// be set to `"<invalid value>"`.
     public static func popFromStack(_ L: LuaState) -> LuaCallError {
         defer {
             L.pop()
         }
-        if let str = L.tostring(-1) {
+        if let str = L.tostring(-1, convert: true) {
             return LuaCallError(str)
         } else {
-            return LuaCallError(L.ref(index: -1))
+            return LuaCallError("<invalid string>")
         }
     }
 
-    /// Pushes the underlying error object (or string) on to the stack.
+    /// Pushes the underlying error string on to the stack.
     public func push(onto L: LuaState) {
-        if let errorValue {
-            L.push(errorValue)
-        } else {
-            L.push(errorString)
-        }
+        L.push(errorString)
     }
-
-    /// The underlying Lua error value that was thrown by `lua_error()`.
-    ///
-    /// If the underlying Lua error was not a `string`, errorValue will be set to that value. If the error was a string
-    /// that could be decoded using the default string encoding, then `errorValue` will be `nil`. 
-
-    /// > Important: Like all `LuaValue` objects, this is only valid until the `LuaState` that created it is closed.
-    ///   After that point, only `errorString` can be used.
-    public let errorValue: LuaValue?
 
     /// The string representation of the Lua error value.
-    ///
-    /// If the thrown error value was a `string` decodable using the default string encoding, this is that object as a
-    /// Swift `String`. Otherwise, `errorString` will be set to the result of `tostring(errorValue)`.
     public let errorString: String
 
     // Conformance to CustomStringConvertible
     public var description: String { return errorString }
+}
+
+/// A Protocol that enables custom Errors to be thrown from functions like `pcall()`.
+///
+/// Normally all Lua errors are translated into ``LuaCallError``. Calling
+/// ``Lua/Swift/UnsafeMutablePointer/setErrorConverter(_:)`` with an implementation of this protocol allows this
+/// behavior to be customized. See ``Lua/Swift/UnsafeMutablePointer/setErrorConverter(_:)`` for more details.
+public protocol LuaErrorConverter {
+    func popErrorFromStack(_ L: LuaState) -> Error
 }
 
 /// Errors than can be thrown by ``Lua/Swift/UnsafeMutablePointer/load(file:displayPath:mode:)`` (and other overloads).

@@ -293,8 +293,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter arguments: Arguments to pass to the Lua function.
     /// - Parameter traceback: If true, any errors thrown will include a full stack trace.
     /// - Returns: The first result of the function, as a `LuaValue`.
-    /// - Throws: ``LuaCallError`` if `member` does not exist or is not callable, or if a Lua error is raised during the
-    ///   execution of the function.
+    /// - Throws: ``LuaValueError`` if `member` does not exist or is not callable, or an error of type determined by
+    ///   whether a ``LuaErrorConverter`` is set if a Lua error is raised during the execution of the function.
     @discardableResult
     public func pcall(member: String, _ arguments: Any?..., traceback: Bool = true) throws -> LuaValue {
         return try pcall(member: member, arguments: arguments, traceback: traceback)
@@ -366,7 +366,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Returns: The value associated with `key` as a `LuaValue`.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
-    ///           ``LuaCallError`` if an error is thrown during a metatable `__index` call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during a
+    ///           metatable `__index` call.
     public func get(_ key: Any) throws -> LuaValue {
         try self.checkValid()
         push(onto: L)
@@ -384,7 +385,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/noLength`` if the Lua value does not support the length operator, or `__len` did not
     ///           return an integer.
-    ///           ``LuaCallError`` if an error is thrown during a metatable `__len` call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during a
+    ///           metatable `__len` call.
    public var len: lua_Integer {
        get throws {
            try self.checkValid()
@@ -428,7 +430,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter value: The value to set. Can be nil to remove `key` from the table.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
     ///           ``LuaValueError/notNewIndexable`` if the Lua value does not support indexing.
-    ///           ``LuaCallError`` if an error is thrown during a metatable `__newindex` call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during a
+    ///           metatable `__newindex` call.
     public func set(_ key: Any, _ value: Any?) throws {
         try self.checkValid()
         push(onto: L)
@@ -622,7 +625,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
     ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
-    ///           ``LuaCallError`` if an error is thrown during a `__pairs` call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during a
+    ///           `__pairs` call.
     public func pairs() throws -> some Sequence<(LuaValue, LuaValue)> {
         try checkValid()
         return try PairsIterator(self)
@@ -649,7 +653,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
     ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
-    ///           ``LuaCallError`` if an error is thrown during a `__pairs` call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during a
+    ///           `__pairs` call.
     public func pairs<K, V>(type: (K.Type, V.Type)) throws -> some Sequence<(K, V)> {
         try checkValid()
         return try PairsIterator(self)
@@ -679,7 +684,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter block: The code to execute on each iteration.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
-    ///           ``LuaCallError`` if an error is thrown during an `__index` call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during
+    ///           an `__index` call.
     public func for_ipairs(start: lua_Integer = 1, _ block: (lua_Integer, LuaValue) throws -> LuaState.IteratorResult) throws {
         try checkValid()
         push(onto: L)
@@ -758,7 +764,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter block: The code to execute.
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is nil.
     ///           ``LuaValueError/notIterable`` if the Lua value is not a table and does not have a `__pairs` metafield.
-    ///           ``LuaCallError`` if an error is thrown during a `__pairs` or iterator call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during a
+    ///           `__pairs` or iterator call.
     public func for_pairs(_ block: (LuaValue, LuaValue) throws -> LuaState.IteratorResult) throws {
         try for_pairs(type: (LuaValue.self, LuaValue.self), block)
     }
@@ -807,7 +814,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
     ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
-    ///           ``LuaCallError`` if an error is thrown during an `__index` call.
+    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during
+    ///           an `__index` call.
     @available(*, deprecated, message: "Will be removed in v1.0.0. Use for_ipairs() overload with block returning Void instead.")
     public func forEach(_ block: (LuaValue) throws -> Void) throws {
         try for_ipairs() { _, value in
@@ -846,7 +854,8 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     ///
     /// - Parameter other: The value to compare against.
     /// - Returns: true if the two values are equal.
-    /// - Throws: ``LuaCallError`` if an `__eq` metamethod errored.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if an `__eq` metamethod
+    ///   errored.
     public func equal(_ other: LuaValue) throws -> Bool {
         return try compare(other, .eq)
     }
@@ -856,7 +865,7 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter other: The value to compare against.
     /// - Parameter op: The comparison operator to perform.
     /// - Returns: true if the comparison is satisfied.
-    /// - Throws: ``LuaCallError`` if a metamethod errored.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a metamethod errored.
     public func compare(_ other: LuaValue, _ op: LuaState.ComparisonOp) throws -> Bool {
         precondition(L.getMainThread() == other.L.getMainThread(), "Cannot compare LuaValues from different LuaStates")
         L.push(self)

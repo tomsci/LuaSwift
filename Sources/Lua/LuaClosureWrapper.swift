@@ -11,7 +11,7 @@ public struct LuaCallContinuationStatus {
 /// See ``LuaPcallContinuation``.
 public struct LuaPcallContinuationStatus {
     public let yielded: Bool
-    public let error: LuaCallError?
+    public let error: Error?
 }
 
 /// As per ``LuaPcallContinuation`` but for `callk()` rather than `pcallk()`.
@@ -104,7 +104,7 @@ public final class LuaClosureWrapper: Pushable {
         case LUA_YIELD:
             status = LuaPcallContinuationStatus(yielded: true, error: nil)
         default:
-            status = LuaPcallContinuationStatus(yielded: false, error: LuaCallError.popFromStack(L))
+            status = LuaPcallContinuationStatus(yielded: false, error: L.popErrorFromStack())
         }
 
         do {

@@ -26,7 +26,7 @@ public let MultiRet: CInt = CLua.LUA_MULTRET
 public typealias lua_CFunction = @convention(c) (LuaState?) -> CInt
 
 /// The type of the ``LUA_VERSION`` constant.
-public struct LuaVer {
+public struct LuaVer: Sendable {
     /// The Lua major version number (eg 5)
     public let major: CInt
     /// The Lua minor version number (eg 4)
@@ -565,6 +565,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         var metatableDict = Dictionary<String, Array<Any.Type>>()
         var userdataMetatables = Set<UnsafeRawPointer>()
         var luaValues = Dictionary<CInt, UnownedLuaValue>()
+        var errorConverter: LuaErrorConverter? = nil
 
         deinit {
             for (_, val) in luaValues {
@@ -1522,8 +1523,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter start: What table index to start iterating from. Default is `1`, ie the start of the array.
     /// - Parameter block: The code to execute.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
-    ///   does not support indexing. Rethrows anything thrown by `block`.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of a `__index` metafield or if the value does not support indexing. Rethrows anything
+    ///   thrown by `block`.
     public func for_ipairs(_ index: CInt, start: lua_Integer = 1, _ block: (lua_Integer) throws -> IteratorResult) throws {
         // Ensure this is set up
         push(function: luaswift_do_for_pairs) // yes, it's keyed under the pairs fn not ipairs...
@@ -1595,8 +1597,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter type: The expected type of the elements being iterated. If any element fails to convert, the
     ///   iteration will be halted early (as if `.breakIteration` was returned).
     /// - Parameter block: The code to execute.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
-    ///   does not support indexing. Rethrows anything `block` throws.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of a `__index` metafield or if the value does not support indexing. Rethrows anything
+    ///   thrown by `block`.
     public func for_ipairs<T>(_ index: CInt, start: lua_Integer = 1, type: T.Type, _ block: (lua_Integer, T) throws -> IteratorResult) throws {
         try for_ipairs(index, start: start, { i in
             if let val: T = self.tovalue(-1) {
@@ -1629,8 +1632,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter type: The expected type of the elements being iterated. If any element fails to convert, the
     ///   iteration will be halted early.
     /// - Parameter block: The code to execute.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution a `__index` metafield or if the value
-    ///   does not support indexing. Rethrows anything `block` throws.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of a `__index` metafield or if the value does not support indexing. Rethrows anything
+    ///   thrown by `block`.
     public func for_ipairs<T>(_ index: CInt, start: lua_Integer = 1, type: T.Type, _ block: (lua_Integer, T) throws -> Void) throws {
         try for_ipairs(index, start: start, { i in
             if let val: T = self.tovalue(-1) {
@@ -1783,8 +1787,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// This function is only exposed for implementations of pairs iterators to use, thus usually should not be called
     /// directly. The value is popped from the stack.
     ///
-    /// Returns: `false` (and pushes `next, value, nil`) if the value isn't iterable, otherwise `true`.
-    /// Throws: ``LuaCallError`` if the value had a `__pairs` metafield which errored.
+    /// - Returns: `false` (and pushes `next, value, nil`) if the value isn't iterable, otherwise `true`.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if the value had a `__pairs`
+    ///   metafield which errored.
     @discardableResult
     public func pushPairsParameters() throws -> Bool {
         let L = self
@@ -1833,8 +1838,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter block: The code to execute.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of an iterator function or a `__pairs`
-    ///   metafield, or if the value at `index` does not support indexing.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of an iterator function or a `__pairs` metafield, or if the value at `index` does not
+    ///   support indexing.
     public func for_pairs(_ index: CInt, _ block: (CInt, CInt) throws -> IteratorResult) throws {
         push(index: index) // The value being iterated
         try pushPairsParameters() // pops value, pushes iterfn, state, initval
@@ -1889,8 +1895,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter type: The key and value types to convert to, as a tuple.
     /// - Parameter block: The code to execute.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of an iterator function or a `__pairs`
-    ///   metafield, or if the value at `index` does not support indexing.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of an iterator function or a `__pairs` metafield, or if the value at `index` does not
+    ///   support indexing.
     public func for_pairs<K, V>(_ index: CInt, type: (K.Type, V.Type), _ block: (K, V) throws -> IteratorResult) throws {
         push(index: index) // The value being iterated
         try pushPairsParameters() // pops value, pushes iterfn, state, initval
@@ -1913,8 +1920,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: Stack index of the table to iterate.
     /// - Parameter type: The key and value types to convert to, as a tuple.
     /// - Parameter block: The code to execute.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of an iterator function or a `__pairs`
-    ///   metafield, or if the value at `index` does not support indexing.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of an iterator function or a `__pairs` metafield, or if the value at `index` does not
+    ///   support indexing.
     public func for_pairs<K, V>(_ index: CInt, type: (K.Type, V.Type), _ block: (K, V) throws -> Void) throws {
         push(index: index) // The value being iterated
         try pushPairsParameters() // pops value, pushes iterfn, state, initval
@@ -2575,7 +2583,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   to keep all returned values.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of the function.
     /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
     @inlinable
     public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
@@ -2593,7 +2602,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter nret: The number of expected results. Can be ``MultiRet``
     ///   to keep all returned values.
     /// - Parameter msgh: An optional message handler function to be called if the function errors.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of the function.
     /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
     public func pcall(nargs: CInt, nret: CInt, msgh: lua_CFunction?) throws {
         if let error = trypcall(nargs: nargs, nret: nret, msgh: msgh) {
@@ -2601,20 +2611,21 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Make a protected call to a Lua function, returning a `LuaCallError` if an error occurred.
+    /// Make a protected call to a Lua function, returning an `Error` if an error occurred.
     ///
     /// The function and any arguments must already be pushed to the stack in the same way as for
     /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
     /// and are popped from the stack by this call. If the function errors, no results are pushed
-    /// to the stack and a `LuaCallError` is returned. Otherwise `nret` results are pushed and `nil`
+    /// to the stack and an `Error` is returned. Otherwise `nret` results are pushed and `nil`
     /// is returned.
     ///
     /// - Parameter nargs: The number of arguments to pass to the function.
     /// - Parameter nret: The number of expected results. Can be ``MultiRet``
     ///   to keep all returned values.
     /// - Parameter msgh: An optional message handler function to be called if the function errors.
-    /// - Returns: A `LuaCallError` if the function errored, `nil` otherwise.
-    public func trypcall(nargs: CInt, nret: CInt, msgh: lua_CFunction?) -> LuaCallError? {
+    /// - Returns: an error (of type determined by whether a ``LuaErrorConverter`` is set) if the function errored,
+    ///   `nil` otherwise.
+    public func trypcall(nargs: CInt, nret: CInt, msgh: lua_CFunction?) -> Error? {
         let index: CInt
         if let msghFn = msgh {
             index = gettop() - nargs
@@ -2630,12 +2641,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return error
     }
 
-    /// Make a protected call to a Lua function, returning a `LuaCallError` if an error occurred.
+    /// Make a protected call to a Lua function, returning an `Error` if an error occurred.
     ///
     /// The function and any arguments must already be pushed to the stack in the same way as for
     /// [`lua_pcall()`](https://www.lua.org/manual/5.4/manual.html#lua_pcall)
     /// and are popped from the stack by this call. If the function errors, no results are pushed
-    /// to the stack and a `LuaCallError` is returned. Otherwise `nret` results are pushed and `nil`
+    /// to the stack and an `Error` is returned. Otherwise `nret` results are pushed and `nil`
     /// is returned.
     ///
     /// - Parameter nargs: The number of arguments to pass to the function.
@@ -2643,13 +2654,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   to keep all returned values.
     /// - Parameter msgh: The stack index of a message handler function, or `0` to specify no
     ///   message handler. The handler is not popped from the stack.
-    /// - Returns: A `LuaCallError` if the function errored, `nil` otherwise.
-    public func trypcall(nargs: CInt, nret: CInt, msgh: CInt) -> LuaCallError? {
+    /// - Returns: an error (of type determined by whether a ``LuaErrorConverter`` is set) if the function errored,
+    ///   `nil` otherwise.
+    public func trypcall(nargs: CInt, nret: CInt, msgh: CInt) -> Error? {
         let err = lua_pcall(self, nargs, nret, msgh)
         if err == LUA_OK {
             return nil
         } else {
-            return LuaCallError.popFromStack(self)
+            return popErrorFromStack()
         }
     }
 
@@ -2662,7 +2674,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter arguments: Arguments to pass to the Lua function.
     /// - Parameter traceback: If true, any errors thrown will include a
     ///   full stack trace.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua function or callable.
     @inlinable
     public func pcall(_ arguments: Any?..., traceback: Bool = true) throws {
@@ -2693,7 +2706,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   full stack trace.
     /// - Returns: The first result of the function, converted if possible to a
     ///   `T`.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of the function.
     /// - Precondition: The value at the top of the stack must refer to a Lua function or callable.
     @inlinable
     public func pcall<T>(_ arguments: Any?..., traceback: Bool = true) throws -> T? {
@@ -2789,8 +2803,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// * If the call does not yield or error, `continuation` will be called with `status.yielded = false`,
     ///   `status.error = nil`, and the results of the call adjusted to `nret` extra values on the stack.
-    /// * If the call errors, `continuation` be called with `status.error` set to a ``LuaCallError``, and the stack as
-    ///   it was before the call (minus the `nargs` and function, and without any values added).
+    /// * If the call errors, `continuation` be called with `status.error` set to an `Error` (of type determined by
+    ///   whether a ``LuaErrorConverter`` is set), and the stack as it was before the call (minus the `nargs` and
+    ///   function, and without any values added).
     /// * If the call yields, `continuation` will be called if/when the current thread is resumed with
     ///   `status.yielded = true` and the values passed to the resume call adjusted to `nret` extra values on the stack.
     ///
@@ -2914,12 +2929,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// > Note: When using Lua versions 5.4.0 to 5.4.5, this calls `lua_resetthread()` instead. On earlier versions, it
     ///   has no effect and always returns `nil`.
     @discardableResult
-    public func closethread(from: LuaState?) -> LuaCallError? {
+    public func closethread(from: LuaState?) -> Error? {
         let status = luaswift_closethread(self, from)
         if status == LUA_OK || gettop() == 0 { // Be paranoid in case the caller has already reset the stack
             return nil
         } else {
-            return LuaCallError.popFromStack(self)
+            return popErrorFromStack()
         }
     }
 
@@ -2946,15 +2961,49 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Important: Prior to Lua 5.4, all values are removed from the stack by this call, so the stack will only
     ///   contain `nresults` values when `resume()` returns. In 5.4 and later, only `nargs` results (and the function,
     ///   if the coroutine is being started) are removed, and the `nresults` values are added to the top of the stack.
-    ///   See [lua_resume (5.3)](https://www.lua.org/manual/5.3/manual.html#lua_resume) vs
-    ///   [lua_resume (5.4)](https://www.lua.org/manual/5.4/manual.html#lua_resume).
-    public func resume(from: LuaState?, nargs: CInt) -> (nresults: CInt, yielded: Bool, error: LuaCallError?) {
+    ///   See [`lua_resume` (5.3)](https://www.lua.org/manual/5.3/manual.html#lua_resume) vs
+    ///   [`lua_resume` (5.4)](https://www.lua.org/manual/5.4/manual.html#lua_resume).
+    public func resume(from: LuaState?, nargs: CInt) -> (nresults: CInt, yielded: Bool, error: Error?) {
         var nresults: CInt = 0
         let status = luaswift_resume(self, from, nargs, &nresults)
         if status == LUA_OK || status == LUA_YIELD {
             return (nresults: nresults, yielded: status == LUA_YIELD, error: nil)
         } else {
-            return (nresults: 0, yielded: false, error: LuaCallError.popFromStack(self))
+            return (nresults: 0, yielded: false, error: popErrorFromStack())
+        }
+    }
+
+    /// Set a custom handler for converting Lua errors to Swift ones.
+    ///
+    /// By default, errors thrown or returned from any of the `pcall()` APIs are expected to be strings, and are
+    /// converted to a Swift ``LuaCallError`` using [`popFromStack()`](doc:LuaCallError/popFromStack(_:)). If the
+    /// functions being called are expected to error with other kinds of value, a custom converter can be supplied here
+    /// to convert them to whatever custom `Error` type is suitable.
+    ///
+    /// Generally speaking, any custom converter should fall back to calling `LuaCallError.popFromStack()` if the value
+    /// on the stack cannot be converted to the expected custom format, so that string errors are always handled.
+    ///
+    /// It is recommended that any `Error` returned conforms to `Pushable`, so that errors can losslessly round-trip
+    /// when for example thrown from within a LuaClosure.
+    ///
+    /// - Parameter converter: The converter to be used for any errors raised from any of the LuaSwift `pcall()` APIs.
+    ///   Can be `nil` to revert to the default `LuaCallError.popFromStack()` implementation.
+    public func setErrorConverter(_ converter: LuaErrorConverter?) {
+        if let converter {
+            getState().errorConverter = converter
+        } else if let state = maybeGetState() {
+            state.errorConverter = nil
+        }
+    }
+
+    /// Pops a value from the stack and constructs an `Error` from it.
+    ///
+    /// The type of the result is determined by whether a ``LuaErrorConverter`` is set.
+    public func popErrorFromStack() -> Error {
+        if let converter = maybeGetState()?.errorConverter {
+            return converter.popErrorFromStack(self)
+        } else {
+            return LuaCallError.popFromStack(self)
         }
     }
 
@@ -3245,7 +3294,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: The stack index of the table.
     /// - Returns: The type of the resulting value.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_gettable`.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the call to `lua_gettable`.
     @discardableResult
     public func get(_ index: CInt) throws -> LuaType {
         let absidx = absindex(index)
@@ -3262,7 +3312,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to look up in the table.
     /// - Returns: The type of the resulting value.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_gettable`.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the call to `lua_gettable`.
     @discardableResult @inlinable
     public func get<K: Pushable>(_ index: CInt, key: K) throws -> LuaType {
         let absidx = absindex(index)
@@ -3393,7 +3444,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// the stack, and `key` is the value just below the top. `key` and `val` are popped from the stack.
     ///
     /// - Parameter index: The stack index of the table.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the call to `lua_settable`.
     public func set(_ index: CInt) throws {
         let absidx = absindex(index)
         push(function: luaswift_settable, toindex: -3) // Put below key and val
@@ -3408,7 +3460,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to use.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the call to `lua_settable`.
     @inlinable
     public func set<K: Pushable>(_ index: CInt, key: K) throws {
         let absidx = absindex(index)
@@ -3424,7 +3477,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to use.
     /// - Parameter value: The value to set.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the call to `lua_settable`.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the call to `lua_settable`.
     @inlinable
     public func set<K: Pushable, V: Pushable>(_ index: CInt, key: K, value: V) throws {
         let absidx = absindex(index)
@@ -3503,7 +3557,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter name: The name of the module.
     /// - Parameter function: The function which sets up the module.
     /// - Parameter global: Whether or not to set `_G[name]`.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the function.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of the function.
     public func requiref(name: String, function: lua_CFunction, global: Bool = true) throws {
         push(function: luaswift_requiref)
         push(utf8String: name)
@@ -3532,8 +3587,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter global: Whether or not to set `_G[name]`.
     /// - Parameter closure: This closure is called to push the module function on to the stack. Note, it will not be
     ///   called if a module called `name` is already loaded. Must push exactly one item on to the stack.
-    /// - Throws: ``LuaCallError`` if a Lua error is raised during the execution of the module function.
-    ///   Rethrows if `closure` throws.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a Lua error is raised
+    ///   during the execution of the module function. Rethrows if `closure` throws.
     public func requiref(name: String, global: Bool = true, closure: () throws -> Void) throws {
         // There's just no reasonable way to shoehorn this into calling luaL_requiref, we have to unroll it...
         let top = gettop()
@@ -3598,8 +3653,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// }
     /// ```
     ///
-    /// To raise a non-string error, push the required value on to the stack and call
-    /// `throw LuaCallError.popFromStack(L)`.
+    /// To raise a non-string error (assuming a suitable ``LuaErrorConverter`` has been configured), push the required
+    /// value on to the stack and call `throw L.popErrorFromStack()`.
     public func error(_ string: String) -> LuaCallError {
         return LuaCallError(string)
     }
@@ -3698,7 +3753,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index: The stack index of the value.
     /// - Returns: the length, or `nil` if the value does not have a defined length or `__len` did not return an
     ///   integer.
-    /// - Throws: ``LuaCallError`` if the value had a `__len` metamethod which errored.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if the value had a `__len`
+    ///   metamethod which errored.
     public func len(_ index: CInt) throws -> lua_Integer? {
         let t = type(index)
         if t == .string {
@@ -3742,7 +3798,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index1: Index of the first value to compare.
     /// - Parameter index2: Index of the second value to compare.
     /// - Returns: true if the two values are equal.
-    /// - Throws: ``LuaCallError`` if an `__eq` metamethod errored.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if an `__eq` metamethod
+    ///   errored.
     @inlinable
     public func equal(_ index1: CInt, _ index2: CInt) throws -> Bool {
         return try compare(index1, index2, .eq)
@@ -3764,7 +3821,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter index2: Index of the second value to compare.
     /// - Parameter op: The comparison operator to perform.
     /// - Returns: true if the comparison is satisfied.
-    /// - Throws: ``LuaCallError`` if a metamethod errored.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a metamethod errored.
     public func compare(_ index1: CInt, _ index2: CInt, _ op: ComparisonOp) throws -> Bool {
         let i1 = absindex(index1)
         let i2 = absindex(index2)
@@ -3875,8 +3932,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push(pos)
         do {
             try pcall(nargs: 3, nret: MultiRet, traceback: false)
-        } catch let error as LuaCallError {
-            throw LuaArgumentError(errorString: error.errorString)
+        } catch {
+            throw LuaArgumentError(errorString: String(describing: error))
         }
         if isnil(top + 1) {
             return nil
@@ -4008,8 +4065,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
         do {
             try pcall(nargs: 4, nret: 1, traceback: false)
-        } catch let error as LuaCallError {
-            throw LuaArgumentError(errorString: error.errorString)
+        } catch  {
+            throw LuaArgumentError(errorString: String(describing: error))
         }
         defer {
             pop(1)

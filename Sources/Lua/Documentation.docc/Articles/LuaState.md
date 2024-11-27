@@ -39,7 +39,7 @@ defer {
 
 There are two different ways to use the `LuaState` API - the **stack-based** API which will be familiar to Lua C developers, just with stronger typing, and the **object-oriented** API using ``LuaValue``, which behaves more naturally but has much more going on under the hood to make that work, and is also less flexible. The two styles, as well as the raw `CLua` API, can be freely mixed, so you can for example use the higher-level API for convenience where it works, and drop down to the stack-based or raw APIs where necessary.
 
-In both styles of API, the only call primitive that is exposed is `pcall()`. `lua_call()` is not safe to call directly from Swift (because it can error, bypassing Swift stack unwinding) and thus is not exposed. Import `CLua` and call `lua_call()` directly if you really need to, and are certain the call cannot possibly error. `pcall()` converts Lua errors to Swift ones (of type ``LuaCallError``) and thus must always be called with `try`.
+In both styles of API, the only call primitive that is exposed is `pcall()`. `lua_call()` is not safe to call directly from Swift (because it can error, bypassing Swift stack unwinding) and thus is not exposed. Import `CLua` and call `lua_call()` directly if you really need to, and are certain the call cannot possibly error. `pcall()` converts Lua errors to Swift ones (by default, of type ``LuaCallError``) and thus must always be called with `try`.
 
 ### Stack-based API
 
@@ -291,8 +291,8 @@ L.push(x)
 - ``Lua/Swift/UnsafeMutablePointer/pcall(_:traceback:)-3qlin``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-11jc5``
 - ``Lua/Swift/UnsafeMutablePointer/pcall(arguments:traceback:)-8gv5``
-- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-6nd9m``
-- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-70inn``
+- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-1otl1``
+- ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-5cvor``
 
 ### Coroutines
 - ``Lua/Swift/UnsafeMutablePointer/newthread()``
@@ -418,6 +418,7 @@ L.push(x)
 - ``Lua/Swift/UnsafeMutablePointer/setfuncs(_:nup:)``
 - ``Lua/Swift/UnsafeMutablePointer/error(_:)-swift.type.method``
 - ``Lua/Swift/UnsafeMutablePointer/error(_:)-swift.method``
+- ``Lua/Swift/UnsafeMutablePointer/setErrorConverter(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/ref(index:)``
 - ``Lua/Swift/UnsafeMutablePointer/ref(any:)``
 - ``Lua/Swift/UnsafeMutablePointer/popref()``

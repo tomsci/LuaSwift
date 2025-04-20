@@ -3558,20 +3558,34 @@ final class LuaTests: XCTestCase {
     }
 
     func test_traceback() {
-        let stacktrace = """
+        let stacktrace_older = """
             [string "error 'Nope'"]:1: Nope
             stack traceback:
             \t[C]: in ?
             \t[C]: in function 'error'
             \t[string "error 'Nope'"]:1: in main chunk
             """
+
+        // global 'error' not function 'error', on latest 5.5 master
+        let stacktrace_newer = """
+            [string "error 'Nope'"]:1: Nope
+            stack traceback:
+            \t[C]: in ?
+            \t[C]: in global 'error'
+            \t[string "error 'Nope'"]:1: in main chunk
+            """
+
         try! L.load(string: "error 'Nope'")
         XCTAssertThrowsError(try L.pcall()) { err in
             guard let err = err as? LuaCallError else {
                 XCTFail()
                 return
             }
-            XCTAssertEqual(err.errorString, stacktrace.trimmingCharacters(in: .newlines))
+            if err.errorString != stacktrace_older {
+                XCTAssertEqual(err.errorString, stacktrace_newer)
+            } else {
+                XCTAssertEqual(err.errorString, stacktrace_older)
+            }
         }
     }
 

@@ -30,7 +30,7 @@ jobs:
         git apply enable-docc-dependency.patch
         swift package --allow-writing-to-directory _site generate-documentation --target Lua --disable-indexing --transform-for-static-hosting --hosting-base-path LuaSwift --output-path _site --include-extended-types
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v2
+      uses: actions/upload-pages-artifact@v3
 
   build-linux:
 

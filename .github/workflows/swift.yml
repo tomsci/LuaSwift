@@ -25,6 +25,9 @@ jobs:
       run: swift build -v
     - name: Run tests
       run: swift test -v
+    - name: Setup Pages
+      id: pages
+      uses: actions/configure-pages@v5
     - name: Build documentation
       run: |
         git apply enable-docc-dependency.patch
@@ -87,4 +90,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2 # or the latest "vX.X.X" version tag for this action
+        uses: actions/deploy-pages@v4 # or the latest "vX.X.X" version tag for this action

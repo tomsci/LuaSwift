@@ -53,6 +53,15 @@ L.push("Hello world!")
 try! L.pcall(nargs: 1, nret: 0)
 ```
 
+There are convenience functions to combine pushing the arguments and the `pcall`, using the logic in [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)):
+
+```swift
+import Lua
+let L = LuaState(libraries: .all)
+L.getglobal("print")
+try! L.pcall("Hello world!")
+```
+
 ### Object-oriented API
 
 This API uses a single Swift type ``LuaValue`` to represent any Lua value (including `nil`) independently from the current state of the Lua stack, which allows for a much more object-oriented API, including convenience call and subscript operators. A computed property ``Lua/Swift/UnsafeMutablePointer/globals`` allows a convenient way to access the global Lua environment as a `LuaValue`. A ``LuaValueError`` is thrown if a `LuaValue` is accessed in a way which the underlying Lua value does not support - for example trying to call something which is not callable.
@@ -74,10 +83,10 @@ try printfn["nope"]
 
 ```swift
 let g = L.globals
-g.set("foo", "bar") // ok
-g["baz"] = g["foo"] // ok
+g.set("foo", "bar") // _G.foo = "bar"
+g["baz"] = g["foo"] // _G.baz = _G.foo
 g["baz"] = "bat" // BAD: cannot do this
-g["baz"] = L.ref(any: "bat") // ok
+g["baz"] = L.ref(any: "bat") // _G.baz = "bat"
 
 ```
 
@@ -193,6 +202,14 @@ Most of the time, the desired behavior is to leave the value on the top of the s
 let x = 1
 L.push(x)
 ```
+
+### C functions deliberately not exposed
+
+Some Lua C APIs do not make sense to be called from Swift; usually this is because they can call (even indirectly) `lua_error()`, which as described in the [#Error-handling](Error handling) section breaks the Swift runtime guarantees. As a result, there are some APIs which the LuaSwift `Lua` framework deliberately does not expose. A brief summary of some of the 'missing' APIs follows - they are all available by importing `CLua`, with the caveat that they _will_ break your program if any of the problematic behaviors (such as erroring) occur.
+
+`lua_call()` - as described in [#Error-handling](Error handling) anything which can call `lua_error()` is not safe to call from Swift. Use `pcall()` instead, or import `CLua` and call `lua_call()` directly if you are _absolutely certain_ that the call cannot error.
+
+`lua_toclose()`, `lua_closeslot()` - to-be-closed slots configured in native code are closely tied to error handling so are not exposed for the same reasons - `lua_closeslot()` can error, and `lua_toclose()` can make calls to `settop()` and `pop()` error (and the Swift wrappers cannot account for this without needing _all_ uses include a `try`). Thus they are too dangerous to expose. Since any Lua native function written in Swift needs to be working with Swift `Errors` anyway, using a Swift `defer {....}` block instead of `lua_closeslot()` is almost always the correct alternative.
 
 ## Topics
 

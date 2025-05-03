@@ -32,35 +32,41 @@ jobs:
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
 
-  build-linux:
-
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - uses: swift-actions/setup-swift@v2
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
-
-  build-oss:
-
-    runs-on: macos-13
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
-    - uses: swift-actions/setup-swift@v2
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+  # Disabled due to https://github.com/swift-actions/setup-swift/issues/694
+  # "The process '/usr/bin/gpg' failed with exit code 2"
+  #
+  #  build-linux:
+  #
+  #    runs-on: ubuntu-latest
+  #
+  #    steps:
+  #    - name: Checkout repository
+  #      uses: actions/checkout@v3
+  #      with:
+  #        submodules: recursive
+  #    - uses: swift-actions/setup-swift@v2
+  #    - name: Build
+  #      run: swift build -v
+  #    - name: Run tests
+  #      run: swift test -v
+  #
+  # Disabled due to https://github.com/swiftlang/swift-package-manager/issues/8436
+  # "error: redefinition of module"
+  #
+  #  build-oss:
+  #
+  #    runs-on: macos-13
+  #
+  #    steps:
+  #    - name: Checkout repository
+  #      uses: actions/checkout@v3
+  #      with:
+  #        submodules: recursive
+  #    - uses: swift-actions/setup-swift@v2
+  #    - name: Build
+  #      run: swift build -v
+  #    - name: Run tests
+  #      run: swift test -v
 
   deploy:
     needs: build

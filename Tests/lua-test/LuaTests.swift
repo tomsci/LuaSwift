@@ -3903,4 +3903,9 @@ final class LuaTests: XCTestCase {
         let f = L.tofilehandle(-1)
         XCTAssertEqual(stdout, f)
     }
+
+    func test_LUA_VERSION() throws {
+        // Tests that the CustomStringConvertible is implemented correctly.
+        XCTAssertEqual("\(LUA_VERSION)", "\(LUASWIFT_LUA_VERSION_MAJOR).\(LUASWIFT_LUA_VERSION_MINOR).\(LUASWIFT_LUA_VERSION_RELEASE)")
+    }
 }

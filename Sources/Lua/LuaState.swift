@@ -26,7 +26,7 @@ public let MultiRet: CInt = CLua.LUA_MULTRET
 public typealias lua_CFunction = @convention(c) (LuaState?) -> CInt
 
 /// The type of the ``LUA_VERSION`` constant.
-public struct LuaVer: Sendable {
+public struct LuaVer: Sendable, CustomStringConvertible {
     /// The Lua major version number (eg 5)
     public let major: CInt
     /// The Lua minor version number (eg 4)
@@ -57,6 +57,16 @@ public struct LuaVer: Sendable {
         self.release = CInt(release)!
     }
 
+    /// Returns the Lua version (including release number) as a string.
+    ///
+    /// Returns the Lua version (including release number) as a string, for example `"5.4.6"`.
+    public func tostring() -> String {
+        return "\(major).\(minor).\(release)"
+    }
+
+    public var description: String {
+        return tostring()
+    }
 }
 
 /// The version of Lua being used.

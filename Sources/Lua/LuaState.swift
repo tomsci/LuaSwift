@@ -2985,8 +2985,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Returns: If the thread errored, or if a `__close` metamethod errored while cleaning up the to-be-closed
     ///   variables, returns that error, otherwise returns `nil`. If the thread errored, this will be the same error as
     ///   returned from ``resume(from:nargs:)``, assuming the stack has not been modified in the interim.
-    /// > Note: When using Lua versions 5.4.0 to 5.4.5, this calls `lua_resetthread()` instead. On earlier versions, it
-    ///   has no effect and always returns `nil`.
+    /// > Note: When using Lua versions 5.4.0 to 5.4.5, this calls `lua_resetthread()` instead. On versions before 5.4,
+    ///   it has no effect and always returns `nil`.
+    /// > Note: When using Lua versions 5.4.0 to 5.4.2, this function will return `nil` if the thread errored, rather
+    ///   than returning the error from the thread.
     @discardableResult
     public func closethread(from: LuaState?) -> Error? {
         let status = luaswift_closethread(self, from)

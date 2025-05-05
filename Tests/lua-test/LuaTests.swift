@@ -13,6 +13,9 @@ fileprivate func dummyFn(_ L: LuaState!) -> CInt {
     return 0
 }
 
+let LUA_5_3_3 = LuaVer(major: 5, minor: 3, release: 3)
+let LUA_5_4_3 = LuaVer(major: 5, minor: 4, release: 3)
+
 class DeinitChecker {
     let deinitFn: () -> Void
     init(_ fn: @escaping () -> Void) {
@@ -33,7 +36,6 @@ class ClosableDeinitChecker : DeinitChecker, Closable {
         closeFn()
     }
 }
-
 
 protocol TestMetatabledProtocol: PushableWithMetatable {
     func foo() -> String
@@ -462,10 +464,19 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(thread.tostring(1), "arg")
         XCTAssertEqual(thread.tostring(2), "doom")
 
+        let closeErr = thread.closethread(from: nil)
         if LUA_VERSION.is54orLater() {
-            let closeErr = thread.closethread(from: nil)
-            XCTAssertEqual((closeErr as? LuaCallError)?.errorString, "doom")
-            XCTAssertEqual(thread.gettop(), 0) // closethread will have removed arg
+            if (LUA_VERSION >= LUA_5_4_3) {
+                // Prior to 5.4.3, lua_resetthread would not preserve the original status of the thread, meaning
+                // only errors thrown by something closing would be returned here and not any original error.
+                XCTAssertEqual((closeErr as? LuaCallError)?.errorString, "doom")
+                XCTAssertEqual(thread.gettop(), 0) // closethread will have removed arg
+            } else {
+                XCTAssertNil(closeErr)
+            }
+        } else {
+            // 5.3 will return nil always
+            XCTAssertNil(closeErr)
         }
     }
 
@@ -1362,6 +1373,10 @@ final class LuaTests: XCTestCase {
     }
 
     func test_registerMetatable_name() throws {
+        if LUA_VERSION < LUA_5_3_3 {
+            throw XCTSkip("tostring doesn't use __name prior to 5.3.3")
+        }
+
         class SomeClass {}
         class SomeNamedClass {}
 
@@ -1621,7 +1636,7 @@ final class LuaTests: XCTestCase {
         L.register(Metatable<NoTostringStruct>())
         L.push(userdata: NoTostringStruct())
         let nonTostringStr = try XCTUnwrap(L.tostring(-1, convert: true))
-        if LUA_VERSION.releaseNum >= 50303 {
+        if LUA_VERSION >= LUA_5_3_3 {
             // The use of __name in tostring wasn't added until 5.3.3
             XCTAssertTrue(nonTostringStr.hasPrefix("LuaSwift_Type_NoTostringStruct: ")) // The default behaviour of tostring for a named userdata
         }

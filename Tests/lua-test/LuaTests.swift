@@ -3922,6 +3922,15 @@ final class LuaTests: XCTestCase {
     func test_LUA_VERSION() throws {
         // Tests that the CustomStringConvertible is implemented correctly.
         XCTAssertEqual("\(LUA_VERSION)", "\(LUASWIFT_LUA_VERSION_MAJOR).\(LUASWIFT_LUA_VERSION_MINOR).\(LUASWIFT_LUA_VERSION_RELEASE)")
+
+        XCTAssertTrue(LUA_5_4_0 == LUA_5_4_0)
+        XCTAssertTrue(LUA_5_4_0 <= LUA_5_4_0)
+        XCTAssertTrue(LUA_5_4_0 >= LUA_5_4_0)
+        XCTAssertFalse(LUA_5_4_0 < LUA_5_4_0)
+        XCTAssertFalse(LUA_5_4_0 > LUA_5_4_0)
+        XCTAssertTrue(LuaVer(major: 5, minor: 4, release: 0) == LUA_5_4_0)
+        XCTAssertTrue(LuaVer(major: 5, minor: 4, release: 1) > LUA_5_4_0)
+        XCTAssertTrue(LuaVer(major: 4, minor: 6, release: 2) < LUA_5_4_0)
     }
 
     func test_arith() throws {    

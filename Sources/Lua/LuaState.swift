@@ -26,25 +26,46 @@ public let MultiRet: CInt = CLua.LUA_MULTRET
 public typealias lua_CFunction = @convention(c) (LuaState?) -> CInt
 
 /// The type of the ``LUA_VERSION`` constant.
-public struct LuaVer: Sendable, CustomStringConvertible {
-    /// The Lua major version number (eg 5)
+///
+/// Note that while it permissable to construct other `LuaVer` instances, this is not intended to be a generalised
+/// version number type. Comparisons and ``releaseNum`` will not behave correctly for numerical values outside of
+/// what comprises a valid Lua version number.
+public struct LuaVer: Sendable, CustomStringConvertible, Comparable {
+    /// The Lua major version number (eg 5).
     public let major: CInt
-    /// The Lua minor version number (eg 4)
+    /// The Lua minor version number (eg 4).
     public let minor: CInt
-    /// The Lua release number (eg 6, for 5.4.6)
+    /// The Lua release number (eg 6, for 5.4.6).
     public let release: CInt
-    /// The complete Lua version number as an int (eg 50406 for 5.4.6)
+    /// The complete Lua version number as an decimal integer (eg 50406 for 5.4.6).
     public var releaseNum: CInt {
         return (major * 100 + minor) * 100 + release
     }
 
     /// Returns true if the Lua version is 5.4 or later.
+    ///
+    /// The following are equivalent:
+    /// ```swift
+    /// LUA_VERSION.is54orLater() // is the same as...
+    /// LUA_VERSION >= LUA_5_4_0
+    /// ```
     public func is54orLater() -> Bool {
-        return releaseNum >= 50400
+        return self >= LUA_5_4_0
     }
 
     // > 5.4.7 constructor
-    init(major: CInt, minor: CInt, release: CInt) {
+    /// Construct a LuaVer representing a particular Lua version.
+    ///
+    /// This can be useful when wanting to do tests for specific Lua versions where there isn't a constant for that
+    /// version defined by LuaSwift:
+    ///
+    /// ```swift
+    /// let lua_5_3_3 = LuaVer(major: 5, minor: 3, release: 3)
+    /// if LUA_VERSION >= lua_5_3_3 {
+    ///     // something nuanced...
+    /// }
+    /// ```
+    public init(major: CInt, minor: CInt, release: CInt) {
         self.major = major
         self.minor = minor
         self.release = release
@@ -67,11 +88,39 @@ public struct LuaVer: Sendable, CustomStringConvertible {
     public var description: String {
         return tostring()
     }
+
+    public static func < (lhs: LuaVer, rhs: LuaVer) -> Bool {
+        // This definition is sufficient for all real Lua versions (where no part of the version will exceed 100)
+        return lhs.releaseNum < rhs.releaseNum
+    }
+
+    public static func == (lhs: LuaVer, rhs: LuaVer) -> Bool {
+        return lhs.releaseNum == rhs.releaseNum
+    }
 }
 
 /// The version of Lua being used.
+///
+/// This can be used to modify runtime behaviour depending on what Lua version is being used, for example:
+///
+/// ```swift
+/// if LUA_VERSION >= LUA_5_4_0 {
+///     // Do something only applicable in Lua 5.4
+/// }
+/// ```
+///
+/// or simply for logging purposes:
+///
+/// ```swift
+/// print("Using Lua \(LUA_VERSION)")
+/// ```
 public let LUA_VERSION = LuaVer(major: LUASWIFT_LUA_VERSION_MAJOR, minor: LUASWIFT_LUA_VERSION_MINOR,
     release: LUASWIFT_LUA_VERSION_RELEASE)
+
+/// Constant representing the 5.4.0 version of Lua.
+///
+/// Normally used in a comparison with ``LUA_VERSION``.
+public let LUA_5_4_0 = LuaVer(major: 5, minor: 4, release: 0)
 
 @usableFromInline
 internal func defaultTracebackFn(_ L: LuaState!) -> CInt {

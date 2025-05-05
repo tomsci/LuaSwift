@@ -52,7 +52,7 @@ import CLua
 /// as the underlying Lua value, in a similar way to how `AnyHashable` behaves.
 @dynamicCallable
 public final class LuaValue: Equatable, Hashable, Pushable {
-    internal var L: LuaState!
+    internal var L: LuaState! // note, is always the main thread of a state
     private let ref: CInt
 
     /// The type of the value this `LuaValue` represents.
@@ -60,7 +60,7 @@ public final class LuaValue: Equatable, Hashable, Pushable {
 
     // Takes ownership of an existing ref
     internal init(L: LuaState, ref: CInt, type: LuaType) {
-        self.L = L
+        self.L = L.getMainThread()
         self.type = type
         self.ref = ref
     }
@@ -114,7 +114,7 @@ public final class LuaValue: Equatable, Hashable, Pushable {
             L.pushnil()
         } else {
             precondition(self.L != nil, "LuaValue used after LuaState has been deinited!")
-            precondition(self.L.getMainThread() == L.getMainThread(), "Cannot push a LuaValue onto an unrelated state")
+            precondition(self.L == L.getMainThread(), "Cannot push a LuaValue onto an unrelated state")
             lua_rawgeti(L, LUA_REGISTRYINDEX, lua_Integer(self.ref))
         }
     }
@@ -841,7 +841,7 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Parameter other: The value to compare against.
     /// - Returns: true if the two values are equal according to the definition of raw equality.
     public func rawequal(_ other: LuaValue) -> Bool {
-        precondition(L.getMainThread() == other.L.getMainThread(), "Cannot compare LuaValues from different LuaStates")
+        precondition(L == other.L, "Cannot compare LuaValues from different LuaStates")
         L.push(self)
         L.push(other)
         defer {
@@ -867,7 +867,7 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     /// - Returns: true if the comparison is satisfied.
     /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a metamethod errored.
     public func compare(_ other: LuaValue, _ op: LuaState.ComparisonOp) throws -> Bool {
-        precondition(L.getMainThread() == other.L.getMainThread(), "Cannot compare LuaValues from different LuaStates")
+        precondition(L == other.L, "Cannot compare LuaValues from different LuaStates")
         L.push(self)
         L.push(other)
         defer {

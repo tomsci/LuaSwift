@@ -3850,6 +3850,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Unless called from within a coroutine, this will be the same as `self`.
     public func getMainThread() -> LuaState {
+        // Optimisation - checking pushThread() will always be much less work than doing a lookup in the registry table,
+        // even if it probably doesn't make a noticable difference most of the time.
+        let isMainThread = pushthread()
+        pop()
+        if isMainThread {
+            return self
+        }
+
         rawget(LUA_REGISTRYINDEX, key: LUA_RIDX_MAINTHREAD)
         defer {
             pop()

@@ -312,6 +312,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/trypcall(nargs:nret:msgh:)-5cvor``
 
 ### Coroutines
+
 - ``Lua/Swift/UnsafeMutablePointer/newthread()``
 - ``Lua/Swift/UnsafeMutablePointer/resume(from:nargs:)``
 - ``Lua/Swift/UnsafeMutablePointer/pcallk(nargs:nret:traceback:continuation:)``
@@ -444,3 +445,4 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/rawlen(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/len(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/withBuffer(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/arith(_:)``

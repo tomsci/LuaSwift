@@ -100,6 +100,21 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(LuaState.ComparisonOp.eq.rawValue, LUA_OPEQ)
         XCTAssertEqual(LuaState.ComparisonOp.lt.rawValue, LUA_OPLT)
         XCTAssertEqual(LuaState.ComparisonOp.le.rawValue, LUA_OPLE)
+
+        XCTAssertEqual(LuaState.ArithOp.add.rawValue, LUA_OPADD)
+        XCTAssertEqual(LuaState.ArithOp.sub.rawValue, LUA_OPSUB)
+        XCTAssertEqual(LuaState.ArithOp.mul.rawValue, LUA_OPMUL)
+        XCTAssertEqual(LuaState.ArithOp.mod.rawValue, LUA_OPMOD)
+        XCTAssertEqual(LuaState.ArithOp.pow.rawValue, LUA_OPPOW)
+        XCTAssertEqual(LuaState.ArithOp.div.rawValue, LUA_OPDIV)
+        XCTAssertEqual(LuaState.ArithOp.idiv.rawValue, LUA_OPIDIV)
+        XCTAssertEqual(LuaState.ArithOp.band.rawValue, LUA_OPBAND)
+        XCTAssertEqual(LuaState.ArithOp.bor.rawValue, LUA_OPBOR)
+        XCTAssertEqual(LuaState.ArithOp.bxor.rawValue, LUA_OPBXOR)
+        XCTAssertEqual(LuaState.ArithOp.shl.rawValue, LUA_OPSHL)
+        XCTAssertEqual(LuaState.ArithOp.shr.rawValue, LUA_OPSHR)
+        XCTAssertEqual(LuaState.ArithOp.unm.rawValue, LUA_OPUNM)
+        XCTAssertEqual(LuaState.ArithOp.bnot.rawValue, LUA_OPBNOT)
     }
 
     let unsafeLibs = ["os", "io", "package", "debug"]
@@ -3907,5 +3922,20 @@ final class LuaTests: XCTestCase {
     func test_LUA_VERSION() throws {
         // Tests that the CustomStringConvertible is implemented correctly.
         XCTAssertEqual("\(LUA_VERSION)", "\(LUASWIFT_LUA_VERSION_MAJOR).\(LUASWIFT_LUA_VERSION_MINOR).\(LUASWIFT_LUA_VERSION_RELEASE)")
+    }
+
+    func test_arith() throws {    
+        L.push(1)
+        L.push(123)
+        L.push(456)
+        try L.arith(.add)
+        XCTAssertEqual(L.toint(-1), 123+456)
+        XCTAssertEqual(L.gettop(), 2) // 1 and result
+        L.pop()
+
+        try L.arith(.unm)
+        XCTAssertEqual(L.toint(-1), -1)
+        XCTAssertEqual(L.gettop(), 1)
+        L.pop()
     }
 }

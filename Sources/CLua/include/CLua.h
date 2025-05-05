@@ -249,6 +249,7 @@ int luaswift_settable(lua_State *L);
 int luaswift_tostring(lua_State *L);
 int luaswift_requiref(lua_State *L);
 int luaswift_compare(lua_State *L);
+int luaswift_arith(lua_State *L);
 void* luaswift_newuserdata(lua_State* L, size_t sz);
 int luaswift_searcher_preload(lua_State *L);
 int luaswift_do_for_pairs(lua_State *L);

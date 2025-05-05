@@ -3793,7 +3793,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Compare two values for raw equality, ie without invoking `__eq` metamethods.
     ///
-    /// See [lua_rawequal](https://www.lua.org/manual/5.4/manual.html#lua_rawequal).
+    /// See [`lua_rawequal`](https://www.lua.org/manual/5.4/manual.html#lua_rawequal).
     ///
     /// - Parameter index1: Index of the first value to compare.
     /// - Parameter index2: Index of the second value to compare.
@@ -3844,6 +3844,59 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             pop()
         }
         return toint(-1) != 0
+    }
+
+    /// The type of operation to perform in ``arith(_:)``.
+    public enum ArithOp : CInt {
+        /// Performs addition (`+`).
+        case add = 0 // LUA_OPADD
+        /// Performs subtraction (`-`).
+        case sub = 1 // LUA_OPSUB
+        /// Performs multiplication (`*`).
+        case mul = 2 // LUA_OPMUL
+        /// Performs modulo (`%`).
+        case mod = 3 // LUA_OPMOD
+        /// Performs exponentiation (`^`).
+        case pow = 4 // LUA_OPPOW
+        /// Performs floating-point division (`/`).
+        case div = 5 // LUA_OPDIV
+        /// Performs floor division (`//`).
+        case idiv = 6 // LUA_OPIDIV
+        /// Performs bitwise AND (`&`).
+        case band = 7 // LUA_OPBAND
+        /// Performs bitwise OR (`&`).
+        case bor = 8 // LUA_OPBOR
+        /// Performs bitwise XOR (`~`).
+        case bxor = 9 // LUA_OPBXOR
+        /// Performs left shift (`<<`).
+        case shl = 10 // LUA_OPSHL
+        /// Performs right shift (`>>`).
+        case shr = 11 // LUA_OPSHR
+        /// Performs arithmetic negation (unary `-`).
+        case unm = 12 // LUA_OPUNM
+        /// Performs bitwise NOT (`~`).
+        case bnot = 13 // LUA_OPBNOT
+    }
+
+    /// Perform a Lua arithmetic or bitwise operation on the value(s) on the top of the stack.
+    ///
+    /// See [`lua_arith`](https://www.lua.org/manual/5.4/manual.html#lua_arith). One or two values are popped from the
+    /// stack, depending on the operation. The result is left on the top of the stack. May invoke metamethods.
+    ///
+    /// - Parameter op: The operator to perform.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a metamethod errored.
+    public func arith(_ op: ArithOp) throws {
+        let nargs: CInt
+        switch op {
+            case .unm, .bnot:
+                nargs = 1
+            default:
+                nargs = 2
+        }
+        precondition(gettop() >= nargs, "Expected at least \(nargs) values on the stack")
+        push(function: luaswift_arith, toindex: -1 - nargs)
+        push(op.rawValue)
+        try pcall(nargs: nargs + 1, nret: 1, traceback: false)
     }
 
     /// Get the main thread for this state.

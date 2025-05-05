@@ -144,6 +144,13 @@ int luaswift_compare(lua_State *L) {
     return 1;
 }
 
+int luaswift_arith(lua_State *L) {
+    int op = (int)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_arith(L, op);
+    return 1;
+}
+
 // Create userdata with as few user values as possible on this version of Lua
 void* luaswift_newuserdata(lua_State* L, size_t sz) {
 #if LUA_VERSION_NUM >= 504

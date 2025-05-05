@@ -165,6 +165,10 @@ fileprivate func callUnmanagedClosure(_ L: LuaState!) -> CInt {
 /// The `rawValue` of the enum uses the same integer values as the `LUA_T...` type constants. Note that `LUA_TNONE` does
 /// not have a `LuaType` representation, and is instead represented by `nil`, ie an optional `LuaType`, in places where
 /// `LUA_TNONE` can occur.
+///
+/// > Note: `nil` and `LuaType.nil` are distinct values -- in places where `LuaType?` is used, `nil` represents the
+///   absence of a type (corresponding to `LUA_TNONE`), whereas `LuaType.nil` represents the type of the Lua nil value,
+///   ie `LUA_TNIL`.
 @frozen
 public enum LuaType : CInt, CaseIterable {
     // Annoyingly can't use LUA_TNIL etc here because the bridge exposes them as `var LUA_TNIL: CInt { get }`
@@ -1852,7 +1856,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     @discardableResult
     public func pushPairsParameters() throws -> Bool {
         let L = self
-        if luaL_getmetafield(L, -1, "__pairs") == LUA_TNIL {
+        if getmetafield(-1, "__pairs") == nil {
             let isTable = L.type(-1) == .table
             // Use next, value, nil
             L.push(function: { (L: LuaState!) in
@@ -2999,6 +3003,25 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// For the object at the given index, pushes the specified field from its metatable onto the stack.
+    ///
+    /// If the object does not have a metatable or the metatable does not have this field, pushes nothing onto the stack
+    /// and returns `nil`.
+    ///
+    /// - Parameter index: The stack index of the object.
+    /// - Parameter field: The name of the metafield.
+    /// - Returns: The type of the resulting value, or `nil` if the object does not have a metatable or the metatable
+    ///   does not have this field.
+    @discardableResult
+    public func getmetafield(_ index: CInt, _ field: String) -> LuaType? {
+        let t = luaL_getmetafield(self, index, field)
+        if t == LUA_TNIL {
+            return nil
+        } else {
+            return LuaType(ctype: t)!
+        }
+    }
+
     /// Start or resume a coroutine in this thread.
     ///
     /// - Parameter from: The coroutine that is resuming `self`, or `nil` if there is no such coroutine.
@@ -3823,8 +3846,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             return rawlen(index)!
         }
         let absidx = absindex(index)
-        let mt = luaL_getmetafield(self, index, "__len")
-        if mt == LUA_TNIL {
+        if getmetafield(index, "__len") == nil {
             if t == .table {
                 // Raw len also cannot fail
                 return rawlen(index)!

@@ -243,7 +243,6 @@ int luaswift_callclosurewrapper(lua_State *L);
 bool luaswift_iscallclosurewrapper(lua_CFunction fn);
 int luaswift_continuation_regkey(lua_State *L);
 
-void luaswift_createtable(lua_State *L, int narray, int nrec);
 int luaswift_gettable(lua_State *L);
 int luaswift_settable(lua_State *L);
 int luaswift_tostring(lua_State *L);

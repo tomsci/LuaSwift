@@ -811,7 +811,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     @inlinable
     public func newtable(narr: CInt = 0, nrec: CInt = 0) {
         precondition(narr >= 0 && nrec >= 0, "Table size cannot be negative")
-        luaswift_createtable(self, narr, nrec)
+        lua_createtable(self, narr, nrec)
     }
 
     // MARK: - to...() functions

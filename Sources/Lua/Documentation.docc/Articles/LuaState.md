@@ -446,3 +446,4 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/len(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/withBuffer(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/arith(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/concat(_:)``

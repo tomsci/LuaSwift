@@ -3962,4 +3962,16 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.gettop(), 1)
         L.pop()
     }
+
+    func test_concat() throws {
+        L.push("abc")
+        L.push("def")
+        L.push("g")
+        try L.concat(3)
+        XCTAssertEqual(L.gettop(), 1)
+        XCTAssertEqual(L.tostring(-1), "abcdefg")
+        L.pop()
+        try L.concat(0)
+        XCTAssertEqual(L.tostring(-1), "")
+    }
 }

@@ -321,3 +321,10 @@ int luaswift_closethread(lua_State *L, lua_State* from) {
     return LUA_OK;
 #endif
 }
+
+int luaswift_concat(lua_State *L) {
+    int n = (int)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_concat(L, n);
+    return 1;
+}

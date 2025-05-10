@@ -4042,6 +4042,21 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Concatenate the `n` topmost items on the stack.
+    ///
+    /// The `n` topmost items are popped from the stack, and the result of concatenating them is left on the stack. May
+    /// invoke `__concat` metamethods.
+    ///
+    /// - Parameter n: The number of items to concatenate.
+    /// - Throws: an error (of type determined by whether a ``LuaErrorConverter`` is set) if a `__concat` metamethod
+    ///   errored.
+    public func concat(_ n: CInt) throws {
+        precondition(n <= lua_gettop(self), "Cannot concat more values than are on the stack")
+        push(luaswift_concat, toindex: -n - 1)
+        push(n)
+        try pcall(nargs: n + 1, nret: 1)
+    }
+
     // MARK: - String match/gsub
 
     /// Swift wrapper around `string.match()`.

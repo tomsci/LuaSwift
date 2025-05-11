@@ -784,6 +784,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         lua_remove(self, index)
     }
 
+    /// See [`lua_copy`](https://www.lua.org/manual/5.4/manual.html#lua_copy).
+    @inlinable
+    public func copy(from: CInt, to: CInt) {
+        lua_copy(self, from, to)
+    }
+
     /// See [lua_gettop](https://www.lua.org/manual/5.4/manual.html#lua_gettop).
     @inlinable
     public func gettop() -> CInt {
@@ -1278,7 +1284,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // so the final as? check takes care of that. But we should check that the userdata has a metatable we
         // know about, to verify that it is safely convertible to an Any, and not an unrelated userdata some caller has
         // created directly with lua_newuserdatauv().
-        guard lua_getmetatable(self, index) == 1 else {
+        guard getmetatable(index) else {
             // userdata without a metatable can't be one of ours
             return nil
         }
@@ -3003,25 +3009,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// For the object at the given index, pushes the specified field from its metatable onto the stack.
-    ///
-    /// If the object does not have a metatable or the metatable does not have this field, pushes nothing onto the stack
-    /// and returns `nil`.
-    ///
-    /// - Parameter index: The stack index of the object.
-    /// - Parameter field: The name of the metafield.
-    /// - Returns: The type of the resulting value, or `nil` if the object does not have a metatable or the metatable
-    ///   does not have this field.
-    @discardableResult
-    public func getmetafield(_ index: CInt, _ field: String) -> LuaType? {
-        let t = luaL_getmetafield(self, index, field)
-        if t == LUA_TNIL {
-            return nil
-        } else {
-            return LuaType(ctype: t)!
-        }
-    }
-
     /// Start or resume a coroutine in this thread.
     ///
     /// - Parameter from: The coroutine that is resuming `self`, or `nil` if there is no such coroutine.
@@ -3571,8 +3558,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         try set(absidx)
     }
 
-    // MARK: - Misc functions
-
     /// Pushes the global called `name` on to the stack.
     ///
     /// The global name is always assumed to be in UTF-8 encoding.
@@ -3616,6 +3601,53 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push(value)
         setglobal(name: name)
     }
+
+    /// For the object at the given index, pushes the specified field from its metatable onto the stack.
+    ///
+    /// If the object does not have a metatable or the metatable does not have this field, pushes nothing onto the stack
+    /// and returns `nil`.
+    ///
+    /// - Parameter index: The stack index of the object.
+    /// - Parameter field: The name of the metafield.
+    /// - Returns: The type of the resulting value, or `nil` if the object does not have a metatable or the metatable
+    ///   does not have this field.
+    @discardableResult
+    public func getmetafield(_ index: CInt, _ field: String) -> LuaType? {
+        let t = luaL_getmetafield(self, index, field)
+        if t == LUA_TNIL {
+            return nil
+        } else {
+            return LuaType(ctype: t)!
+        }
+    }
+
+    /// Get the metatable for the value at the given stack index.
+    ///
+    /// If the value at the given index has a metatable, the function pushes that metatable onto the stack and returns
+    /// `true`. Otherwise, the function returns `false` and pushes nothing on the stack.
+    ///
+    /// - Parameter index: The stack index of the value.
+    /// - Returns: true if the value has a metatable.
+    @inlinable @discardableResult
+    public func getmetatable(_ index: CInt) -> Bool {
+        return lua_getmetatable(self, index) == 1
+    }
+
+    /// Set the metatable for a value.
+    ///
+    /// Pops a table or `nil` from the stack and sets that value as the new metatable for the value at the given index.
+    ///
+    /// If the value at the top of the stack is nil then this removes any metatable from the value.
+    ///
+    /// See also <doc:BridgingSwiftToLua>.
+    ///
+    /// - Parameter index: The stack index of the value.
+    @inlinable
+    public func setmetatable(_ index: CInt) {
+        lua_setmetatable(self, index)
+    }
+
+    // MARK: - Misc functions
 
     /// Pushes the globals table (`_G`) on to the stack.
     ///

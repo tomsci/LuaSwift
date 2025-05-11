@@ -483,7 +483,7 @@ public final class LuaValue: Equatable, Hashable, Pushable {
             defer {
                 L.pop()
             }
-            if lua_getmetatable(L, -1) == 1 {
+            if L.getmetatable(-1) {
                 return L.popref()
             } else {
                 return nil

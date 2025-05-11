@@ -233,6 +233,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/settop(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/absindex(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkstack(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/copy(from:to:)``
 - ``Lua/Swift/UnsafeMutablePointer/insert(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/remove(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/newtable(narr:nrec:)``
@@ -352,6 +353,8 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/set(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/set(_:key:)``
 - ``Lua/Swift/UnsafeMutablePointer/set(_:key:value:)``
+- ``Lua/Swift/UnsafeMutablePointer/getmetatable(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/setmetatable(_:)``
 
 ### Convenience get plus to...() functions
 

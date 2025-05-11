@@ -376,15 +376,7 @@ public final class LuaStackFrame {
     @discardableResult
     public func setLocal<V: Pushable>(n: CInt, value: V) -> Bool {
         L.push(value)
-        let ret = withUnsafePointer(to: ar) { arPtr in
-            return lua_setlocal(L, arPtr, n)
-        }
-        if ret != nil {
-            return true
-        } else {
-            L.pop()
-            return false
-        }
+        return setLocal(n: n)
     }
 
     /// Get debug information about the stack frame this instance refers to.

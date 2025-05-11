@@ -8,7 +8,9 @@ Any Swift type can be made accessible from Lua. The process of defining what fie
 
 Basic Swift types are pushed by value -- that is to say they are copied and converted to the equivalent Lua type. A Swift `String` is made available to Lua by converting it to a Lua `string`, a Swift `Array` is converted to a Lua `table`, etc.
 
-Bridged values on the other hand are represented in Lua using the `userdata` Lua type, which from the Swift side behave as if there was an assignment like `var userdataVar: Any = myval`. So for classes, the `userdata` holds an additional reference to the object, and for structs the `userdata` holds a value copy of it. A `__gc` metamethod is automatically generated, which means that when the `userdata` is garbage collected by Lua, the equivalent of `userdataVar = nil` is performed.
+Bridged values on the other hand are represented in Lua using the `userdata` Lua type, which from the Swift side behave as if there was an assignment like `var userdataVar: Any? = myval`. So for classes, the `userdata` holds an additional reference to the object, and for structs the `userdata` holds a value copy of it. A `__gc` metamethod is automatically generated, which means that when the `userdata` is garbage collected by Lua, the equivalent of `userdataVar = nil` is performed.
+
+> Note: While defining metatables for `struct` types is technically supported, it generally doesn't make much sense to do so. All userdata in Lua are copy-by-reference, so the object will behave like a class from the Lua side anyway, and for example the implementation of a `.memberfn { ... }` will involve copying the struct multiple times because of how the values are stored. Finally, it is not possible to define or use `mutating` member functions when using struct types. Overall, `class` types are a much better fit for how the bridging logic behaves.
 
 As described so far, the `userdata` plays nicely with Lua and Swift object lifetimes and memory management, but does not allow you to do anything useful with it from Lua other than controlling when it goes out of scope. This is where defining a metatable comes in.
 
@@ -51,7 +53,7 @@ L.register(Metatable<Foo>(fields: [
 ]))
 ```
 
-All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` or `.value(myValue)` (using a ``lua_CFunction`` or ``LuaClosure`` or ``LuaValue`` respectively), but this can require quite bit of boilerplate, for example steps (1) and (3) in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-3vudd) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types (including returning multiple values) providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
+All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` (using a ``lua_CFunction`` or ``LuaClosure`` respectively), but this can require quite bit of boilerplate, for example steps (1) and (3) in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-3vudd) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types (including returning multiple values) providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
 
 ```swift
 L.register(Metatable<Foo>(fields: [

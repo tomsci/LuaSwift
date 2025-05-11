@@ -122,7 +122,9 @@ Keep in mind that the C API gives access to functions which are (or can be) unsa
 
 ## Error handling
 
-Lua errors (implemented in C using `longjmp`) have no direct equivalent in Swift, because `longjmp` is not safe to call from Swift (just as C++ exceptions are not safe to throw from or through a Swift function either). They are instead translated to and from instances of the Swift Error type ``LuaCallError`` at the appropriate API boundaries. Instead of `lua_call()` erroring using a `longjmp` or `lua_pcall()` returning an error code and leaving an error object on the Lua stack, LuaState's `pcall()` throws a Swift `LuaCallError` instead. This means that `pcall()` and any other LuaState Swift API which can error are annotated with `throws` and thus must be called with a `try`, making it obvious what can error and what can't. APIs like `lua_call()` which are impossible to implement safely in Swift have no equivalent in `LuaState`. Import `CLua` and call `lua_call()` directly if you are absolutely certain the call cannot error and a protected call is not desired.
+Lua errors (implemented in C using `longjmp`) have no direct equivalent in Swift, because `longjmp` is not safe to call from Swift (just as C++ exceptions are not safe to throw from or through a Swift function either). They are instead translated to and from instances of a Swift `Error` type (by default, ``LuaCallError``) at the appropriate API boundaries. Instead of `lua_call()` erroring using a `longjmp` or `lua_pcall()` returning an error code and leaving an error object on the Lua stack, LuaState's `pcall()` throws a Swift `LuaCallError` instead. This means that `pcall()` and any other LuaState Swift API which can error are annotated with `throws` and thus must be called with a `try`, making it obvious what can error and what can't. APIs like `lua_call()` which are impossible to implement safely in Swift have no equivalent in `LuaState`. Import `CLua` and call `lua_call()` directly if you are absolutely certain the call cannot error and a protected call is not desired.
+
+If `LuaCallError` is insufficient (for example, because there is code throwing non-string errors which must be handled differently), the error handling can be customized by calling ``Lua/Swift/UnsafeMutablePointer/setErrorConverter(_:)`` which allows for error types other than `LuaCallError` to be used.
 
 Any `Error` thrown by a `LuaClosure` (including `LuaCallError`) is automatically translated using ``Lua/Swift/UnsafeMutablePointer/push(error:toindex:)`` and then passed back to the Lua runtime using `lua_error()`. The LuaSwift wrappers ensure that the C `longjmp` does not cross a Swift API boundary when this happens.
 
@@ -188,7 +190,7 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 
 ### Support for different Lua versions
 
-LuaSwift by default includes Lua 5.4.7. The codebase will also work with any 5.3 or 5.4 release, but to do that you need to fork the repository and check out an appropriate branch of the submodule `Sources/CLua/lua`.
+LuaSwift by default includes Lua 5.4.7. The codebase will also work with any 5.3 or 5.4 release, but to do that you need to fork the repository and check out an appropriate branch of the submodule `Sources/CLua/lua`. Support for the latest head of the master branch of <https://github.com/lua/lua> is offered on a best-effort basis -- since this represents ongoing development of the next Lua version where functionality can change with no warning, compatibility with any particular commit is not guaranteed.
 
 Versions older than 5.3 are sufficiently different in their API that it's not straightforward to support.
 
@@ -354,6 +356,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/set(_:key:)``
 - ``Lua/Swift/UnsafeMutablePointer/set(_:key:value:)``
 - ``Lua/Swift/UnsafeMutablePointer/getmetatable(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/getmetafield(_:_:)``
 - ``Lua/Swift/UnsafeMutablePointer/setmetatable(_:)``
 
 ### Convenience get plus to...() functions

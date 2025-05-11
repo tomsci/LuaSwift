@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024 Tom Sutcliffe
+// Copyright (c) 2023-2025 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import CLua
@@ -92,8 +92,8 @@ public final class LuaClosureWrapper: Pushable {
         let continuationIndex = CInt(L.toint(-2)!)
         let continuationWrapper: LuaContinuationWrapper = L.touserdata(continuationIndex)!
         L.pop(2) // statusInt, continuationIndex
-        lua_remove(L, continuationIndex)
-        lua_remove(L, continuationIndex - 1) // msgh
+        L.remove(continuationIndex)
+        L.remove(continuationIndex - 1) // msgh
 
         // Stack should now be in correct state to call the continuation closure (except for possibly an error object)
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024 Tom Sutcliffe
+// Copyright (c) 2023-2025 Tom Sutcliffe
 // See LICENSE file for license information.
 
 /// An `Error` type representing a String error thrown by the Lua runtime.

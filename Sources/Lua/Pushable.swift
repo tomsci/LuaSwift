@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2025 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import CLua

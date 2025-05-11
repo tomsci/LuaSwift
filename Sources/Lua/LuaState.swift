@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024 Tom Sutcliffe
+// Copyright (c) 2023-2025 Tom Sutcliffe
 // See LICENSE file for license information.
 
 #if !LUASWIFT_NO_FOUNDATION
@@ -790,19 +790,19 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         lua_copy(self, from, to)
     }
 
-    /// See [lua_gettop](https://www.lua.org/manual/5.4/manual.html#lua_gettop).
+    /// See [`lua_gettop`](https://www.lua.org/manual/5.4/manual.html#lua_gettop).
     @inlinable
     public func gettop() -> CInt {
         return lua_gettop(self)
     }
 
-    /// See [lua_settop](https://www.lua.org/manual/5.4/manual.html#lua_settop).
+    /// See [`lua_settop`](https://www.lua.org/manual/5.4/manual.html#lua_settop).
     @inlinable
     public func settop(_ top: CInt) {
         lua_settop(self, top)
     }
 
-    /// See [lua_checkstack](https://www.lua.org/manual/5.4/manual.html#lua_checkstack).
+    /// See [`lua_checkstack`](https://www.lua.org/manual/5.4/manual.html#lua_checkstack).
     public func checkstack(_ n: CInt) {
         if (lua_checkstack(self, n) == 0) {
             // This isn't really recoverable
@@ -1267,6 +1267,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// ```
     ///
     /// - Parameter index: The stack index.
+    /// - Returns: `nil` if the value at `index` is not a light userdata, `.some(.none)` for a light userdata
+    ///   representing the null pointer, or `.some(.some(ptr))` for any other light userdata.
     public func tolightuserdata(_ index: CInt) -> UnsafeMutableRawPointer?? {
         guard type(index) == .lightuserdata else {
             return nil
@@ -2432,8 +2434,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Note that whether the type is `Encodable` or not, does not affect how the value is pushed - in other words
     /// `push(any:)` will not use `push(encodable:)` for `Encodable` types. To make a type be pushed using its
-    /// `Encodable` representation, make the type implement `Pushable` and have the implementation call `push
-    /// (encodable:)`.
+    /// `Encodable` representation, make the type implement `Pushable` and have the implementation call
+    /// `push(encodable:)`.
     ///
     /// - Parameter value: The value to push on to the Lua stack.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
@@ -2997,6 +2999,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///   returned from ``resume(from:nargs:)``, assuming the stack has not been modified in the interim.
     /// > Note: When using Lua versions 5.4.0 to 5.4.5, this calls `lua_resetthread()` instead. On versions before 5.4,
     ///   it has no effect and always returns `nil`.
+    ///
     /// > Note: When using Lua versions 5.4.0 to 5.4.2, this function will return `nil` if the thread errored, rather
     ///   than returning the error from the thread.
     @discardableResult
@@ -3054,8 +3057,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Generally speaking, any custom converter should fall back to calling `LuaCallError.popFromStack()` if the value
     /// on the stack cannot be converted to the expected custom format, so that string errors are always handled.
     ///
-    /// It is recommended that any `Error` returned conforms to `Pushable`, so that errors can losslessly round-trip
-    /// when for example thrown from within a LuaClosure.
+    /// It is recommended that any `Error` returned also conforms to `Pushable`, so that errors can losslessly
+    /// round-trip when for example thrown from within a `LuaClosure`.
+    ///
+    /// `setErrorConverter` only needs to be called once per main-thread LuaState (its setting is shared with any
+    /// coroutines created by that state). It should be called before any uses of `pcall` that might need custom
+    /// handling.
     ///
     /// - Parameter converter: The converter to be used for any errors raised from any of the LuaSwift `pcall()` APIs.
     ///   Can be `nil` to revert to the default `LuaCallError.popFromStack()` implementation.
@@ -4049,7 +4056,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// // ...
     /// let chunksize = 2048
     /// L.withBuffer() { b in
-    ///     // Populate b however is appropriate
+    ///     // Populate b however is appropriate, for example:
     ///     while true {
     ///         let ptr = luaL_prepbuffsize(b, chunksize)!
     ///         let n = fread(ptr, 1, chunksize, some_file)
@@ -4256,7 +4263,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
         do {
             try pcall(nargs: 4, nret: 1, traceback: false)
-        } catch  {
+        } catch {
             throw LuaArgumentError(errorString: String(describing: error))
         }
         defer {
@@ -4271,11 +4278,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Swift wrapper around `string.gsub()`.
     ///
     /// This helper function allows Lua-style pattern string replacements from Swift. See
-    /// [`string.match()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
+    /// [`string.gsub()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
     ///
     /// - Parameter string: The string to search in.
-    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described
-    ///   [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described in
+    ///   [the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
     /// - Parameter repl: What to replace `pattern` with. This string can include `%1` etc patterns as described in the
     ///   `string.gsub()` documentation.
     /// - Parameter maxReplacements: If specified, only replace up to this number of occurrences of `pattern`.
@@ -4291,11 +4298,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Swift wrapper around `string.gsub()`.
     /// 
     /// This helper function allows Lua-style pattern string replacements from Swift. See
-    /// [`string.match()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
+    /// [`string.gsub()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
     /// 
     /// - Parameter string: The string to search in.
-    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described
-    ///   [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described in
+    ///   [the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
     /// - Parameter repl: What to replace `pattern` with. As with `string.gsub()` the first capture is looked up in
     ///   this dictionary and if a value is found, it is used as the replacement string.
     /// - Parameter maxReplacements: If specified, only replace up to this number of occurrences of `pattern`.
@@ -4311,11 +4318,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// Swift wrapper around `string.gsub()`.
     ///
     /// This helper function allows Lua-style pattern string replacements from Swift. See
-    /// [`string.match()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
+    /// [`string.gsub()`](https://www.lua.org/manual/5.4/manual.html#pdf-string.gsub) for details.
     ///
     /// - Parameter string: The string to search in.
-    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described
-    ///   [in the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+    /// - Parameter pattern: The pattern to search for. This can use any of the pattern items described in
+    ///   [the Lua manual](https://www.lua.org/manual/5.4/manual.html#6.4.1).
     /// - Parameter repl: A closure which returns what to replace the matched pattern with. Will be called once for each
     ///   match, receiving the captures as an array and should return the replacement String, or `nil` to not replace
     ///   that instance.

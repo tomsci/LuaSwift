@@ -1276,6 +1276,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return .some(lua_touserdata(self, index))
     }
 
+    /// See [`lua_tothread`](https://www.lua.org/manual/5.4/manual.html#lua_tothread).
+    ///
+    /// - Parameter index: The stack index.
+    /// - Returns: the thread at the given index or `nil` if the value is not a thread.
+    public func tothread(_ index: CInt) -> LuaState? {
+        return lua_tothread(self, index)
+    }
+
     /// Convert a Lua userdata which was created with ``push(userdata:toindex:)`` back to a value of type `T`.
     ///
     /// - Parameter index: The stack index.

@@ -253,6 +253,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/toany(_:guessType:)``
 - ``Lua/Swift/UnsafeMutablePointer/tolightuserdata(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/touserdata(_:)``
+- ``Lua/Swift/UnsafeMutablePointer/tothread(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/tovalue(_:type:)``
 - ``Lua/Swift/UnsafeMutablePointer/todecodable(_:)``

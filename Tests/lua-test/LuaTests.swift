@@ -117,6 +117,12 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(LuaState.ArithOp.shr.rawValue, LUA_OPSHR)
         XCTAssertEqual(LuaState.ArithOp.unm.rawValue, LUA_OPUNM)
         XCTAssertEqual(LuaState.ArithOp.bnot.rawValue, LUA_OPBNOT)
+
+        XCTAssertEqual(LuaHookEvent.call.rawValue, LUA_HOOKCALL)
+        XCTAssertEqual(LuaHookEvent.ret.rawValue, LUA_HOOKRET)
+        XCTAssertEqual(LuaHookEvent.line.rawValue, LUA_HOOKLINE)
+        XCTAssertEqual(LuaHookEvent.count.rawValue, LUA_HOOKCOUNT)
+        XCTAssertEqual(LuaHookEvent.tailcall.rawValue, LUA_HOOKTAILCALL)
     }
 
     let unsafeLibs = ["os", "io", "package", "debug"]
@@ -3973,5 +3979,120 @@ final class LuaTests: XCTestCase {
         L.pop()
         try L.concat(0)
         XCTAssertEqual(L.tostring(-1), "")
+    }
+
+    func test_hook() throws {
+        // This is just to see what the Swift code looks like when using lua_sethook() directly
+        try L.dostring("""
+            function foo()
+            end
+            
+            function bar()
+                -- print("bar!")
+                foo()
+            end
+            """)
+        let hookfn: lua_Hook = { (L: LuaState!, ar: UnsafeMutablePointer<lua_Debug>!) in
+            let _ = L.getInfo(ptr: ar, what: [.name])
+            // print("Hooked call to \(d.name ?? "??")")
+        }
+        lua_sethook(L, hookfn, LUA_MASKCALL, 0)
+        L.getglobal("bar")
+        try L.pcall()
+    }
+
+    func test_sethook() throws {
+        try L.dostring("""
+            function foo()
+                fooCalled = true
+            end
+            
+            function bar()
+                -- print("bar!")
+                fooCalled = false
+                foo()
+            end
+            """)
+
+        var seenCalls: [String] = []
+        var hookDeinited = false
+        do {
+            let hookDeinitChecker = DeinitChecker {
+                hookDeinited = true
+            }
+            let hook: LuaHook = { L, event, context in
+                if event == .call {
+                    let d = context.getInfo([.name])
+                    seenCalls.append(d.name ?? "?")
+                }
+                // Force capture of hookDeinitChecker
+                L.push(closure: hookDeinitChecker.deinitFn)
+                L.pop()
+            }
+            XCTAssertFalse(hookDeinited)
+            XCTAssertNil(L.getHook())
+            L.setHook(mask: .call, function: hook)
+            let t = L.gettop()
+            XCTAssertNotNil(L.getHook())
+            XCTAssertEqual(L.gettop(), t)
+        }
+        XCTAssertFalse(hookDeinited) // setHook should have captured it
+        L.getglobal("bar")
+        try L.pcall()
+        // ? is the call to bar which, being made from C, doesn't have a known name
+        XCTAssertEqual(seenCalls, ["?", "foo"])
+        XCTAssertTrue(L.globals["fooCalled"].toboolean())
+
+        L.setHook(mask: .none, function: nil)
+        L.collectgarbage()
+        XCTAssertTrue(hookDeinited)
+
+        // Test that a hook can throw an error
+        L.setHook(mask: .call) { L, event, context in
+            let d = context.getInfo([.name])
+            if d.name == "foo" {
+                throw L.error("Nope")
+            }
+        }
+
+        L.getglobal("bar")
+        XCTAssertThrowsError(try L.pcall(traceback: false)) { error in
+            XCTAssertEqual((error as? LuaCallError)?.errorString, "Nope")
+        }
+        XCTAssertFalse(L.globals["fooCalled"].toboolean())
+
+        // Check that unsetting hook allows fn to run normally again
+        L.setHook(mask: .none, function: nil)
+        L.getglobal("bar")
+        try L.pcall()
+        XCTAssertTrue(L.globals["fooCalled"].toboolean())
+    }
+
+    func test_line_hook() throws {
+        try L.dostring("""
+            function foo()
+                local x = 1
+                local y = 2
+                return x + y
+            end
+            """)
+
+        var seenLines: [CInt] = []
+        var seenRets: [CInt] = []
+        L.setHook(mask: [.line, .ret]) { L, event, context in
+            if event == .line {
+                // Tests that context.currentline is set correctly
+                seenLines.append(context.currentline!)
+            } else if event == .ret {
+                XCTAssertNil(context.currentline)
+                seenRets.append(context.getInfo(.allHook).currentline!)
+            } else {
+                assertionFailure("Unexpected event \(event)")
+            }
+        }
+        L.getglobal("foo")
+        try L.pcall()
+        XCTAssertEqual(seenLines, [2, 3, 4])
+        XCTAssertEqual(seenRets, [4])
     }
 }

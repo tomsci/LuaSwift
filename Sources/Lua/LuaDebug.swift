@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Tom Sutcliffe
+// Copyright (c) 2023-2025 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import CLua
@@ -262,9 +262,9 @@ public struct LuaDebug {
 /// ``Lua/Swift/UnsafeMutablePointer/withStackFrameFor(level:_:)``. Do not store the value for future use.
 public final class LuaStackFrame {
     let L: LuaState
-    var ar: lua_Debug
+    var ar: UnsafeMutablePointer<lua_Debug>
 
-    init(L: LuaState, ar: lua_Debug) {
+    init(L: LuaState, ar: UnsafeMutablePointer<lua_Debug>) {
         self.L = L
         self.ar = ar
     }
@@ -279,10 +279,7 @@ public final class LuaStackFrame {
     ///   scope.
     @discardableResult
     public func pushLocal(_ n: CInt) -> String? {
-        let name = withUnsafePointer(to: ar) { arPtr in
-            return lua_getlocal(L, arPtr, n)
-        }
-        if let name {
+        if let name = lua_getlocal(L, ar, n) {
             return String(cString: name)
         } else {
             return nil
@@ -294,19 +291,17 @@ public final class LuaStackFrame {
     /// - Parameter name: The local name to search for.
     /// - Returns: The index of the first local variable matching `name`, or `nil` if no matching local was found.
     public func findLocal(name: String) -> CInt? {
-        return withUnsafePointer(to: ar) { arPtr -> CInt? in
-            var i: CInt = 1
-            while true {
-                let iname = lua_getlocal(L, arPtr, i)
-                guard let iname else {
-                    return nil
-                }
-                L.pop()
-                if String(cString: iname) == name {
-                    return i
-                } else {
-                    i = i + 1
-                }
+        var i: CInt = 1
+        while true {
+            let iname = lua_getlocal(L, ar, i)
+            guard let iname else {
+                return nil
+            }
+            L.pop()
+            if String(cString: iname) == name {
+                return i
+            } else {
+                i = i + 1
             }
         }
     }
@@ -357,9 +352,7 @@ public final class LuaStackFrame {
     /// - Returns: `true` if `n` was a valid local variable which was updated, `false` otherwise.
     @discardableResult
     public func setLocal(n: CInt) -> Bool {
-        let ret = withUnsafePointer(to: ar) { arPtr in
-            return lua_setlocal(L, arPtr, n)
-        }
+        let ret = lua_setlocal(L, ar, n)
         if ret != nil {
             return true
         } else {
@@ -384,9 +377,8 @@ public final class LuaStackFrame {
     /// - Parameter what: What information to retrieve.
     /// - Returns: a struct containing the requested information.
     public func getInfo(_ what: Set<LuaDebug.WhatInfo> = .allNonHook) -> LuaDebug {
-        var ar = self.ar
-        lua_getinfo(L, what.rawValue, &ar)
-        return LuaDebug(from: ar, fields: what, state: L)
+        lua_getinfo(L, what.rawValue, ar)
+        return LuaDebug(from: ar.pointee, fields: what, state: L)
     }
 
     /// Returns an object representing the local variables as `LuaValues`.
@@ -528,6 +520,115 @@ extension Set where Element == LuaDebug.WhatInfo {
     }
 }
 
+
+/// Helper type used by ``LuaHook`` functions.
+///
+/// Instances of this class are passed to ``LuaHook`` functions, and contain helper functions only relevant to be called
+/// from within hooks. For convenience, `LuaHookContext` also contains a copy of the  `LuaState` and `LuaHookEvent`
+/// which triggered the hook.
+///
+/// Do not store or reuse instances of this class outside of the hook function they were passed in to.
+public final class LuaHookContext {
+    public let L: LuaState
+    /// The type of event which triggered the hook.
+    public let event: LuaHookEvent
+    /// The line number that triggered the event, if the event is ``LuaHookEvent/line``.
+    public let currentline: CInt?
+    private var ar: UnsafeMutablePointer<lua_Debug>
+    internal var yielded = false
+
+    internal init?(L: LuaState, ar: UnsafeMutablePointer<lua_Debug>) {
+        self.L = L
+        self.ar = ar
+        guard let event = LuaHookEvent(rawValue: ar.pointee.event) else {
+            return nil
+        }
+        self.event = event
+        if event == .line {
+            self.currentline = ar.pointee.currentline
+        } else {
+            self.currentline = nil
+        }
+    }
+
+    /// Get debug information about what was executing when the hook was triggered.
+    ///
+    /// - Parameter what: What information to retrieve.
+    /// - Returns: a struct containing the requested information.
+    public func getInfo(_ what: Set<LuaDebug.WhatInfo>) -> LuaDebug {
+        lua_getinfo(L, what.rawValue, ar)
+        var fields = what
+        if event == .line {
+            // currentline already valid regardless of what's in what
+            fields.insert(.currentline)
+        }
+        return LuaDebug(from: ar.pointee, fields: fields, state: L)
+    }
+
+    /// Yield from a hook.
+    ///
+    /// Call this function as the last statement in a `LuaHook` function, to yield from the hook. This is the only
+    /// permitted way to yield from a hook; it is an error to call
+    /// ``Lua/Swift/UnsafeMutablePointer/yield(nresults:continuation:)`` or `lua_yield()`/`lua_yieldk()` from within a
+    /// `LuaHook`. As per the `lua_Hook` [documentation](https://www.lua.org/manual/5.4/manual.html#lua_Hook) only
+    /// `line` and `count` hooks are permitted to yield.
+    ///
+    /// - Precondition: The hook event must be [`line`](doc:LuaHookEvent/line) or [`count`](doc:LuaHookEvent/count).
+    public func yield() {
+        precondition(event == .line || event == .count)
+        yielded = true
+    }
+}
+
+/// Describes what type of event triggered a call to the debugging hook.
+///
+/// See ``LuaHook``.
+public enum LuaHookEvent: CInt {
+    /// A function was called.
+    case call = 0 // LUA_HOOKCALL
+    /// A function was returned from.
+    case ret = 1 // LUA_HOOKRET
+    /// Called when the interpreter is about to start executing from a new line of code.
+    ///
+    /// Only called when executing Lua functions.
+    case line = 2 // LUA_HOOKLINE
+    /// Called after every so many interpreter instructions (as defined by the `count` parameter to `setHook()`).
+    case count = 3 // LUA_HOOKCOUNT
+    /// A function was tailed called. Tail calls do not have a corresponding `ret` event.
+    case tailcall = 4 // LUA_HOOKTAILCALL
+}
+
+/// A debugging hook function, suitable for passing to ``Lua/Swift/UnsafeMutablePointer/setHook(mask:count:function:)``.
+///
+/// `LuaHook` hooks, unlike their C equivalent [`lua_Hook`](https://www.lua.org/manual/5.4/manual.html#lua_Hook), are
+/// standard Swift closures and are therefore allowed to capture values, and throw errors. This is similar to how
+/// ``LuaClosure`` compares to [`lua_CFunction`](https://www.lua.org/manual/5.4/manual.html#lua_CFunction).
+///
+/// When the hook function is called, the `LuaState` argument is the state which is being hooked, the ``LuaHookEvent``
+/// describes what event triggered the hook, and the ``LuaHookContext`` argument permits more detailed debugging
+/// by calling ``LuaHookContext/getInfo(_:)``. For convenience the context also includes a copy of the `LuaState` and
+/// `LuaHookEvent` arguments.
+///
+/// Hooks can get more information about what was executing by calling
+/// [`context.getInfo()`](doc:LuaHookContext/getInfo(_:)). In `line` hooks,
+/// [`context.currentline`](doc:LuaHookContext/currentline) always contains the line number without needing a call to
+/// `getInfo()` to retrieve it.
+///
+/// `line` and `count` hooks are allowed to yield by calling [`context.yield()`](doc:LuaHookContext/yield()).
+///
+/// An example `LuaHook` function might look like this:
+/// ```swift
+/// func myhook(L: LuaState, event: LuaHookEvent, context: LuaHookContext) {
+///     if event == .call {
+///         let d = context.getInfo([.name])
+///         if d.name == "foo" {
+///             print("foo() called!")
+///         }
+///     }
+/// }
+/// ```
+public typealias LuaHook = (LuaState, LuaHookEvent, LuaHookContext) throws -> Void
+
 extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Invokes the given closure with a ``LuaStackFrame`` referring to the given stack level.
@@ -552,7 +653,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         if lua_getstack(self, level, &ar) == 0 {
             return try body(nil)
         } else {
-            let info = LuaStackFrame(L: self, ar: ar)
+            let info = LuaStackFrame(L: self, ar: &ar)
             return try body(info)
         }
     }
@@ -598,8 +699,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Parameter what: What information to retrieve.
     /// - Returns: a struct containing the requested information.
     public func getInfo(_ ar: inout lua_Debug, what: Set<LuaDebug.WhatInfo>) -> LuaDebug {
-        lua_getinfo(self, what.rawValue, &ar)
-        return LuaDebug(from: ar, fields: what, state: self)
+        return getInfo(ptr: &ar, what: what)
+    }
+
+    /// Get debug information from an activation record.
+    ///
+    /// - Parameter ptr: must be a valid activation record that was filled by a previous call to
+    ///   `lua_getstack` or given as argument to a hook.
+    /// - Parameter what: What information to retrieve.
+    /// - Returns: a struct containing the requested information.
+    public func getInfo(ptr: UnsafeMutablePointer<lua_Debug>, what: Set<LuaDebug.WhatInfo>) -> LuaDebug {
+        lua_getinfo(self, what.rawValue, ptr)
+        return LuaDebug(from: ptr.pointee, fields: what, state: self)
     }
 
     /// Wrapper around [`luaL_where()`](https://www.lua.org/manual/5.4/manual.html#luaL_where).
@@ -634,4 +745,155 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         return result
     }
 
+    /// What hooks to enable when calling ``setHook(mask:count:function:)``.
+    public struct HookMask: OptionSet {
+        public let rawValue: CInt
+        public init(rawValue: CInt) {
+            self.rawValue = rawValue
+        }
+
+        /// Include this to set the call hook, enabling ``LuaHookEvent/call`` and ``LuaHookEvent/tailcall`` events.
+        public static let call = HookMask(rawValue: LUA_MASKCALL)
+        /// Include this to set the return hook, enabling ``LuaHookEvent/ret`` events.
+        public static let ret = HookMask(rawValue: LUA_MASKRET)
+        /// Include this to set the line hook, enabling ``LuaHookEvent/line`` events.
+        public static let line = HookMask(rawValue: LUA_MASKLINE)
+        /// Include this to set the count hook, enabling ``LuaHookEvent/count`` events.
+        ///
+        /// The `count` parameter to `setHook()` must also be specified.
+        public static let count = HookMask(rawValue: LUA_MASKCOUNT)
+        /// Specify this to disable all hooks.
+        public static let none = HookMask(rawValue: 0)
+    }
+
+    /// Sets the debugging hook function for this state.
+    ///
+    /// While this is a wrapper around [`lua_sethook`](https://www.lua.org/manual/5.4/manual.html#lua_sethook), it
+    /// varies in several significant ways. Firstly, the function is of type ``LuaHook`` which can error and capture
+    /// values, unlike `lua_Hook` -- this is similar to how ``LuaClosure`` behaves compared to `lua_CFunction`.
+    /// Secondly, hook functions set by `setHook()` are not inherited by threads (coroutines) created from that state,
+    /// unlike when using `lua_sethook` directly -- this restriction is due to the lifetime issues surrounding the
+    /// `LuaHook` being able to capture values. The way hook functions are copied into newly created threads does not
+    /// allow them to be easily shared in Swift. If a thread is created by a state that has a LuaSwift hook function
+    /// set, a warning will be printed the first time it is triggered in the new thread and the hook will be cleared.
+    /// To have hooks run in multiple threads, call `setHook` on each thread separately.
+    ///
+    /// Replaces any previous hook configured by `setHook()` or by calling `lua_sethook()` directly.
+    ///
+    /// To disable hooking on a `LuaState`, pass `.none` as the mask argument or a `nil` function (or both).
+    ///
+    /// Example:
+    /// ```swift
+    /// let hook: LuaHook = { L, event, context in
+    ///     if event == .call {
+    ///         let d = context.getInfo([.name])
+    ///         if d.name == "foo" {
+    ///             print("foo() called!")
+    ///         }
+    ///     }
+    /// }
+    /// L.setHook(mask: [.call, .ret], function: hook)
+    ///
+    /// // Could equally be written:
+    ///
+    /// L.setHook(mask: .call) { L, event, context in
+    ///     let d = context.getInfo([.name])
+    ///     if d.name == "foo" {
+    ///         print("foo() called!")
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// - Parameter mask: What to hook. Specify `.none` to disable hooking.
+    /// - Parameter count: How frequently to call the `count` hook, in interpreter instructions. Ignored unless `mask`
+    ///   contains `.count`.
+    /// - Parameter function: The hook function to set, or `nil` to disable hooking.
+    public func setHook(mask: HookMask, count: CInt = 0, function: LuaHook?) {
+        if let function, mask.rawValue != 0 {
+            let state = getState()
+            if state.hookFnsRef == LUA_NOREF {
+                newtable() // map of thread to hook fn
+                newtable() // metatable
+                push(utf8String: "__mode")
+                push(utf8String: "k") // weak keys, ephemeron table. Ie hook fns are cleared when threads are gc'd
+                rawset(-3) // pops key, val
+                setmetatable(-2) // pops mt
+                state.hookFnsRef = luaL_ref(self, LUA_REGISTRYINDEX) // pops map
+            }
+            let wrapper = LuaHookWrapper(function)
+
+            rawget(LUA_REGISTRYINDEX, key: state.hookFnsRef) // pushes hookFns table
+            push(self)
+            push(userdata: wrapper)
+            rawset(-3)
+            pop() // hookFns
+
+            lua_sethook(self, luaswift_hookfn, mask.rawValue, count)
+        } else {
+            lua_sethook(self, nil, 0, 0)
+            if let state = maybeGetState(), state.hookFnsRef != LUA_NOREF {
+                rawget(LUA_REGISTRYINDEX, key: state.hookFnsRef)
+                push(self)
+                pushnil()
+                rawset(-3)
+                pop() // hookFns
+            }
+        }
+    }
+
+    /// Gets the debugging hook function for this state, if one has been set.
+    ///
+    /// If a debugging hook has been set on this state using ``setHook(mask:count:function:)``, returns that hook, and
+    /// `nil` otherwise.
+    public func getHook() -> LuaHook? {
+        guard let state = maybeGetState(), state.hookFnsRef != LUA_NOREF else {
+            // Can't be a hook set
+            return nil
+        }
+        rawget(LUA_REGISTRYINDEX, key: state.hookFnsRef)
+        push(self)
+        rawget(-2)
+        let wrapper: LuaHookWrapper? = touserdata(-1)
+        pop(2) // wrapper, hookFns
+
+        if !luaswift_hooksequal(lua_gethook(self), luaswift_hookfn) {
+            // Even if wrapper is non-nil, if this doesn't match then something else must have called lua_sethook()
+            // so we should return nil, as wrapper isn't actually in effect
+            return nil
+        }
+        return wrapper?.hook
+    }
 }
+
+internal class LuaHookWrapper {
+    let hook: LuaHook
+    init(_ hook: @escaping LuaHook) {
+        self.hook = hook
+    }
+
+    static let callHook: luaswift_Hook = { (L: LuaState!, ar: UnsafeMutablePointer<lua_Debug>!) in
+        guard let hook = L.getHook() else {
+            print("Hook called from untracked thread - unregistering hook")
+            lua_sethook(L, nil, 0, 0)
+            return 0
+        }
+
+        guard let context = LuaHookContext(L: L, ar: ar) else {
+            print("Unknown hook event \(ar.pointee.event), ignoring!")
+            return 0
+        }
+
+        do {
+            try hook(L, context.event, context)
+            if context.yielded {
+                return LUASWIFT_CALLCLOSURE_YIELD
+            } else {
+                return 0
+            }
+        } catch {
+            L.push(error: error)
+            return LUASWIFT_CALLCLOSURE_ERROR
+        }
+    }
+}
+

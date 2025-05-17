@@ -629,6 +629,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         var userdataMetatables = Set<UnsafeRawPointer>()
         var luaValues = Dictionary<CInt, UnownedLuaValue>()
         var errorConverter: LuaErrorConverter? = nil
+        var hookFnsRef: CInt = LUA_NOREF
 
         deinit {
             for (_, val) in luaValues {
@@ -657,6 +658,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // Are we doing too much non-deferred initialization in getState() now?
         register(Metatable<LuaClosureWrapper>())
         register(Metatable<LuaContinuationWrapper>())
+        register(Metatable<LuaHookWrapper>())
+        luaswift_set_functions(LuaClosureWrapper.callClosure, LuaClosureWrapper.callContinuation, LuaHookWrapper.callHook);
 
         return state
     }
@@ -668,7 +671,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             pop()
         }
         // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
-        // safe because we know the value of StateRegistryKey does not need checking.
+        // safe because we know the value of stateLookupKey does not need checking.
         return unchecked_touserdata(-1)
     }
 
@@ -1033,7 +1036,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         case .function:
             if let fn = lua_tocfunction(self, index) {
                 // Ugh why can't I test C functions for equality
-                if luaswift_iscallclosurewrapper(fn) {
+                if luaswift_fnsequal(fn, luaswift_callclosurewrapper) {
                     pushUpvalue(index: index, n: 1)
                     let wrapper: LuaClosureWrapper = touserdata(-1)!
                     pop()
@@ -2833,9 +2836,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push(nargs)
         push(nret)
         // stack is now: msgh, continuation, fn, [args...], nargs, nret
-
-        // Check that the continuation registry val is set up
-        rawset(LUA_REGISTRYINDEX, key: .function(luaswift_continuation_regkey), value: .function(LuaClosureWrapper.callContinuation))
     }
 
     /// Make a protected call to a Lua function which is allowed to yield.
@@ -2982,9 +2982,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 return try continuation(L)
             }
             push(userdata: LuaContinuationWrapper(pcont))
-
-            // Check that the continuation registry val is set up
-            rawset(LUA_REGISTRYINDEX, key: .function(luaswift_continuation_regkey), value: .function(LuaClosureWrapper.callContinuation))
         } else {
             pushnil()
         }
@@ -3340,6 +3337,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Convenience function which calls ``rawget(_:)`` using `key` as the key.
     ///
+    /// The result is pushed on to the stack.
+    ///
     /// - Precondition: The value at `index` must be a table.
     /// - Parameter index: The stack index of the table.
     /// - Parameter key: The key to use.
@@ -3352,6 +3351,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     /// Convenience function which calls ``rawget(_:)`` using `utf8Key` as the key.
+    ///
+    /// The result is pushed on to the stack.
     ///
     /// - Precondition: The value at `index` must be a table.
     /// - Parameter index: The stack index of the table.
@@ -3450,6 +3451,14 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// Where `tbl` is the table at `index` on the stack, `val` is the value on the top of the stack, and `key` is the
     /// value just below the top. `key` and `val` are popped from the stack.
+    ///
+    /// Example:
+    /// ```swift
+    /// L.newtable()
+    /// L.push("key")
+    /// L.push("value")
+    /// L.rawset(-3) // -3 is table, -2 is key, -1 is value
+    /// ```
     ///
     /// - Parameter index: The stack index of the table.
     /// - Precondition: The value at `index` must be a table.

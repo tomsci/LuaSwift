@@ -406,8 +406,11 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/getTopFunctionInfo(what:)``
 - ``Lua/Swift/UnsafeMutablePointer/getTopFunctionArguments()``
 - ``Lua/Swift/UnsafeMutablePointer/getInfo(_:what:)``
+- ``Lua/Swift/UnsafeMutablePointer/getInfo(ptr:what:)``
 - ``Lua/Swift/UnsafeMutablePointer/getWhere(level:)``
 - ``Lua/Swift/UnsafeMutablePointer/printStack(from:to:)``
+- ``Lua/Swift/UnsafeMutablePointer/setHook(mask:count:function:)``
+- ``Lua/Swift/UnsafeMutablePointer/getHook()``
 
 ### Upvalues
 

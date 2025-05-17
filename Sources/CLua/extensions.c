@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024 Tom Sutcliffe
+// Copyright (c) 2023-2025 Tom Sutcliffe
 // See LICENSE file for license information.
 
 #define LUASWIFT_MINIMAL_CLUA
@@ -7,6 +7,16 @@
 #if LUA_VERSION_NUM < 504
 #include <string.h> // for strlen
 #endif
+
+static lua_CFunction LuaClosureWrapper_callClosure = NULL;
+static lua_CFunction LuaClosureWrapper_callContinuation = NULL;
+static luaswift_Hook LuaHookWrapper_callHook = NULL;
+
+void luaswift_set_functions(lua_CFunction callClosure, lua_CFunction callContinuation, luaswift_Hook callHook) { 
+    LuaClosureWrapper_callClosure = callClosure;
+    LuaClosureWrapper_callContinuation = callContinuation;
+    LuaHookWrapper_callHook = callHook;
+}
 
 int luaswift_searcher_preload(lua_State *L) {
     const char *name = luaL_checkstring(L, 1);
@@ -74,28 +84,11 @@ static int handleClosureResult(lua_State *L, int ret) {
 }
 
 int luaswift_callclosurewrapper(lua_State *L) {
-    // The function pointer for LuaClosureWrapper.callClosure is in the registry keyed by the
-    // luaswift_callclosurewrapper function pointer.
-    lua_pushcfunction(L, luaswift_callclosurewrapper);
-    lua_rawget(L, LUA_REGISTRYINDEX);
-    lua_CFunction LuaClosureWrapper_callClosure = lua_tocfunction(L, -1);
-    lua_pop(L, 1);
-
     int ret = LuaClosureWrapper_callClosure(L);
     return handleClosureResult(L, ret);
 }
 
-int luaswift_continuation_regkey(lua_State *L) {
-    // Never actually called, just used as registry key
-    return 0;
-}
-
 static int continuation(lua_State *L, int status, lua_KContext ctx) {
-    lua_pushcfunction(L, luaswift_continuation_regkey);
-    lua_rawget(L, LUA_REGISTRYINDEX);
-    lua_CFunction LuaClosureWrapper_callContinuation = lua_tocfunction(L, -1);
-    lua_pop(L, 1);
-
     int continuationIndex = (int)ctx;
     lua_pushinteger(L, continuationIndex);
     lua_pushinteger(L, status);
@@ -103,8 +96,12 @@ static int continuation(lua_State *L, int status, lua_KContext ctx) {
     return handleClosureResult(L, ret);
 }
 
-bool luaswift_iscallclosurewrapper(lua_CFunction fn) {
-    return fn == luaswift_callclosurewrapper;
+bool luaswift_fnsequal(lua_CFunction lhs, lua_CFunction rhs) {
+    return lhs == rhs;
+}
+
+bool luaswift_hooksequal(lua_Hook lhs, lua_Hook rhs) {
+    return lhs == rhs;
 }
 
 int luaswift_gettable(lua_State *L) {
@@ -327,4 +324,13 @@ int luaswift_concat(lua_State *L) {
     lua_pop(L, 1);
     lua_concat(L, n);
     return 1;
+}
+
+void luaswift_hookfn(lua_State *L, lua_Debug *ar) {
+    int ret = LuaHookWrapper_callHook(L, ar);
+    if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
+        lua_error(L);
+    } else if (ret == LUASWIFT_CALLCLOSURE_YIELD) {
+        lua_yield(L, 0);
+    }
 }

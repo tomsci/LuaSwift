@@ -76,7 +76,7 @@ public final class LuaClosureWrapper: Pushable {
         self.closure = closure
     }
 
-    private static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
+    internal static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
         let wrapper: LuaClosureWrapper = L.unchecked_touserdata(lua_upvalueindex(1))!
 
         do {
@@ -122,11 +122,6 @@ public final class LuaClosureWrapper: Pushable {
     public func push(onto L: LuaState, numUpvalues: CInt) {
         // 255 is MAXUPVAL in lfunc.h
         precondition(numUpvalues >= 0 && numUpvalues <= 255 - Self.NumInternalUpvalues)
-
-        // This only technically needs doing once but it's easier to just do it every time.
-        L.push(function: luaswift_callclosurewrapper)
-        L.push(function: Self.callClosure)
-        L.rawset(LUA_REGISTRYINDEX)
 
         L.push(userdata: self)
         // Move these below numUpvalues

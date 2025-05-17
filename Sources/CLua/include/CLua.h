@@ -230,6 +230,12 @@ static inline char *luaL_prepbuffer(luaL_Buffer *bf) {
 
 #endif // LUASWIFT_MINIMAL_CLUA
 
+typedef int(*luaswift_Hook)(lua_State *L, lua_Debug *ar);
+
+void luaswift_set_functions(lua_CFunction callClosure, lua_CFunction callContinuation, luaswift_Hook callHook);
+bool luaswift_fnsequal(lua_CFunction lhs, lua_CFunction rhs);
+bool luaswift_hooksequal(lua_Hook lhs, lua_Hook rhs);
+
 int luaswift_loadfile(lua_State *L, const char *filename,
                       const char *displayname,
                       const char *mode);
@@ -240,8 +246,6 @@ int luaswift_loadfile(lua_State *L, const char *filename,
 #define LUASWIFT_CALLCLOSURE_YIELD (-5)
 
 int luaswift_callclosurewrapper(lua_State *L);
-bool luaswift_iscallclosurewrapper(lua_CFunction fn);
-int luaswift_continuation_regkey(lua_State *L);
 
 int luaswift_gettable(lua_State *L);
 int luaswift_settable(lua_State *L);
@@ -260,6 +264,7 @@ int luaswift_closethread(lua_State *L, lua_State* from);
 
 size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
 void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);
+void luaswift_hookfn(lua_State *L, lua_Debug *ar);
 
 #if LUA_VERSION_NUM < 504
 // Doesn't really matter what these are set to

@@ -141,7 +141,7 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
 
 internal func gcUserdata(_ L: LuaState!) -> CInt {
     let rawptr = lua_touserdata(L, 1)!
-    let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
+    let anyPtr = rawptr.assumingMemoryBound(to: Any.self)
     anyPtr.deinitialize(count: 1)
     return 0
 }
@@ -1317,7 +1317,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         guard let rawptr = lua_touserdata(self, index) else {
             return nil
         }
-        let typedPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
+        let typedPtr = rawptr.assumingMemoryBound(to: Any.self)
         return typedPtr.pointee as? T
     }
 

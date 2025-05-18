@@ -304,7 +304,7 @@ public struct Metatable<T> {
         public static var synthesize: Self {
             return .function { L in
                 let rawptr = lua_touserdata(L, 1)!
-                let anyPtr = rawptr.bindMemory(to: Any.self, capacity: 1)
+                let anyPtr = rawptr.assumingMemoryBound(to: Any.self)
                 if let closable = anyPtr.pointee as? Closable {
                     closable.close()
                 } else {

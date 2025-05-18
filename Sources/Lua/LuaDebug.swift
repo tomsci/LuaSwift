@@ -817,7 +817,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 push(utf8String: "__mode")
                 push(utf8String: "k") // weak keys, ephemeron table. Ie hook fns are cleared when threads are gc'd
                 rawset(-3) // pops key, val
-                setmetatable(-2) // pops mt
+                lua_setmetatable(self, -2) // pops mt
                 state.hookFnsRef = luaL_ref(self, LUA_REGISTRYINDEX) // pops map
             }
             let wrapper = LuaHookWrapper(function)

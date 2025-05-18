@@ -1236,7 +1236,7 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(deinited, 1)
     }
 
-    func test_pushuserdata_Closeable_close() throws {
+    func test_pushuserdata_Closable_close() throws {
         try XCTSkipIf(!LUA_VERSION.is54orLater())
 
         var deinited = 0
@@ -1266,7 +1266,8 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(closed, 1)
         XCTAssertEqual(L.getglobal("val"), .userdata)
         do {
-            // Since the type implements Closable, touserdata _should_ still return it
+            // Since the type implements Closable, .synthesize won't have nulled it on close, so touserdata should still
+            // return it
             let valUserdata: DeinitChecker? = L.touserdata(-1)
             XCTAssertNotNil(valUserdata)
         }

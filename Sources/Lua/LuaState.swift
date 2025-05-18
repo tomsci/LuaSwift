@@ -141,6 +141,10 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
 
 internal func gcUserdata(_ L: LuaState!) -> CInt {
     let rawptr = lua_touserdata(L, 1)!
+    // Clear the stack, make it harder for a deinit fn to mess things up. We're in a finalizer already, so this can't
+    // cause the userdata to be GC'd due to no more references.
+    L.settop(0)
+
     let anyPtr = rawptr.assumingMemoryBound(to: Any.self)
     anyPtr.deinitialize(count: 1)
     return 0
@@ -2350,7 +2354,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    /// Push any value representable using `Any` on to the stack as a `userdata`.
+    /// Push a Swift value on to the stack as a `userdata`.
     ///
     /// From a lifetime perspective, this function behaves as if the value were
     /// assigned to another variable of type `Any`, and when the Lua userdata is
@@ -2366,9 +2370,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// lifetimes are preserved. This does not apply to types which conform to ``PushableWithMetatable``, which will
     /// automatically be registered if they are not already.
     ///
-    /// - Note: This function always pushes a `userdata` - if `val` represents any other type (for example, an integer)
+    /// > Note: This function always pushes a `userdata` - if `val` represents any other type (for example, an integer)
     ///   it will not be converted to that type in Lua. Use ``push(any:toindex:)`` instead to automatically convert
     ///   types to their Lua native representation where possible.
+    ///
+    /// > Important: Do not change the metatable of a LuaSwift userdata by calling `lua_setmetatable()` or similar.
+    ///   Doing so may leak memory or crash the program.
+    ///
     /// - Parameter userdata: The value to push on to the Lua stack.
     /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
     public func push<T>(userdata: T, toindex: CInt = -1) {
@@ -3655,20 +3663,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     @inlinable @discardableResult
     public func getmetatable(_ index: CInt) -> Bool {
         return lua_getmetatable(self, index) == 1
-    }
-
-    /// Set the metatable for a value.
-    ///
-    /// Pops a table or `nil` from the stack and sets that value as the new metatable for the value at the given index.
-    ///
-    /// If the value at the top of the stack is nil then this removes any metatable from the value.
-    ///
-    /// See also <doc:BridgingSwiftToLua>.
-    ///
-    /// - Parameter index: The stack index of the value.
-    @inlinable
-    public func setmetatable(_ index: CInt) {
-        lua_setmetatable(self, index)
     }
 
     // MARK: - Misc functions

@@ -207,11 +207,13 @@ L.push(x)
 
 ### C functions deliberately not exposed
 
-Some Lua C APIs do not make sense to be called from Swift; usually this is because they can call (even indirectly) `lua_error()`, which as described in the [#Error-handling](Error handling) section breaks the Swift runtime guarantees. As a result, there are some APIs which the LuaSwift `Lua` framework deliberately does not expose. A brief summary of some of the 'missing' APIs follows - they are all available by importing `CLua`, with the caveat that they _will_ break your program if any of the problematic behaviors (such as erroring) occur.
+Some Lua C APIs do not make sense to be called from Swift; usually this is because they can call (even indirectly) `lua_error()`, which as described in the [Error handling](#Error-handling) section breaks the Swift runtime guarantees. Or, there are corner cases which makes it difficult to expose in a way which is guaranteed to be safe. As a result, there are some APIs which the LuaSwift `Lua` framework deliberately does not expose. A brief summary of some of the 'missing' APIs follows - they are all available by importing `CLua`, with the caveat that they _will_ break your program if any of the problematic behaviors (such as erroring) occur.
 
-`lua_call()` - as described in [#Error-handling](Error handling) anything which can call `lua_error()` is not safe to call from Swift. Use `pcall()` instead, or import `CLua` and call `lua_call()` directly if you are _absolutely certain_ that the call cannot error.
+`lua_call()` - as described in [Error handling](#Error-handling) anything which can call `lua_error()` is not safe to call from Swift. Use `pcall()` instead, or import `CLua` and call `lua_call()` directly if you are _absolutely certain_ that the call cannot error.
 
 `lua_toclose()`, `lua_closeslot()` - to-be-closed slots configured in native code are closely tied to error handling so are not exposed for the same reasons - `lua_closeslot()` can error, and `lua_toclose()` can make calls to `settop()` and `pop()` error (and the Swift wrappers cannot account for this without needing _all_ uses include a `try`). Thus they are too dangerous to expose. Since any Lua native function written in Swift needs to be working with Swift `Errors` anyway, using a Swift `defer {....}` block instead of `lua_closeslot()` is almost always the correct alternative.
+
+`lua_setmetatable()` - generally speaking, LuaSwift's ``Metatable`` struct (and associated APIs) means that directly calling `lua_setmetatable` from Swift should not be necessary that often. There are corner cases involving combining LuaSwift userdatas and metatables with directly changing a value's metatable which makes it difficult to justify exposing this functionality in the `Lua` module. If setting metatables on non-LuaSwift values is necessary, import `CLua` instead.
 
 ## Topics
 
@@ -358,7 +360,6 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/set(_:key:value:)``
 - ``Lua/Swift/UnsafeMutablePointer/getmetatable(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/getmetafield(_:_:)``
-- ``Lua/Swift/UnsafeMutablePointer/setmetatable(_:)``
 
 ### Convenience get plus to...() functions
 

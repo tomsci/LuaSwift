@@ -4096,4 +4096,33 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(seenLines, [2, 3, 4])
         XCTAssertEqual(seenRets, [4])
     }
+
+    func test_newtable_weak() throws {
+        L.newtable(weakKeys: true) // 1 = weaktbl
+        XCTAssertEqual(L.gettop(), 1)
+        L.newtable() // 2 = k
+
+        L.register(Metatable<DeinitChecker>())
+        var valCollected = false
+        do {
+            L.push(index: -1)
+            L.push(userdata: DeinitChecker {
+                valCollected = true
+            })
+            L.rawset(1) // weaktbl[k] = deinitchecker
+        }
+
+        L.collectgarbage()
+        // k still on stack so shouldn't be collected
+        XCTAssertFalse(valCollected)
+
+        // Just checking...
+        L.collectgarbage()
+        XCTAssertFalse(valCollected)
+
+        L.settop(1)
+        // k gone, should be collected
+        L.collectgarbage()
+        XCTAssertTrue(valCollected)
+    }
 }

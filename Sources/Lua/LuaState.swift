@@ -819,12 +819,31 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Create a new table on top of the stack.
     ///
+    /// Optional parameters allow configuring the preallocated space in the table, and for making the result a
+    /// [weak table](https://www.lua.org/manual/5.4/manual.html#2.5.4).
+    ///
     /// - Parameter narr: If specified, preallocate space in the table for this many array elements.
     /// - Parameter nrec: If specified, preallocate space in the table for this many non-array elements.
+    /// - Parameter weakKeys: If specified, a metatable is set for this table with a `__mode` containing `k`.
+    /// - Parameter weakValues: If specified, a metatable is set for this table with a `__mode` containing `v`.
     @inlinable
-    public func newtable(narr: CInt = 0, nrec: CInt = 0) {
+    public func newtable(narr: CInt = 0, nrec: CInt = 0, weakKeys: Bool = false, weakValues: Bool = false) {
         precondition(narr >= 0 && nrec >= 0, "Table size cannot be negative")
         lua_createtable(self, narr, nrec)
+        if weakKeys || weakValues {
+            lua_createtable(self, 0, 1)
+            var mode = ""
+            if weakKeys {
+                mode = mode + "k"
+            }
+            if weakValues {
+                mode = mode + "v"
+            }
+            push(utf8String: "__mode")
+            push(utf8String: mode)
+            rawset(-3)
+            lua_setmetatable(self, -2)
+        }
     }
 
     // MARK: - to...() functions

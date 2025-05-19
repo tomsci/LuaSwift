@@ -240,7 +240,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/copy(from:to:)``
 - ``Lua/Swift/UnsafeMutablePointer/insert(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/remove(_:)``
-- ``Lua/Swift/UnsafeMutablePointer/newtable(narr:nrec:)``
+- ``Lua/Swift/UnsafeMutablePointer/newtable(narr:nrec:weakKeys:weakValues:)``
 
 ### to...() functions
 

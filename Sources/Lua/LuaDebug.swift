@@ -812,12 +812,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         if let function, mask.rawValue != 0 {
             let state = getState()
             if state.hookFnsRef == LUA_NOREF {
-                newtable() // map of thread to hook fn
-                newtable() // metatable
-                push(utf8String: "__mode")
-                push(utf8String: "k") // weak keys, ephemeron table. Ie hook fns are cleared when threads are gc'd
-                rawset(-3) // pops key, val
-                lua_setmetatable(self, -2) // pops mt
+                newtable(weakKeys: true) // map of thread to hook fn. hooks are cleared when †hread is gc'd.
                 state.hookFnsRef = luaL_ref(self, LUA_REGISTRYINDEX) // pops map
             }
             let wrapper = LuaHookWrapper(function)

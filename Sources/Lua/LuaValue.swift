@@ -741,13 +741,6 @@ public final class LuaValue: Equatable, Hashable, Pushable {
         }
     }
 
-    @available(*, deprecated, message: "Will be removed in v1.0.0. Use overload with block returning IteratorResult or Void instead.")
-    public func for_ipairs(start: lua_Integer = 1, block: (lua_Integer, LuaValue) throws -> Bool) throws {
-        return try for_ipairs(start: start, { i, value in
-            return try block(i, value) ? .continueIteration : .breakIteration
-        })
-    }
-
     /// Iterate a Lua table-like value, calling `block` for each member.
     ///
     /// This function observes `__pairs` metafields if present. `block` should
@@ -807,28 +800,6 @@ public final class LuaValue: Equatable, Hashable, Pushable {
     public func for_pairs(block: (LuaValue, LuaValue) throws -> Bool) throws {
         try for_pairs { k, v in
             return try block(k, v) ? .continueIteration : .breakIteration
-        }
-    }
-
-    /// Convenience function to iterate the value as an array using `for_ipairs()`.
-    ///
-    /// - Throws: ``LuaValueError/nilValue`` if the Lua value associated with `self` is `nil`.
-    ///           ``LuaValueError/notIndexable`` if the Lua value does not support indexing.
-    ///           An error (of type determined by whether a ``LuaErrorConverter`` is set) if an error is thrown during
-    ///           an `__index` call.
-    @available(*, deprecated, message: "Will be removed in v1.0.0. Use for_ipairs() overload with block returning Void instead.")
-    public func forEach(_ block: (LuaValue) throws -> Void) throws {
-        try for_ipairs() { _, value in
-            try block(value)
-            return true
-        }
-    }
-
-    @available(*, deprecated, message: "Will be removed in v1.0.0. Use for_pairs() overload with block returning Void instead.")
-    public func forEach(_ block: (LuaValue, LuaValue) throws -> Void) throws {
-        try for_pairs() { key, value in
-            try block(key, value)
-            return true
         }
     }
 

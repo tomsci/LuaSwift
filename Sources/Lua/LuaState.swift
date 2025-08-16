@@ -3183,17 +3183,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     private static let DefaultMetatableName = "LuaSwift_Default"
 
-    /// Deprecated, use ``register(_:)-8rgnn`` instead.
-    @available(*, deprecated, message: "Will be removed in v1.0.0. Use register(Metatable) instead.")
-    public func registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
-        deprecated_registerMetatable(for: type, functions: functions)
-    }
-
-    internal func deprecated_registerMetatable<T>(for type: T.Type, functions: [String: MetafieldType]) {
-        let mt = handleLegacyMetatableFunctions(functions, type: T.self)
-        register(mt)
-    }
-
     // Documented in registerMetatable.md
     public func register<T>(_ metatable: Metatable<T>) {
         doRegisterMetatable(typeName: makeMetatableName(for: T.self), metafields: metatable.mt)
@@ -3256,55 +3245,6 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
         pop()
         rawset(LUA_REGISTRYINDEX, utf8Key: newTypeName) // pops existingTypeName metatable
-    }
-
-    @available(*, deprecated, message: "Will be removed in v1.0.0. Use register(DefaultMetatable) instead.")
-    public func registerDefaultMetatable(functions: [String: MetafieldType]) {
-        deprecated_registerDefaultMetatable(functions: functions)
-    }
-
-    internal func deprecated_registerDefaultMetatable(functions: [String: MetafieldType]) {
-        let mt = handleLegacyMetatableFunctions(functions, type: Any.self)
-        doRegisterMetatable(typeName: Self.DefaultMetatableName, metafields: mt.mt)
-        if let fields = mt.unsynthesizedFields {
-            addNonPropertyFieldsToMetatable(fields)
-        }
-        getState().userdataMetatables.insert(lua_topointer(self, -1))
-        pop() // metatable
-    }
-
-    private func handleLegacyMetatableFunctions<T>(_ functions: [String: MetafieldType], type: T.Type) -> Metatable<T> {
-        var fields: [String: Metatable<T>.FieldType] = [:]
-        var metafields: [MetafieldName: InternalMetafieldValue] = [:]
-        for (name, val) in functions {
-            if let metaname = MetafieldName(rawValue: name) {
-                let metaval: InternalMetafieldValue
-                switch val {
-                case .function(let function):
-                    metaval = .function(function)
-                case .closure(let closure):
-                    metaval = .closure(closure)
-                }
-                metafields[metaname] = metaval
-            } else {
-                let fieldval: Metatable<T>.FieldType
-                switch val {
-                case .function(let function):
-                    fieldval = .function(function)
-                case .closure(let closure):
-                    fieldval = .closure(closure)
-                }
-                fields[name] = fieldval
-            }
-        }
-        if !fields.isEmpty && metafields[.index] == nil {
-            metafields[.index] = Metatable<T>.IndexType.synthesize(fields: fields)
-        }
-        if metafields[.close] == nil {
-            // The legacy APIs always set __close
-            metafields[.close] = Metatable<Any>.CloseType.synthesize.value
-        }
-        return Metatable<T>(mt: metafields, unsynthesizedFields: nil)
     }
 
     private func addNonPropertyFieldsToMetatable(_ fields: [String: InternalUserdataField]) {

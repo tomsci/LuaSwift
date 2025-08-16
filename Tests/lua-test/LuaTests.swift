@@ -1279,38 +1279,6 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(closed, 1)
     }
 
-    func test_legacy_registerMetatable() throws {
-        class SomeClass {
-            var member: String? = nil
-        }
-        var barCalled = false
-        XCTAssertFalse(L.isMetatableRegistered(for: SomeClass.self))
-        L.internal_registerMetatable(for: SomeClass.self, functions: [
-            "__call": .function { (L: LuaState!) -> CInt in
-                guard let obj: SomeClass = L.touserdata(1) else {
-                    fatalError("Shouldn't happen")
-                }
-                obj.member = L.tostring(2)
-                return 0
-            },
-            "bar": .closure { L in
-                barCalled = true
-                return 0
-            }
-        ])
-        XCTAssertTrue(L.isMetatableRegistered(for: SomeClass.self))
-        let val = SomeClass()
-        L.push(userdata: val)
-        try L.pcall("A string arg")
-        XCTAssertEqual(val.member, "A string arg")
-
-        try L.load(string: "foo = ...; foo.bar()")
-        L.push(any: SomeClass())
-        XCTAssertFalse(barCalled)
-        try L.pcall(nargs: 1, nret: 0)
-        XCTAssertTrue(barCalled)
-    }
-
     func test_registerMetatable() throws {
         class SomeClass {
             var member: String? = nil
@@ -1483,31 +1451,6 @@ final class LuaTests: XCTestCase {
         let val = L.popref()
         let result = try val.pcall(member: "foo")
         XCTAssertEqual(result.tostring(), "Foo.foo")
-    }
-
-    func test_legacy_registerDefaultMetatable() throws {
-        struct Foo {}
-        var called = false
-        L.internal_registerDefaultMetatable(functions: [
-            "woop": .closure { L in
-                L.push(321)
-                return 1
-            },
-            "__call": .closure { L in
-                called = true
-                return 0
-            }
-        ])
-        try L.load(string: "obj = ...; return obj.woop()")
-        // Check that Foo gets the default metatable with a woop() fn
-        L.push(userdata: Foo())
-        try L.pcall(nargs: 1, nret: 1)
-        XCTAssertEqual(L.tovalue(1), 321)
-
-        L.push(userdata: Foo())
-        XCTAssertEqual(called, false)
-        try L.pcall(nargs: 0, nret: 0)
-        XCTAssertEqual(called, true)
     }
 
     func test_registerDefaultMetatable() throws {

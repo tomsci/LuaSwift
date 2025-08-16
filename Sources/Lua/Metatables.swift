@@ -376,66 +376,6 @@ public struct Metatable<T> {
     }
 
     /// See ``Metatable``.
-    @available(*, deprecated, message: "Will be removed in v1.0.0. Use constructor without the 'for:'")
-    public init(
-        for type: T.Type,
-        fields: [String: FieldType]? = nil,
-        add: FunctionType? = nil,
-        sub: FunctionType? = nil,
-        mul: FunctionType? = nil,
-        div: FunctionType? = nil,
-        mod: FunctionType? = nil,
-        pow: FunctionType? = nil,
-        unm: FunctionType? = nil,
-        idiv: FunctionType? = nil,
-        band: FunctionType? = nil,
-        bor: FunctionType? = nil,
-        bxor: FunctionType? = nil,
-        bnot: FunctionType? = nil,
-        shl: FunctionType? = nil,
-        shr: FunctionType? = nil,
-        concat: FunctionType? = nil,
-        len: FunctionType? = nil,
-        eq: EqType? = nil,
-        lt: LtType? = nil,
-        le: LeType? = nil,
-        index: IndexType? = nil,
-        newindex: NewIndexType? = nil,
-        call: CallType? = nil,
-        close: CloseType? = nil,
-        tostring: TostringType? = nil,
-        pairs: PairsType? = nil)
-    {
-        self.init(
-            fields: fields,
-            add: add,
-            sub: sub,
-            mul: mul,
-            div: div,
-            mod: mod,
-            pow: pow,
-            unm: unm,
-            idiv: idiv,
-            band: band,
-            bor: bor,
-            bxor: bxor,
-            bnot: bnot,
-            shl: shl,
-            shr: shr,
-            concat: concat,
-            len: len,
-            eq: eq,
-            lt: lt,
-            le: le,
-            index: index,
-            newindex: newindex,
-            call: call,
-            close: close,
-            tostring: tostring,
-            pairs: pairs)
-    }
-
-    /// See ``Metatable``.
     public init(
         fields: [String: FieldType]? = nil,
         add: FunctionType? = nil,

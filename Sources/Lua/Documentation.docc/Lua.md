@@ -18,7 +18,7 @@ let package = Package(
         .macOS(.v10_15)
     ],
     dependencies: [
-        .package(url: "https://github.com/tomsci/LuaSwift.git", from: "0.4.0"),
+        .package(url: "https://github.com/tomsci/LuaSwift.git", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(

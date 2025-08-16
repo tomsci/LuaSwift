@@ -190,7 +190,7 @@ The intent is for LuaSwift to be as flexible as possible with regard to what the
 
 ### Support for different Lua versions
 
-LuaSwift by default includes Lua 5.4.7. The codebase will also work with any 5.3 or 5.4 release, but to do that you need to fork the repository and check out an appropriate branch of the submodule `Sources/CLua/lua`. Support for the latest head of the master branch of <https://github.com/lua/lua> is offered on a best-effort basis -- since this represents ongoing development of the next Lua version where functionality can change with no warning, compatibility with any particular commit is not guaranteed.
+LuaSwift by default includes Lua 5.4.8. The codebase will also work with any 5.3 or 5.4 release, but to do that you need to fork the repository and check out an appropriate branch of the submodule `Sources/CLua/lua`. Support for the latest head of the master branch of <https://github.com/lua/lua> is offered on a best-effort basis -- since this represents ongoing development of the next Lua version where functionality can change with no warning, compatibility with any particular commit is not guaranteed.
 
 Versions older than 5.3 are sufficiently different in their API that it's not straightforward to support.
 

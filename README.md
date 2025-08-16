@@ -71,7 +71,7 @@ A more Swift-friendly function type `LuaClosure` is also defined, which allows E
 
 ## API compatibility
 
-LuaSwift should currently be considered a 0.x version. Although the API is mostly complete and finalized, it may still change in incompatible, if minor, ways.
+The LuaSwift API has been finalized at version 1.0. Subsequent releases may add new APIs, but no changes which break source compatibility are expected from this point on.
 
 ## More information
 

@@ -153,8 +153,23 @@ static inline int lua_upvalueindex(int i) {
     return LUA_REGISTRYINDEX - i;
 }
 
+// Unwinding the definition is necessary for the swift compiler to handle it; fortunately we can test that the
+// definition is correct in the preprocessor itself.
+#if defined(LUAI_MAXSTACK) && LUA_REGISTRYINDEX == -(LUAI_MAXSTACK) - 1000
+
+// v5.4 definition
 #undef LUA_REGISTRYINDEX
 static const int LUA_REGISTRYINDEX = -LUAI_MAXSTACK - 1000;
+
+#elif LUA_REGISTRYINDEX == (-(INT_MAX/2 + 1000))
+
+// v5.5 definition
+#undef LUA_REGISTRYINDEX
+static const int LUA_REGISTRYINDEX = -(INT_MAX/2 + 1000);
+
+#else
+#error "Unrecognised definition for LUA_REGISTRYINDEX"
+#endif
 
 #undef luaL_getmetatable
 static inline int luaL_getmetatable(lua_State* L, const char* name) {

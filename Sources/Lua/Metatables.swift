@@ -279,42 +279,6 @@ public struct Metatable<T> {
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
 
-        /// Synthesize a `close` metamethod in this metatable.
-        ///
-        /// Specify `close: .synthesize` to create a `close` metamethod. This behaves in one of two ways, depending on
-        /// whether `T` conforms to ``Closable``. If it does, then the synthesized metamethod will call
-        /// ``Closable/close()``, for example to make a class `Foo` closable:
-        /// 
-        /// ```swift
-        /// class Foo: Closable {
-        ///     func close() {
-        ///         // Do whatever
-        ///     }
-        ///     // .. rest of definition as applicable
-        /// }
-        /// 
-        /// L.register(Metatable<Foo>(
-        ///     close: .synthesize // This will call Foo.close()
-        /// ))
-        /// ```
-        /// 
-        /// If `T` does _not_ conform to `Closable`, then  `close: .synthesize` will create a metamethod which
-        /// deinits the Swift value, which will leave the object unusable from Lua after the variable is closed. This
-        /// may be problematic for some scenarios, hence it is recommended such types should implement `Closable`.
-        public static var synthesize: Self {
-            return .function { L in
-                let rawptr = lua_touserdata(L, 1)!
-                let anyPtr = rawptr.assumingMemoryBound(to: Any.self)
-                if let closable = anyPtr.pointee as? Closable {
-                    closable.close()
-                } else {
-                    anyPtr.deinitialize(count: 1)
-                    // Leave anyPtr in a safe state for __gc
-                    anyPtr.initialize(to: false)
-                }
-                return 0
-            }
-        }
         public static func memberfn(_ accessor: @escaping (T) throws -> Void) -> Self {
             return .closure(LuaState.makeClosure(accessor))
         }
@@ -553,6 +517,37 @@ extension Metatable.LeType where T: Comparable {
             }
             return 1
         })
+    }
+}
+
+extension Metatable.CloseType where T: Closable {
+    /// Synthesize a `close` metamethod in this metatable.
+    ///
+    /// Specify `close: .synthesize` to create a `close` metamethod based on `T` conforming to
+    ///  ``Closable``, which calls ``Closable/close()``. For example to make a class `Foo` closable:
+    /// 
+    /// ```swift
+    /// class Foo: Closable {
+    ///     func close() {
+    ///         // Do whatever
+    ///     }
+    ///     // .. rest of definition as applicable
+    /// }
+    /// 
+    /// L.register(Metatable<Foo>(
+    ///     close: .synthesize // This will call Foo.close()
+    /// ))
+    /// ```
+    ///
+    /// > Important: In LuaSwift v1.0 and earler, `synthesize` was available even when `T` didn't implement `Closable`,
+    /// albeit with slightly unclear semantics. Due to changes in the implementation, this is no longer possible and
+    /// `T` must implement `Closable` to use `synthesize`.
+    public static var synthesize: Self {
+        return .closure { L in
+            let val: T = L.touserdata(1)!
+            val.close()
+            return 0
+        }
     }
 }
 

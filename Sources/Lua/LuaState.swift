@@ -10,6 +10,10 @@ public typealias LuaState = UnsafeMutablePointer<lua_State>
 
 public typealias LuaClosure = (LuaState) throws -> CInt
 
+// LuaMemberClosures are associated with a Metatable of a particular type T. The UnsafeRawPointer is the metatable ptr
+// for type T so functions in the Metatable can efficiently typecheck their userdatas.
+internal typealias LuaMemberClosure = (LuaState, UnsafeRawPointer) throws -> CInt
+
 /// The integer number type used by Lua. By default, this is configured to be `Int64`.
 public typealias lua_Integer = CLua.lua_Integer
 
@@ -140,13 +144,21 @@ fileprivate func stateLookupKey(_ L: LuaState!) -> CInt {
 }
 
 internal func gcUserdata(_ L: LuaState!) -> CInt {
-    let rawptr = lua_touserdata(L, 1)!
+    guard let rawPtr = lua_touserdata(L, 1), L.getmetatable(1) else {
+        assertionFailure("gcUserdata called on something that's not a userdata with a metatable")
+        return 0
+    }
+
+    guard let umt = L.maybeGetState()?.userdataMetatables[lua_topointer(L, -1)] else {
+        assertionFailure("No registered metatable found for \(L.tostring(1, convert: true)!)")
+        return 0
+    }
+
     // Clear the stack, make it harder for a deinit fn to mess things up. We're in a finalizer already, so this can't
     // cause the userdata to be GC'd due to no more references.
     L.settop(0)
 
-    let anyPtr = rawptr.assumingMemoryBound(to: Any.self)
-    anyPtr.deinitialize(count: 1)
+    umt.gc(rawPtr)
     return 0
 }
 
@@ -186,6 +198,20 @@ public enum LuaType : CInt, CaseIterable {
     case function = 6 // LUA_TFUNCTION
     case userdata = 7 // LUA_TUSERDATA
     case thread = 8 // LUA_TTHREAD
+}
+
+internal struct UntypedMetatable {
+    init<T>(name: String, metatable: Metatable<T>) {
+        self.name = name
+        toany = metatable.toany
+        pushval = metatable.pushval
+        gc = metatable.gc
+    }
+
+    let name: String
+    let toany: UserdataToAnyFn
+    let pushval: PushValFn
+    let gc: GcFn
 }
 
 extension LuaType {
@@ -248,7 +274,7 @@ public protocol Closable {
     /// called as a result of a `local ... <close>` variable going out of scope. See
     /// [To-be-closed Variables](https://www.lua.org/manual/5.4/manual.html#3.3.8) and
     /// ``Metatable/CloseType/synthesize`` for more information.
-    func close()
+    mutating func close()
 }
 
 extension UnsafeMutablePointer where Pointee == lua_State {
@@ -629,8 +655,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 #if !LUASWIFT_NO_FOUNDATION
         var defaultStringEncoding: LuaStringEncoding = .stringEncoding(.utf8)
 #endif
-        var metatableDict = Dictionary<String, Array<Any.Type>>()
-        var userdataMetatables = Set<UnsafeRawPointer>()
+        var metatableNames = Dictionary<String, Array<Any.Type>>()
+        var userdataMetatables = Dictionary<UnsafeRawPointer, UntypedMetatable>() // map of Lua metatable lua_topointers
         var luaValues = Dictionary<CInt, UnownedLuaValue>()
         var errorConverter: LuaErrorConverter? = nil
         var hookFnsRef: CInt = LUA_NOREF
@@ -650,13 +676,19 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // Register a metatable for this type with a fixed name to avoid infinite recursion of makeMetatableName
         // trying to call getState()
         let mtName = "LuaSwift_State"
-        doRegisterMetatable(typeName: mtName)
-        // Note, the _State metatable doesn't need to go in userdataMetatables since maybeGetState() uses
-        // unchecked_touserdata() which doesn't consult userdataMetatables.
-        pop() // metatable
+        let umt = UntypedMetatable(name: mtName, metatable: Metatable<_State>())
+        doRegisterMetatable(umt, metafields: nil, state: state)
+
+        // Note, the _State metatable doesn't need to go in userdataMetatables for maybeGetState(), since that uses
+        // unchecked_touserdata() which doesn't consult userdataMetatables, but it does to ensure gcUserdata can
+        // correctly deinit it, hence why the setting of userdataMetatables has been pushed into doRegisterMetatable
+        
         push(function: stateLookupKey)
-        pushuserdata(state, metatableName: mtName)
+        umt.pushval(self, state)
+        push(index: -3) // pushes copy of metatable
+        lua_setmetatable(self, -2)
         rawset(LUA_REGISTRYINDEX)
+        pop() // metatable
 
         // While we're here, register ClosureWrapper
         // Are we doing too much non-deferred initialization in getState() now?
@@ -1316,10 +1348,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Returns: A value of type `T`, or `nil` if the value at the given stack position is not a `userdata` created
     ///   with `push(userdata:)` or it cannot be cast to `T`.
     public func touserdata<T>(_ index: CInt) -> T? {
-        // We don't need to check the metatable name with eg luaL_testudata because we store everything as Any
-        // so the final as? check takes care of that. But we should check that the userdata has a metatable we
-        // know about, to verify that it is safely convertible to an Any, and not an unrelated userdata some caller has
-        // created directly with lua_newuserdatauv().
+        // The logic here is to look up the metatable for the userdata and then call Metatable.toany (via
+        // UntypedMetatable) to get an Any pointer to the stored value; then do a final `as? T` to check it can be
+        // converted to T.
+
         guard getmetatable(index) else {
             // userdata without a metatable can't be one of ours
             return nil
@@ -1328,20 +1360,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         pop() // metatable
         guard let mtPtr,
               let state = maybeGetState(),
-              state.userdataMetatables.contains(mtPtr) else {
+              let umt = state.userdataMetatables[mtPtr]
+        else {
             // Not a userdata metatable we registered
             return nil
         }
 
-        return unchecked_touserdata(index)
+        return umt.toany(self, index) as? T
     }
 
+    // Should only be used when the userdata storage type is definitely T. Doesn't check the userdata's metatable at all.
     internal func unchecked_touserdata<T>(_ index: CInt) -> T? {
-        guard let rawptr = lua_touserdata(self, index) else {
+        guard let rawPtr: UnsafeMutableRawPointer = lua_touserdata(self, index) else {
             return nil
         }
-        let typedPtr = rawptr.assumingMemoryBound(to: Any.self)
-        return typedPtr.pointee as? T
+        let typedPtr = rawPtr.assumingMemoryBound(to: T.self)
+        return typedPtr.pointee
     }
 
     /// Convert a value on the stack to the specified `Decodable` type.
@@ -2373,16 +2407,150 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Returns a pointer to the Swift value for a Lua userdata.
+    ///
+    /// This is a lower-level alternative to ``touserdata(_:)`` which permits direct access to the stored Swift value
+    /// for a given userdata. This is useful, for example, when implementing metatables where `T` is a struct type and
+    /// needs to be mutated. `T` must be the exact same type as used in the `Metatable<T>` that was originally
+    /// registered for this value, otherwise an ``argumentError(_:_:)`` will be thrown. This function cannot be used to
+    /// retrieve the value of a userdata using the default metatable (because there is no typed `Metatable` available
+    /// for such a userdata).
+    ///
+    /// - Parameter arg: The stack index of the userdata.
+    /// - Returns: an `UnsafeMutablePointer` to the stored value.
+    /// - Throws: an `argumentError` if the value at the given index is not a userdata or does not have a `Metatable`.
+    ///
+    /// ```swift
+    /// struct Foo {
+    ///     var value: String
+    ///     mutating func setValue(newVal: String) {
+    ///         value = newVal
+    ///     }
+    /// }
+    /// L.register(Metatable<Foo>(fields: [
+    ///     "setValue": .closure { L in
+    ///         let fooPtr: UnsafeMutablePointer<Foo> = try L.checkUserdata(1)
+    ///         let newVal: String = try L.checkArgument(2)
+    ///         fooPtr.pointee.setValue(newVal)
+    ///         return 0
+    ///     }
+    /// ])
+    /// ```
+    ///
+    /// Note however that the above example could be more succinctly written using `.memberfn` or even `.property`,
+    /// generally `checkUserData()` should only be used when type limitations mean the more succinct options cannot be
+    /// used.
+    ///
+    /// > Important: Do not use or store the returned `UnsafeMutablePointer` after the point that the `arg` stack
+    ///   position stops being valid. At that point the returned pointer may become invalid due to the value being
+    ///   garbage collected, and using it after that point may crash the program.
+    public func checkUserdata<T>(_ arg: CInt) throws -> UnsafeMutablePointer<T> {
+        if !isMetatableRegistered(for: T.self) {
+            throw argumentError(arg, "No metatable for type \(String(describing: T.self))")
+        }
+        pushMetatable(for: T.self)
+        let expectedMtPtr = lua_topointer(self, -1)!
+        pop()
+        return try checkUserdata(arg, expectedMtPtr)
+    }
+
+    // This overload is useful internally because the metatable can bind expectedMtPtr at registration time rather than
+    // having to look it up in every call, like the above public function has to.
+    internal func checkUserdata<T>(_ arg: CInt, _ expectedMtPtr: UnsafeRawPointer) throws -> UnsafeMutablePointer<T> {
+        let rawPtr = lua_touserdata(self, arg)
+        guard let rawPtr, getmetatable(arg) else {
+            throw argumentError(arg, "Expected \(String(describing: T.self)) userdata")
+        }
+        let objMtPtr = lua_topointer(self, -1)
+        pop() // metatable
+        if objMtPtr != expectedMtPtr {
+            throw argumentError(arg, "Expected \(String(describing: T.self)) userdata")
+        }
+
+        let typedPtr = rawPtr.assumingMemoryBound(to: T.self)
+        return typedPtr
+    }
+
+    internal static func makeMemberClosure<T, Ret>(_ closure: @escaping (inout T) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            return L.push(tuple: try closure(&ud.pointee))
+        }
+    }
+
+    internal static func makeMemberClosure<T, Arg2, Ret>(_ closure: @escaping (inout T, Arg2) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            let arg2: Arg2 = try L.checkArgument(2)
+            return L.push(tuple: try closure(&ud.pointee, arg2))
+        }
+    }
+
+    internal static func makeMemberClosure<T, Arg2, Arg3, Ret>(_ closure: @escaping (inout T, Arg2, Arg3) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            let arg2: Arg2 = try L.checkArgument(2)
+            let arg3: Arg3 = try L.checkArgument(3)
+            return L.push(tuple: try closure(&ud.pointee, arg2, arg3))
+        }
+    }
+
+    internal static func makeMemberClosure<T, Arg2, Arg3, Arg4, Ret>(_ closure: @escaping (inout T, Arg2, Arg3, Arg4) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            let arg2: Arg2 = try L.checkArgument(2)
+            let arg3: Arg3 = try L.checkArgument(3)
+            let arg4: Arg4 = try L.checkArgument(4)
+            return L.push(tuple: try closure(&ud.pointee, arg2, arg3, arg4))
+        }
+    }
+
+    // Non-inout overloads
+
+    internal static func makeMemberClosure<T, Ret>(_ closure: @escaping (T) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            return L.push(tuple: try closure(ud.pointee))
+        }
+    }
+
+    internal static func makeMemberClosure<T, Arg2, Ret>(_ closure: @escaping (T, Arg2) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            let arg2: Arg2 = try L.checkArgument(2)
+            return L.push(tuple: try closure(ud.pointee, arg2))
+        }
+    }
+
+    internal static func makeMemberClosure<T, Arg2, Arg3, Ret>(_ closure: @escaping (T, Arg2, Arg3) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            let arg2: Arg2 = try L.checkArgument(2)
+            let arg3: Arg3 = try L.checkArgument(3)
+            return L.push(tuple: try closure(ud.pointee, arg2, arg3))
+        }
+    }
+
+    internal static func makeMemberClosure<T, Arg2, Arg3, Arg4, Ret>(_ closure: @escaping (T, Arg2, Arg3, Arg4) throws -> Ret) -> LuaMemberClosure {
+        return { L, expectedMtPtr in
+            let ud: UnsafeMutablePointer<T> = try L.checkUserdata(1, expectedMtPtr)
+            let arg2: Arg2 = try L.checkArgument(2)
+            let arg3: Arg3 = try L.checkArgument(3)
+            let arg4: Arg4 = try L.checkArgument(4)
+            return L.push(tuple: try closure(ud.pointee, arg2, arg3, arg4))
+        }
+    }
+
     /// Push a Swift value on to the stack as a `userdata`.
     ///
-    /// From a lifetime perspective, this function behaves as if the value were
-    /// assigned to another variable of type `Any`, and when the Lua userdata is
-    /// garbage collected, this variable goes out of scope.
+    /// From a lifetime perspective, this function behaves as if the value were assigned to another variable of type
+    /// `M?`, and when the Lua userdata is garbage collected, this variable is set to `nil`. `M` is the type used by
+    /// the metatable (ie `Metatable<M>`). `M` is usually, but not always, the same as `T`.
     ///
-    /// To make the object usable from Lua, declare a metatable for the value's type using
-    /// ``register(_:)-8rgnn``. Note that this function always uses the dynamic type of the value, and
-    /// not whatever `T` is, when calculating what metatable to assign the object. Thus `push(userdata: foo)` and
-    /// `push(userdata: foo as Any)` will behave identically.
+    /// To make the object usable from Lua, declare a metatable for the value's type using ``register(_:)-8rgnn`` prior
+    /// to calling `push(userdata:)`. Note that this function always uses the dynamic type of the value, and not
+    /// whatever `T` is, when calculating what metatable to assign the object. Thus `push(userdata: foo)` and `push
+    /// (userdata: foo as Any)` will behave identically.
     ///
     /// Pushing a value of a type which has no metatable previously registered will generate a warning, and the object
     /// will have no metamethods declared on it, except for `__gc` which is always defined in order that Swift object
@@ -2405,18 +2573,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
         let anyval: Any = userdata
         let tname = makeMetatableName(for: Swift.type(of: anyval))
-        pushuserdata(anyval, metatableName: tname)
+        pushmetatable(name: tname)
+        let pushfn = getState().userdataMetatables[lua_topointer(self, -1)]!.pushval
+        pushfn(self, anyval)
+        insert(-2) // move userdata below metatable
+        lua_setmetatable(self, -2)
+
         if toindex != -1 {
             insert(toindex)
         }
-    }
-
-    private func pushuserdata(_ val: Any, metatableName: String) {
-        let udata = luaswift_newuserdata(self, MemoryLayout<Any>.size)!
-        let udataPtr = udata.bindMemory(to: Any.self, capacity: 1)
-        udataPtr.initialize(to: val)
-        pushmetatable(name: metatableName)
-        lua_setmetatable(self, -2) // pops metatable
     }
 
     /// Push the metatable for type `T` on to the stack.
@@ -2441,8 +2606,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
             } else {
                 pop()
                 print("Implicitly registering empty metatable for type \(name)")
-                doRegisterMetatable(typeName: name)
-                getState().userdataMetatables.insert(lua_topointer(self, -1))
+                let umt = UntypedMetatable(name: name, metatable: Metatable<Any>())
+                doRegisterMetatable(umt, metafields: nil, state: getState())
             }
         }
     }
@@ -3122,13 +3287,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     private func makeMetatableName(for type: Any.Type) -> String {
         let prefix = "LuaSwift_Type_" + String(describing: type)
         let state = getState()
-        if state.metatableDict[prefix] == nil {
-            state.metatableDict[prefix] = []
+        if state.metatableNames[prefix] == nil {
+            state.metatableNames[prefix] = []
         }
-        var index = state.metatableDict[prefix]!.firstIndex(where: { $0 == type })
+        var index = state.metatableNames[prefix]!.firstIndex(where: { $0 == type })
         if index == nil {
-            state.metatableDict[prefix]!.append(type)
-            index = state.metatableDict[prefix]!.count - 1
+            state.metatableNames[prefix]!.append(type)
+            index = state.metatableNames[prefix]!.count - 1
         }
         return index! == 0 ? prefix : "\(prefix)[\(index!)]"
     }
@@ -3141,7 +3306,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     public func isMetatableRegistered<T>(for type: T.Type) -> Bool {
         let prefix = "LuaSwift_Type_" + String(describing: type)
         if let state = maybeGetState(),
-           let typesArray = state.metatableDict[prefix],
+           let typesArray = state.metatableNames[prefix],
            let index = typesArray.firstIndex(where: { $0 == type }) {
             let name = index == 0 ? prefix : "\(prefix)[\(index)]"
             let t = luaL_getmetatable(self, name)
@@ -3152,16 +3317,20 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    // Only for use by deprecated registerMetatable and registerDefaultMetatable APIs
-    public enum MetafieldType {
-        case function(lua_CFunction)
-        case closure(LuaClosure)
+    /// Returns whether `register(DefaultMetatable(...))` has been called or not.
+    public func isDefaultMetatableRegistered() -> Bool {
+        let t = luaL_getmetatable(self, Self.DefaultMetatableName)
+        pop()
+        return t == LUA_TTABLE
     }
 
-    private func doRegisterMetatable(typeName: String, metafields: [MetafieldName: InternalMetafieldValue]? = nil) {
-        if luaL_newmetatable(self, typeName) == 0 {
-            preconditionFailure("Metatable for type \(typeName) is already registered!")
+    @discardableResult
+    private func doRegisterMetatable(_ mt: UntypedMetatable, metafields: [MetafieldName: InternalMetafieldValue]?,
+                                     state: _State) -> UnsafeRawPointer {
+        if luaL_newmetatable(self, mt.name) == 0 {
+            preconditionFailure("Metatable for type \(mt.name) is already registered!")
         }
+        let mtPtr = lua_topointer(self, -1)!
 
         if let metafields {
             for (name, function) in metafields {
@@ -3169,7 +3338,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 case .function(let cfunction):
                     push(function: cfunction)
                 case .closure(let closure):
-                    push(LuaClosureWrapper(closure))
+                    push(closure)
+                case .memberClosure(let closure):
+                    push({ L in
+                        return try closure(L, mtPtr)
+                    })
                 }
                 rawset(-2, utf8Key: name.rawValue)
             }
@@ -3178,20 +3351,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         push(function: gcUserdata)
         rawset(-2, utf8Key: "__gc")
 
+        state.userdataMetatables[mtPtr] = mt
+
         // Leaves metatable on top of the stack
+        return mtPtr
     }
 
     private static let DefaultMetatableName = "LuaSwift_Default"
 
     // Documented in registerMetatable.md
     public func register<T>(_ metatable: Metatable<T>) {
-        doRegisterMetatable(typeName: makeMetatableName(for: T.self), metafields: metatable.mt)
-
+        let name = makeMetatableName(for: T.self)
+        let umt = UntypedMetatable(name: name, metatable: metatable)
+        let mtPtr = doRegisterMetatable(umt, metafields: metatable.mt, state: getState())
         if let fields = metatable.unsynthesizedFields {
-            addNonPropertyFieldsToMetatable(fields)
+            addNonPropertyFieldsToMetatable(fields, mtPtr)
         }
-
-        getState().userdataMetatables.insert(lua_topointer(self, -1))
         pop() // metatable
     }
 
@@ -3247,7 +3422,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         rawset(LUA_REGISTRYINDEX, utf8Key: newTypeName) // pops existingTypeName metatable
     }
 
-    private func addNonPropertyFieldsToMetatable(_ fields: [String: InternalUserdataField]) {
+    private func addNonPropertyFieldsToMetatable(_ fields: [String: InternalUserdataField], _ mtPtr: UnsafeRawPointer) {
         push(index: -1)
         rawset(-2, utf8Key: "__index")
 
@@ -3257,6 +3432,10 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 push(function: function)
             case .closure(let closure):
                 push(closure)
+            case .memberClosure(let closure):
+                push({ L in
+                    try closure(L, mtPtr)
+                })
             case .constant(let closure):
                 // Guaranteed not to throw, because closure will always be the one defined by
                 // Metatable.FieldType.constant() which does not throw and is only a LuaClosure so it can capture the
@@ -3283,8 +3462,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: do not call more than once - the default metatable for a given LuaState cannot be modified once
     ///   it has been set.
     public func register(_ metatable: DefaultMetatable) {
-        doRegisterMetatable(typeName: Self.DefaultMetatableName, metafields: metatable.mt)
-        getState().userdataMetatables.insert(lua_topointer(self, -1))
+        let umt = UntypedMetatable(name: Self.DefaultMetatableName, metatable: Metatable<Any>())
+        doRegisterMetatable(umt, metafields: metatable.mt, state: getState())
         pop() // metatable
     }
 

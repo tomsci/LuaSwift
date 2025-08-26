@@ -229,7 +229,7 @@ final class LuaTests: XCTestCase {
                     // Force deinitChecker to be captured by the continuation
                     L.push(closure: deinitChecker.deinitFn)
                     L.pop()
-                    
+
                     return 1 // Return the value thingThatCanYield yielded
                 })
             }
@@ -1174,6 +1174,25 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tolightuserdata(-1), lud)
     }
 
+    func test_touserdata() {
+        // Test that touserdata won't confuse two similar types both of which are registered
+        struct A {
+            let foo: Int
+        }
+        struct B {
+            let foo: Int
+        }
+        L.register(Metatable<A>())
+        L.register(Metatable<B>())
+        L.push(userdata: A(foo: 42))
+
+        let a: A? = L.touserdata(1)
+        XCTAssertNotNil(a)
+
+        let bad: B? = L.touserdata(1)
+        XCTAssertNil(bad)
+    }
+
     // Tests that objects deinit correctly when pushed with toany and GC'd by Lua
     func test_pushuserdata_instance() {
         var deinited = 0
@@ -1265,7 +1284,7 @@ final class LuaTests: XCTestCase {
                 "optstrstr": .memberfn { $0.optstrstr(str: $1) },
                 "voidfn": .memberfn { $0.voidfn() },
             ],
-            call: .memberfn { (obj: SomeClass, str: String) in
+            call: .memberfn { (obj, str: String) in
                 obj.member = str
             }
         ))
@@ -1336,7 +1355,7 @@ final class LuaTests: XCTestCase {
         struct Foo: PushableWithMetatable {
             func foo() -> String { return "Foo.foo" }
 
-            static var metatable: Metatable<Foo> { return Metatable<Foo>(fields: [
+            static var metatable: Metatable<Foo> { return .init(fields: [
                 "foo": .memberfn { $0.foo() }
             ])}
         }
@@ -2811,7 +2830,7 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(L.rawlen(1))
         XCTAssertEqual(L.rawlen(2), 4)
         XCTAssertEqual(L.rawlen(3), 5)
-        XCTAssertEqual(L.rawlen(4), lua_Integer(MemoryLayout<Any>.size))
+        XCTAssertEqual(L.rawlen(4), lua_Integer(MemoryLayout<Foo>.size))
         XCTAssertEqual(L.rawlen(5), nil)
 
         XCTAssertNil(try L.len(1))
@@ -3047,7 +3066,7 @@ final class LuaTests: XCTestCase {
                 self.bval = bval
                 super.init(aval: aval)
             }
-            
+
             required init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 self.bval = try container.decode(String.self, forKey: .bval)
@@ -3773,15 +3792,15 @@ final class LuaTests: XCTestCase {
 
     func test_gsub() throws {
         L.openLibraries([.string])
-        
+
         XCTAssertEqual(try L.gsub(string: "hello world", pattern: "(%w+)", repl: "%1 %1"), "hello hello world world")
 
         XCTAssertEqual(try L.gsub(string: "hello world", pattern: "%w+", repl: "%0 %0", maxReplacements: 1),
                        "hello hello world")
-        
+
         XCTAssertEqual(try L.gsub(string: "hello world from Lua", pattern: "(%w+)%s*(%w+)", repl: "%2 %1"),
                        "world hello Lua from")
-        
+
         XCTAssertEqual(try L.gsub(string: "4+5 = $return 4+5$", pattern: "%$(.-)%$", repl: { s in
             try! L.dostring(s[0])
             return "\(L.tointeger(-1)!)"
@@ -3861,7 +3880,7 @@ final class LuaTests: XCTestCase {
         XCTAssertTrue(LuaVer(major: 4, minor: 6, release: 2) < LUA_5_4_0)
     }
 
-    func test_arith() throws {    
+    func test_arith() throws {
         L.push(1)
         L.push(123)
         L.push(456)
@@ -4031,4 +4050,75 @@ final class LuaTests: XCTestCase {
         L.collectgarbage()
         XCTAssertTrue(valCollected)
     }
+
+    func test_mutable_struct() throws {
+        struct Foo: PushableWithMetatable {
+            init() {
+                bar = 0
+            }
+            var bar: Int
+
+            mutating func setBar() {
+                bar = 42
+            }
+
+            static let metatable: Metatable<Foo> = .init(fields: [
+                "setBar": .memberfn { $0.setBar() },
+                 "bar": .property(get: { $0.bar }, set: { $0.bar = $1 }),
+            ])
+        }
+
+        L.setglobal(name: "foo", value: Foo())
+        XCTAssertEqual(L.globals["foo"]["bar"].tovalue(), 0)
+
+        try L.dostring("foo:setBar()")
+        XCTAssertEqual(L.globals["foo"]["bar"].tovalue(), 42)
+
+        try L.dostring("foo.bar = 43")
+        XCTAssertEqual(L.globals["foo"]["bar"].tovalue(), 43)
+    }
+
+    func test_memberfn_example() throws {
+        class Foo {
+            var count = 0
+            func inc(by amount: Int) {
+                count = count + amount
+            }
+        }
+        L.register(Metatable<Foo>(fields: [
+            "inc": .memberfn { $0.inc(by: $1) }
+        ]))
+
+    }
+
+    func test_keypath_properties() throws {
+        struct ImmutableStruct : PushableWithMetatable {
+            let value: Int
+
+            static var metatable: Metatable<ImmutableStruct> { .init(fields: [
+                "value": .property(\.value)
+            ])}
+        }
+
+        struct MutableStruct : PushableWithMetatable {
+            var value: Int
+
+            static var metatable: Metatable<MutableStruct> { .init(fields: [
+                "value": .property(\.value)
+            ])}
+        }
+
+        L.setglobal(name: "i", value: ImmutableStruct(value: 13))
+        L.getglobal("i")
+        XCTAssertEqual(L.toint(1, key: "value"), 13)
+        XCTAssertThrowsError(try L.set(1, key: "value", value: 31))
+        L.pop()
+
+        L.setglobal(name: "m", value: MutableStruct(value: 14))
+        L.getglobal("m")
+        XCTAssertEqual(L.toint(1, key: "value"), 14)
+        try L.set(1, key: "value", value: 41)
+        XCTAssertEqual(L.toint(1, key: "value"), 41)
+    }
 }
+

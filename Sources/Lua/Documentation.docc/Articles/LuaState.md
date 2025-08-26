@@ -333,8 +333,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``
 - ``Lua/Swift/UnsafeMutablePointer/register(type:usingExistingMetatableFor:)``
 - ``Lua/Swift/UnsafeMutablePointer/isMetatableRegistered(for:)``
-- ``Lua/Swift/UnsafeMutablePointer/registerMetatable(for:functions:)``
-- ``Lua/Swift/UnsafeMutablePointer/registerDefaultMetatable(functions:)``
+- ``Lua/Swift/UnsafeMutablePointer/isDefaultMetatableRegistered()``
 - ``Lua/Swift/UnsafeMutablePointer/pushMetatable(for:)``
 
 ### Get/Set functions
@@ -428,6 +427,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/checkArgument(_:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkArgument(_:type:)``
 - ``Lua/Swift/UnsafeMutablePointer/checkOption(_:default:)``
+- ``Lua/Swift/UnsafeMutablePointer/checkUserdata(_:)``
 
 ### String matching
 

@@ -8,9 +8,9 @@ Any Swift type can be made accessible from Lua. The process of defining what fie
 
 Basic Swift types are pushed by value -- that is to say they are copied and converted to the equivalent Lua type. A Swift `String` is made available to Lua by converting it to a Lua `string`, a Swift `Array` is converted to a Lua `table`, etc.
 
-Bridged values on the other hand are represented in Lua using the `userdata` Lua type, which from the Swift side behave as if there was an assignment like `var userdataVar: Any? = myval`. So for classes, the `userdata` holds an additional reference to the object, and for structs the `userdata` holds a value copy of it. A `__gc` metamethod is automatically generated, which means that when the `userdata` is garbage collected by Lua, the equivalent of `userdataVar = nil` is performed.
+Bridged values on the other hand are represented in Lua using the `userdata` Lua type, which from the Swift side behave as if there was an assignment like `var userdataVar: T? = myval` (where `T` is the type used in the `Metatable`, described below). So for classes, the `userdata` holds an additional reference to the object, and for structs the `userdata` holds a value copy of it. A `__gc` metamethod is automatically generated, which means that when the `userdata` is garbage collected by Lua, the equivalent of `userdataVar = nil` is performed.
 
-> Note: While defining metatables for `struct` types is technically supported, it generally doesn't make much sense to do so. All userdata in Lua are copy-by-reference, so the object will behave like a class from the Lua side anyway, and for example the implementation of a `.memberfn { ... }` will involve copying the struct multiple times because of how the values are stored. Finally, it is not possible to define or use `mutating` member functions when using struct types. Overall, `class` types are a much better fit for how the bridging logic behaves.
+> Note: While defining metatables for `struct` types is supported, all userdata in Lua are copy-by-reference, so the object will behave more like a class from the Lua side. Overall, `class` types can be a better fit for how the bridging logic behaves.
 
 As described so far, the `userdata` plays nicely with Lua and Swift object lifetimes and memory management, but does not allow you to do anything useful with it from Lua other than controlling when it goes out of scope. This is where defining a metatable comes in.
 
@@ -53,7 +53,7 @@ L.register(Metatable<Foo>(fields: [
 ]))
 ```
 
-All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` (using a ``lua_CFunction`` or ``LuaClosure`` respectively), but this can require quite bit of boilerplate, for example steps (1) and (3) in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-3vudd) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types (including returning multiple values) providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
+All fields (and metafields) can be defined using `.function { ... }` or `.closure { ... }` (using a ``lua_CFunction`` or ``LuaClosure`` respectively), but this can require quite bit of boilerplate, for example steps (1) and (3) in the definition of `"bar"` above. This can be avoided in common cases by using a more-convenient-but-less-flexible helper like [`.memberfn { ... }`](doc:Metatable/FieldType/memberfn(_:)-8clk) instead of [`.closure { ... }`](doc:Metatable/FieldType/closure(_:)), which uses type inference to generate suitable boilerplate. `memberfn` can handle most argument and return types (including returning multiple values) providing they can be used with `tovalue()` and `push(tuple:)`. The following much more concise code behaves identically to the previous example:
 
 ```swift
 L.register(Metatable<Foo>(fields: [
@@ -114,7 +114,7 @@ L.setglobal(name: "foo", value: Foo())
 
 ### Properties
 
-The examples used above defined only a very simple metatable which bridged a single member function. One obvious addition would be to bridge properties, as well as functions. This can be done in a similar way to `memberfn`, by using [`property { ... }`](doc:Metatable/FieldType/property(get:set:)). Here is an example which exposes both `Foo.bar()` and `Foo.prop`:
+The examples used above defined only a very simple metatable which bridged a single member function. One obvious addition would be to bridge properties, as well as functions. This can be done in a similar way to `memberfn`, by using [`.property { ... }`](doc:Metatable/FieldType/property(get:set:)). Here is an example which exposes both `Foo.bar()` and `Foo.prop`:
 
 ```swift
 L.register(Metatable<Foo>(fields: [
@@ -138,6 +138,16 @@ print(foo.prop)
 --> Prints "example"
 ```
 
+Instead of specifying get/set closures, the above can also be expressed using Swift key paths:
+
+```swift
+L.register(Metatable<Foo>(fields: [
+    "prop": .property(\.prop)
+]))
+```
+
+By default `.property` will make a read-write property if the key path refers to a writable ("var") property, using [`property(_: WritableKeyPath)`](doc:Metatable/FieldType/property(_:)-6z9uc) and a read-only property otherwise, using [`property(_: KeyPath)`](doc:Metatable/FieldType/property(_:)-7zd5t). [`.roproperty`](doc:Metatable/FieldType/roproperty(_:)) and [`.rwproperty`](doc:Metatable/FieldType/rwproperty(_:)) can be used instead, to explicitly specify whether the property should be read-only or read-write.
+
 ### Custom metamethods
 
 To customize the bridging above and beyond adding fields to the userdata, we can pass in custom metafields. For example, to make `Foo` callable and closable (see [to-be-closed variables](https://www.lua.org/manual/5.4/manual.html#3.3.8)), we'd add `call` and `close` arguments to the `Metatable` constructor:
@@ -154,7 +164,7 @@ L.register(Metatable<Foo>(
 ))
 ```
 
-Note that `memberfn` may be used in some metamethods such as `call` (see [`CallType.memberfn`](doc:Metatable/CallType/memberfn(_:)-9vogy)) and `close` (see [`CloseType.memberfn`](doc:Metatable/CloseType/memberfn(_:))), just as in `fields`. Note that because those two metafields have slightly different call semantics, there is a different `memberfn` definition for each of them -- there are multiple `memberfn` overloads for `call` to support passing additional arguments, whereas there aren't for `close` because the `close` metamethod never takes any arguments. `memberfn` is not available for metamethods like `add` because Lua does not guarantee that the the first argument to that metamethod is of type `Foo` (only that _one_ of the two arguments will be).
+Note that `memberfn` may be used in some metamethods such as `call` (see [`CallType.memberfn`](doc:Metatable/CallType/memberfn(_:)-11bo5)) and `close` (see [`CloseType.memberfn`](doc:Metatable/CloseType/memberfn(_:))), just as in `fields`. Note that because those two metafields have slightly different call semantics, there is a different `memberfn` definition for each of them -- there are multiple `memberfn` overloads for `call` to support passing additional arguments, whereas there aren't for `close` because the `close` metamethod never takes any arguments. `memberfn` is not available for metamethods like `add` because Lua does not guarantee that the the first argument to that metamethod is of type `Foo` (only that _one_ of the two arguments will be).
 
 Under the hood, the implementation of support for `fields` uses a synthesized `index` metafield, therefore if `fields` is non-nil then `index` must be nil or omitted. `newindex` behaves similarly if there are any read-write properties defined in `fields`.
 
@@ -276,13 +286,12 @@ The pattern described above using `register(Metatable(...))` and `push(userdata:
 
 ## Registering metatables for structs
 
-While it is permitted to register metatables for structs as well as classes, and bridge them into Lua, the Lua-side `userdata` always has reference (and not value) semantics. That is to say, assigning the `userdata` to a new Lua variable will not copy the struct like it would doing the same operation in Swift. Furthermore, the current implementation of bridging means that structs are immutable (from the Lua runtime's perspective) and cannot be modified from within their Metatable. Attempting to assign to a member or call a `mutating` function from within a metatable will result in a compiler error. 
+While it is permitted to register metatables for structs as well as classes, and bridge them into Lua, the Lua-side `userdata` always has reference (and not value) semantics. That is to say, assigning the `userdata` to a new Lua variable will not copy the struct like it would doing the same operation in Swift.
 
-One way to have a bridged struct be mutable is to define a wrapper class for the struct, and use that for all values bridged to Lua:
+While pushing a struct always takes a copy (in the same way that assigning it to another Swift variable would), structs bridged into Lua can be modified by their metatable in the same way that classes can be. So, the following example will work:
 
 ```swift
-// The struct to be bridged
-struct MyStruct {
+struct Foo {
     var str: String
 
     mutating func setStr(_ newVal: String) {
@@ -290,18 +299,16 @@ struct MyStruct {
     }
 }
 
-// Define a wrapper class for the struct
-class MyStructWrapper {
-    var value: MyStruct
-
-    init(_ value: MyStruct) { self.value = value }
-}
-
-// Define all metatable operations in terms of MyStructWrapper
-L.register(Metatable<MyStructWrapper>(fields: [
-    "str": .property(get: { $0.value.str }, set: { $0.value.setStr($1) })
+L.register(Metatable<Foo>(fields: [
+    // Both of these definitions are allowed, regardless of
+    // whether Foo is a struct or class.
+    "str": .property(get: { $0.str }, set: { $0.str = $1 }),
+    "setStr": .memberfn { $0.setStr($1) }
 ]))
 ```
+
+Note, in LuaSwift v1.0 and earlier, the above `Metatable` definition would cause a compilation error if `Foo` was a struct, because the older versions did not permit struct Metatables to modify the struct.
+
 
 ## See Also
 

@@ -22,7 +22,7 @@ L.register(Metatable<Foo>(fields: [
 ]))
 ```
 
-See <doc:BridgingSwiftToLua> for background on how metatables are used.
+See <doc:BridgingSwiftToLua> for background on how metatables are used. See also ``PushableWithMetatable`` for a way to combine the declaration and metatable registration steps.
 
 > Note: Attempting to register a metatable for types that are normally automatically converted to Lua types (such as `Int,` or `String`), is not recommended and will lead to confusing results.
 

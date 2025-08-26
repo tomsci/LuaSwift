@@ -1,7 +1,11 @@
-// Copyright (c) 2023-2024 Tom Sutcliffe
+// Copyright (c) 2023-2025 Tom Sutcliffe
 // See LICENSE file for license information.
 
 import CLua
+
+internal typealias UserdataToAnyFn = (LuaState, CInt) -> Any
+internal typealias PushValFn = (LuaState, Any) -> Void
+internal typealias GcFn = (UnsafeMutableRawPointer) -> Void
 
 internal enum MetafieldName: String {
     case add = "__add"
@@ -34,6 +38,7 @@ internal enum MetafieldName: String {
 internal enum InternalMetafieldValue {
     case function(lua_CFunction)
     case closure(LuaClosure)
+    case memberClosure(LuaMemberClosure)
 }
 
 /// Describes a metatable to be used in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``.
@@ -213,21 +218,25 @@ public struct Metatable<T> {
         }
         // Not specifiable directly - used by impl of fields
         internal static func synthesize(fields: [String: FieldType]) -> InternalMetafieldValue {
-            return .closure { L in
+            return .memberClosure { L, mtPtr in
                 guard let memberName = L.tostringUtf8(2) else {
                     throw L.argumentError(2, "expected UTF-8 string member name")
                 }
                 switch fields[memberName]?.value {
                 case .property(let getter):
-                    return try getter(L)
+                    return try getter(L, mtPtr)
                 case .rwproperty(let getter, _):
-                    return try getter(L)
+                    return try getter(L, mtPtr)
                 case .function(let fn):
                     L.push(function: fn)
                 case .closure(let closure):
                     L.push(closure)
                 case .constant(let closure):
                     return try closure(L)
+                case .memberClosure(let closure):
+                    L.push({ L in
+                        try closure(L, mtPtr)
+                    })
                 case .none:
                     L.pushnil()
                 }
@@ -241,16 +250,16 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func memberfn(_ newindexfn: @escaping (T, String, LuaValue) throws -> Void) -> Self {
-            return .closure { L in
-                let obj: T = try L.checkArgument(1)
+        public static func memberfn(_ newindexfn: @escaping (inout T, String, LuaValue) throws -> Void) -> Self {
+            return Self(value: .memberClosure { L, mtPtr in
+                let obj: UnsafeMutablePointer<T> = try L.checkUserdata(1)
                 guard let memberName = L.tostringUtf8(2) else {
                     throw L.argumentError(2, "expected UTF-8 string member name")
                 }
                 let newVal = L.ref(index: 3)
-                try newindexfn(obj, memberName, newVal)
+                try newindexfn(&obj.pointee, memberName, newVal)
                 return 0
-            }
+            })
         }
     }
 
@@ -259,17 +268,17 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Self {
-            return .closure(LuaState.makeClosure(accessor))
+        public static func memberfn<Ret>(_ accessor: @escaping (inout T) throws -> Ret) -> Self {
+            return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
         }
-        public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> Self {
-            return .closure(LuaState.makeClosure(accessor))
+        public static func memberfn<Arg1, Ret>(_ accessor: @escaping (inout T, Arg1) throws -> Ret) -> Self {
+            return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
         }
-        public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> Self {
-            return .closure(LuaState.makeClosure(accessor))
+        public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (inout T, Arg1, Arg2) throws -> Ret) -> Self {
+            return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
         }
-        public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> Self {
-            return .closure(LuaState.makeClosure(accessor))
+        public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (inout T, Arg1, Arg2, Arg3) throws -> Ret) -> Self {
+            return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
         }
     }
 
@@ -279,8 +288,8 @@ public struct Metatable<T> {
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
 
-        public static func memberfn(_ accessor: @escaping (T) throws -> Void) -> Self {
-            return .closure(LuaState.makeClosure(accessor))
+        public static func memberfn(_ accessor: @escaping (inout T) throws -> Void) -> Self {
+            return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
         }
     }
 
@@ -315,21 +324,13 @@ public struct Metatable<T> {
         /// Implementing `CustomStringConvertible` is not _required_ to use `tostring: .synthesize` however -- the
         /// Swift-generated `String(describing:)` implementation can equally be used instead.
         public static var synthesize: Self {
-            return .function { (L: LuaState!) in
-                if let val: Any = L.touserdata(1) {
-                    L.push(String(describing: val))
-                } else {
-                    // Should only be possible if the value has been closed and didn't support Closable
-                    luaL_getmetafield(L, 1, "__name")
-                    let typeName = L.tostringUtf8(-1) ?? "?"
-                    L.push(utf8String: "\(typeName): nil")
-                }
-                return 1
-            }
+            return .init(value: .memberClosure(LuaState.makeMemberClosure({ (val: T) in
+                return String(describing: val)
+            })))
         }
 
         public static func memberfn(_ accessor: @escaping (T) throws -> String) -> Self {
-            return .closure(LuaState.makeClosure(accessor))
+            return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
         }
     }
 
@@ -390,14 +391,14 @@ public struct Metatable<T> {
                 mt[.index] = IndexType.synthesize(fields: fields)
                 if anyRwProperties {
                     precondition(newindex == nil,
-                        "If any properties with setters are specified, newindex must be nil")
-                    mt[.newindex] = .closure { L in
+                        "If any read-write properties are specified, newindex must be nil")
+                    mt[.newindex] = .memberClosure { L, mtPtr in
                         guard let memberName = L.tostringUtf8(2) else {
                             throw L.argumentError(2, "expected UTF-8 string member name")
                         }
                         switch fields[memberName]?.value {
                         case .rwproperty(_, let setter):
-                            return try setter(L)
+                            return try setter(L, mtPtr)
                         default:
                             throw L.argumentError(2, "no set function defined for property \(memberName)")
                         }
@@ -453,6 +454,25 @@ public struct Metatable<T> {
     public var type: T.Type {
         return T.self
     }
+
+    internal let toany: UserdataToAnyFn = { L, index in
+        // Note, we're not checking the type here, that's the caller's responsibility to do in advance.
+        let typedPtr: T = L.unchecked_touserdata(index)!
+        return typedPtr as Any
+    }
+
+    internal let pushval: PushValFn = { L, untypedVal in
+        let typedVal: T = untypedVal as! T
+        let udata = luaswift_newuserdata(L, MemoryLayout<T>.size)!
+        let udataPtr = udata.bindMemory(to: T.self, capacity: 1)
+        udataPtr.initialize(to: typedVal)
+    }
+
+    internal let gc: GcFn = { rawPtr in
+        let typedPtr = rawPtr.assumingMemoryBound(to: T.self)
+        typedPtr.deinitialize(count: 1)
+    }
+
 }
 
 extension Metatable { // Swift doesn't yet support `where Base: AnyObject, T: Base`
@@ -543,26 +563,27 @@ extension Metatable.CloseType where T: Closable {
     /// albeit with slightly unclear semantics. Due to changes in the implementation, this is no longer possible and
     /// `T` must implement `Closable` to use `synthesize`.
     public static var synthesize: Self {
-        return .closure { L in
-            let val: T = L.touserdata(1)!
-            val.close()
+        return .init(value: .memberClosure{ L, mtPtr in
+            let obj: UnsafeMutablePointer<T> = try L.checkUserdata(1, mtPtr)
+            obj.pointee.close()
             return 0
-        }
+        })
     }
 }
 
 internal enum InternalUserdataField {
     case function(lua_CFunction)
     case closure(LuaClosure)
-    case property(LuaClosure)
-    case rwproperty(LuaClosure, LuaClosure)
+    case property(LuaMemberClosure)
+    case rwproperty(LuaMemberClosure, LuaMemberClosure)
     case constant(LuaClosure)
+    case memberClosure(LuaMemberClosure)
 }
 
 /// Helper struct used in the registration of metatables.
 extension Metatable.FieldType {
 
-    /// Used to define a property field in a metatable.
+    /// Defines a property field in a metatable.
     ///
     /// Specify just a `get:` closure to define a readonly property, include a `set:` closure as well to define a
     /// read-write property. For example, given a class like:
@@ -590,26 +611,126 @@ extension Metatable.FieldType {
     /// ```
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
-    public static func property<ValType>(get: @escaping (T) -> ValType, set: Optional<(T, ValType) -> Void> = nil) -> Metatable.FieldType {
-        let getter: LuaClosure = { L in
-            let obj: T = try L.checkArgument(1)
-            let result = get(obj)
+    public static func property<ValType>(get: @escaping (T) -> ValType, set: Optional<(inout T, ValType) -> Void> = nil) -> Metatable.FieldType {
+        let getter: LuaMemberClosure = { L, mtPtr in
+            let obj: UnsafeMutablePointer<T> = try L.checkUserdata(1, mtPtr)
+            let result = get(obj.pointee)
             L.push(any: result)
             return 1
         }
 
         if let set {
-            let setter: LuaClosure = { L in
-                let obj: T = try L.checkArgument(1)
+            let setter: LuaMemberClosure = { L, mtPtr in
+                let obj: UnsafeMutablePointer<T> = try L.checkUserdata(1, mtPtr)
                 // Arg 2 is the member name in a __newindex call
                 let newVal: ValType = try L.checkArgument(3, type: ValType.self)
-                set(obj, newVal)
+                set(&obj.pointee, newVal)
                 return 0
             }
             return Metatable.FieldType(value: .rwproperty(getter, setter))
         } else {
             return Metatable.FieldType(value: .property(getter))
         }
+    }
+
+    /// Defines a read-only property field in a metatable.
+    ///
+    /// This helper function defines a read-only property field in a metatable, using a key path. For example:
+    ///
+    /// ```swift
+    /// struct Foo {
+    ///     let value: Int
+    /// }
+    /// 
+    /// L.register(Metatable<Foo>(fields: [
+    ///     "value": .roproperty(\.value)
+    /// ])
+    /// ```
+    ///
+    /// If you are not concerned with explicitly controlling whether the property is writable or not, and want the
+    /// metatable to follow the definition of the property (ie to be writable for `var` properties and not for `let`)
+    /// then specify `.property` instead of `.roproperty` and the appropriate overload will be selected automatically.
+    public static func roproperty<ValType>(_ keyPath: KeyPath<T, ValType>) -> Metatable.FieldType {
+        let getter: LuaMemberClosure = { L, mtPtr in
+            let obj: UnsafeMutablePointer<T> = try L.checkUserdata(1, mtPtr)
+            let result: ValType = obj.pointee[keyPath: keyPath]
+            L.push(any: result)
+            return 1
+        }
+        return Metatable.FieldType(value: .property(getter))
+    }
+
+    /// Defines a read-write property field in a metatable.
+    ///
+    /// This helper function defines a read-write property field in a metatable, using a key path. For example:
+    ///
+    /// ```swift
+    /// struct Foo {
+    ///     var value: Int
+    /// }
+    /// 
+    /// L.register(Metatable<Foo>(fields: [
+    ///     "value": .rwproperty(\.value)
+    /// ])
+    /// ```
+    ///
+    /// If you are not concerned with explicitly controlling whether the property is writable or not, and want the
+    /// metatable to follow the definition of the property (ie to be writable for `var` properties and not for `let`)
+    /// then specify `.property` instead of `.rwproperty` and the appropriate overload will be selected automatically.
+    public static func rwproperty<ValType>(_ keyPath: WritableKeyPath<T, ValType>) -> Metatable.FieldType {
+        let getter: LuaMemberClosure = { L, mtPtr in
+            let obj: UnsafeMutablePointer<T> = try L.checkUserdata(1, mtPtr)
+            let result: ValType = obj.pointee[keyPath: keyPath]
+            L.push(any: result)
+            return 1
+        }
+        let setter: LuaMemberClosure = { L, mtPtr in
+            let obj: UnsafeMutablePointer<T> = try L.checkUserdata(1, mtPtr)
+            // Arg 2 is the member name in a __newindex call
+            let newVal: ValType = try L.checkArgument(3, type: ValType.self)
+            obj.pointee[keyPath: keyPath] = newVal
+            return 0
+        }
+        return Metatable.FieldType(value: .rwproperty(getter, setter))
+    }
+
+    /// Defines a read-only property field in a metatable.
+    ///
+    /// This is an overloaded function, this overload will be used if the key path is not writable and will define a
+    /// read-only property. For example:
+    ///
+    /// ```swift
+    /// struct Foo {
+    ///     let value: Int // Note: value is 'let'
+    /// }
+    /// 
+    /// L.register(Metatable<Foo>(fields: [
+    ///     "value": .property(\.value) // Produces a read-only property
+    /// ])
+    /// ```
+    ///
+    /// See also ``property(_:)-6z9uc``.
+    public static func property<ValType>(_ keyPath: KeyPath<T, ValType>) -> Metatable.FieldType {
+        return roproperty(keyPath)
+    }
+
+    /// Defines a read-write property field in a metatable.
+    ///
+    /// This is an overloaded function, this overload will be used if the key path is  writable and will define a
+    /// read-write property. For example:
+    ///
+    /// ```swift
+    /// struct Foo {
+    ///     var value: Int // Note: value is 'var'
+    /// }
+    /// 
+    /// L.register(Metatable<Foo>(fields: [
+    ///     "value": .property(\.value) // Produces a read-write property
+    /// ])
+    /// ```
+    /// See also ``property(_:)-7zd5t``.
+    public static func property<ValType>(_ keyPath: WritableKeyPath<T, ValType>) -> Metatable.FieldType {
+        return rwproperty(keyPath)
     }
 
     /// Add a constant value to the metatable.
@@ -659,8 +780,8 @@ extension Metatable.FieldType {
     /// returns no results) or returning a tuple of N values (meaning the Lua function returns N values).
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
-    public static func memberfn<Ret>(_ accessor: @escaping (T) throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+    public static func memberfn<Ret>(_ accessor: @escaping (inout T) throws -> Ret) -> Metatable.FieldType {
+        return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
     }
 
     /// Used to define a one-argument member function in a metatable.
@@ -691,8 +812,8 @@ extension Metatable.FieldType {
     /// be used.
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
-    public static func memberfn<Arg1, Ret>(_ accessor: @escaping (T, Arg1) throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+    public static func memberfn<Arg1, Ret>(_ accessor: @escaping (inout T, Arg1) throws -> Ret) -> Metatable.FieldType {
+        return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
     }
 
     /// Used to define a two-argument member function in a metatable.
@@ -704,12 +825,12 @@ extension Metatable.FieldType {
     /// be used.
     ///
     /// See ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``.
-    public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (T, Arg1, Arg2) throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+    public static func memberfn<Arg1, Arg2, Ret>(_ accessor: @escaping (inout T, Arg1, Arg2) throws -> Ret) -> Metatable.FieldType {
+        return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
     }
 
-    public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (T, Arg1, Arg2, Arg3) throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+    public static func memberfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (inout T, Arg1, Arg2, Arg3) throws -> Ret) -> Metatable.FieldType {
+        return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
     }
 
     public static func staticfn<Ret>(_ accessor: @escaping () throws -> Ret) -> Metatable.FieldType {

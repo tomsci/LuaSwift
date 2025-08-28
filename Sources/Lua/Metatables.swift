@@ -39,6 +39,7 @@ internal enum InternalMetafieldValue {
     case function(lua_CFunction)
     case closure(LuaClosure)
     case memberClosure(LuaMemberClosure)
+    case none
 }
 
 /// Describes a metatable to be used in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``.
@@ -177,13 +178,15 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static var none: Self { return Self(value: .none) }
     }
 
     /// Represents all the ways to implement a `eq` metamethod.
     public struct EqType {
         internal let value: InternalMetafieldValue
-        public static func function(_ f: lua_CFunction) -> EqType { return EqType(value: .function(f)) }
-        public static func closure(_ c: @escaping LuaClosure) -> EqType { return EqType(value: .closure(c)) }
+        public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
+        public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static var none: Self { return Self(value: .none) }
     }
 
     /// Represents all the ways to implement a `lt` metamethod.
@@ -191,6 +194,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static var none: Self { return Self(value: .none) }
     }
 
     /// Represents all the ways to implement a `le` metamethod.
@@ -198,6 +202,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static var none: Self { return Self(value: .none) }
     }
 
     /// Represents all the ways to implement a `index` metamethod.
@@ -287,6 +292,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
+        public static var none: Self { return Self(value: .none) }
 
         public static func memberfn(_ accessor: @escaping (inout T) throws -> Void) -> Self {
             return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
@@ -633,6 +639,35 @@ extension Metatable.FieldType {
         }
     }
 
+    /// Defines a static computed property in a metatable.
+    ///
+    /// For example, given a class or struct like this, with a member that is both static and computed:
+    ///
+    /// ```swift
+    /// struct Foo {
+    ///     static var prop: String {
+    ///         return somethingNotNecessarilyConstant()
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// it cannot be included in a Metatable using `.constant` because that assumes the value won't ever change;
+    /// nor is `.property` applicable because that assumes a member property. Instead, use `.staticvar`:
+    ///
+    /// ```swift
+    /// L.register(Metatable<Foo>(fields: [
+    ///     "prop": .staticvar { return Foo.prop }
+    /// ]))
+    /// ```
+    public static func staticvar<ValType>(_ get: @escaping () -> ValType) -> Metatable.FieldType {
+        let getter: LuaMemberClosure = { L, _ in
+            let result = get()
+            L.push(any: result)
+            return 1
+        }
+        return Metatable.FieldType(value: .property(getter))
+    }
+
     /// Defines a read-only property field in a metatable.
     ///
     /// This helper function defines a read-only property field in a metatable, using a key path. For example:
@@ -736,7 +771,8 @@ extension Metatable.FieldType {
     /// Add a constant value to the metatable.
     ///
     /// This value is shared by all instances using this metatable, and as such is only suitable to use if the value
-    /// will never change over the lifetime of the `LuaState`. For anything more dynamic, use `.property`. 
+    /// will never change over the lifetime of the `LuaState`. For anything more dynamic, use
+    /// [`.staticvar`](doc:staticvar(_:)) or [`.property`](doc:property(get:set:)) as appropriate.
     public static func constant<ValType>(_ value: ValType) -> Metatable.FieldType {
         // This closure only exists to type-erase value
         let getter: LuaClosure = { L in

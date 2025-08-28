@@ -3343,6 +3343,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                     push({ L in
                         return try closure(L, mtPtr)
                     })
+                case .none:
+                    continue
                 }
                 rawset(-2, utf8Key: name.rawValue)
             }

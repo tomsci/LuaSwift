@@ -4120,5 +4120,21 @@ final class LuaTests: XCTestCase {
         try L.set(1, key: "value", value: 41)
         XCTAssertEqual(L.toint(1, key: "value"), 41)
     }
+
+    func test_metatable_constants() throws {
+        struct StaticConstant {
+            public static let foo = "bar"
+            public static var awkwardVar: Int { 42 }
+        }
+        L.register(Metatable<StaticConstant>(fields: [
+            "foo": .constant(StaticConstant.foo),
+            "awkwardVar": .staticvar { return StaticConstant.awkwardVar }
+        ]))
+
+        L.setglobal(name: "s", value: .userdata(StaticConstant()))
+        XCTAssertEqual(L.globals["s"]["foo"].tovalue(), "bar")
+        XCTAssertEqual(L.globals["s"]["awkwardVar"].tovalue(), 42)
+    }
+
 }
 

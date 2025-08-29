@@ -3345,6 +3345,9 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                     })
                 case .none:
                     continue
+                case .string(let string):
+                    precondition(name == .name, "string InternalMetafieldValue type is only valid for the name metafield")
+                    push(string)
                 }
                 rawset(-2, utf8Key: name.rawValue)
             }

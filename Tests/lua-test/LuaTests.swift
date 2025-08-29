@@ -4136,5 +4136,22 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.globals["s"]["awkwardVar"].tovalue(), 42)
     }
 
+    func test_default_metatable_name() throws {
+        struct Foo {}
+        L.register(Metatable<Foo>())
+        L.push(userdata: Foo())
+        let name = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertTrue(name.hasPrefix("LuaSwift_Type_Foo: "), "Wrong name \(name)")
+    }
+
+    func test_metatable_name() throws {
+        struct Foo {}
+        L.register(Metatable<Foo>(name: "ItsFoo"))
+        L.push(userdata: Foo())
+        let name = try XCTUnwrap(L.tostring(-1, convert: true))
+        XCTAssertTrue(name.hasPrefix("ItsFoo: "), "Wrong name \(name)")
+    }
+
+
 }
 

@@ -33,6 +33,7 @@ internal enum MetafieldName: String {
     case close = "__close"
     case tostring = "__tostring"
     case pairs = "__pairs"
+    case name = "__name"
 }
 
 internal enum InternalMetafieldValue {
@@ -40,6 +41,7 @@ internal enum InternalMetafieldValue {
     case closure(LuaClosure)
     case memberClosure(LuaMemberClosure)
     case none
+    case string(String) // Only for __name
 }
 
 /// Describes a metatable to be used in a call to ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``.
@@ -79,7 +81,8 @@ public struct DefaultMetatable {
         call: FunctionType? = nil,
         close: FunctionType? = nil,
         tostring: FunctionType? = nil,
-        pairs: FunctionType? = nil)
+        pairs: FunctionType? = nil,
+        name: String? = nil)
     {
         var mt: [MetafieldName: InternalMetafieldValue] = [:]
 
@@ -108,7 +111,9 @@ public struct DefaultMetatable {
         mt[.close] = close?.value
         mt[.tostring] = tostring?.value
         mt[.pairs] = pairs?.value
-
+        if let name {
+            mt[.name] = .string(name)
+        }
         self.mt = mt
     }
 }
@@ -160,7 +165,7 @@ public struct DefaultMetatable {
 ///
 /// > Note: declaring a `close` metamethod will have no effect if running with a Lua version prior to 5.4.
 ///
-/// [init]: doc:Metatable/init(fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:)
+/// [init]: doc:Metatable/init(fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:name:)
 public struct Metatable<T> {
     internal let mt: [MetafieldName: InternalMetafieldValue]
     internal let unsynthesizedFields: [String: InternalUserdataField]?
@@ -373,7 +378,8 @@ public struct Metatable<T> {
         call: CallType? = nil,
         close: CloseType? = nil,
         tostring: TostringType? = nil,
-        pairs: PairsType? = nil)
+        pairs: PairsType? = nil,
+        name: String? = nil)
     {
         var mt: [MetafieldName: InternalMetafieldValue] = [:]
 
@@ -447,6 +453,9 @@ public struct Metatable<T> {
         mt[.close] = close?.value
         mt[.tostring] = tostring?.value
         mt[.pairs] = pairs?.value
+        if let name {
+            mt[.name] = .string(name)
+        }
 
         self.mt = mt
     }

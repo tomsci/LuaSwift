@@ -3448,6 +3448,8 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 let _ = try! closure(self)
             case .property(_), .rwproperty(_, _):
                 fatalError() // By definition cannot hit this
+            case .novalue:
+                pushnil()
             }
             rawset(-2, utf8Key: k)
         }

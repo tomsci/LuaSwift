@@ -247,6 +247,8 @@ public struct Metatable<T> {
                     L.push({ L in
                         try closure(L, mtPtr)
                     })
+                case .novalue:
+                    L.pushnil()
                 case .none:
                     L.pushnil()
                 }
@@ -593,10 +595,13 @@ internal enum InternalUserdataField {
     case rwproperty(LuaMemberClosure, LuaMemberClosure)
     case constant(LuaClosure)
     case memberClosure(LuaMemberClosure)
+    case novalue
 }
 
 /// Helper struct used in the registration of metatables.
 extension Metatable.FieldType {
+
+    public static var none: Self { Self(value: .novalue) }
 
     /// Defines a property field in a metatable.
     ///

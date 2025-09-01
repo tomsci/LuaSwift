@@ -996,11 +996,11 @@ public protocol PushableWithMetatable: Pushable {
 
 public extension PushableWithMetatable {
     internal func checkRegistered(_ state: LuaState) {
-        if !state.isMetatableRegistered(for: Self.metatable.type) {
+        if !state.isMetatableRegistered(for: ValueType.self) {
             state.register(Self.metatable)
         }
-        if Self.self != Self.metatable.type && !state.isMetatableRegistered(for: Self.self) {
-            state.register(type: Self.self, usingExistingMetatableFor: Self.metatable.type)
+        if Self.self != ValueType.self && !state.isMetatableRegistered(for: Self.self) {
+            state.register(type: Self.self, usingMetatable: Self.metatable)
         }
     }
 

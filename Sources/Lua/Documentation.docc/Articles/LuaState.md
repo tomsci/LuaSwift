@@ -332,6 +332,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-8rgnn``
 - ``Lua/Swift/UnsafeMutablePointer/register(_:)-4rb3q``
 - ``Lua/Swift/UnsafeMutablePointer/register(type:usingExistingMetatableFor:)``
+- ``Lua/Swift/UnsafeMutablePointer/register(type:usingMetatable:)``
 - ``Lua/Swift/UnsafeMutablePointer/isMetatableRegistered(for:)``
 - ``Lua/Swift/UnsafeMutablePointer/isDefaultMetatableRegistered()``
 - ``Lua/Swift/UnsafeMutablePointer/pushMetatable(for:)``

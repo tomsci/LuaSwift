@@ -3366,7 +3366,22 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     // Documented in registerMetatable.md
     public func register<T>(_ metatable: Metatable<T>) {
-        let name = makeMetatableName(for: T.self)
+        register(type: T.self, usingMetatable: metatable)
+    }
+
+    /// Register a metatable for a given type.
+    ///
+    /// - Parameter type: The type to register a metatable for.
+    /// - Parameter metatable: The metatable to use. `RealType` must be the same as,
+    ///   or derive from, `MetatableType`.
+    ///
+    /// This is an overload of ``register(_:)-8rgnn`` which allows an explicit type to be specified
+    /// that can be different to that of the metatable. This can be useful when registering
+    /// metatables for derived classes. For all other cases, use the simpler ``register(_:)-8rgnn`` instead.
+    ///
+    /// - Precondition: There must not already be a metatable defined for type `RealType`.
+    public func register<RealType, MetatableType>(type: RealType.Type, usingMetatable metatable: Metatable<MetatableType>) {
+        let name = makeMetatableName(for: RealType.self)
         let umt = UntypedMetatable(name: name, metatable: metatable)
         let mtPtr = doRegisterMetatable(umt, metafields: metatable.mt, state: getState())
         if let fields = metatable.unsynthesizedFields {
@@ -3414,6 +3429,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     ///
     /// - Precondition: `NewType` must not already have a metatable registered for it. `RegisteredType` must
     ///   already have a metatable registered for it.
+    @available(*, deprecated, message: "Will be removed in v2.0.0. Use register(type:usingMetatable:) instead.")
     public func register<NewType, RegisteredType>(type: NewType.Type, usingExistingMetatableFor: RegisteredType.Type) {
         let existingTypeName = makeMetatableName(for: RegisteredType.self)
         if luaL_getmetatable(self, existingTypeName) == LUA_TNIL {

@@ -1386,16 +1386,65 @@ final class LuaTests: XCTestCase {
             override func foo() -> String { return "Derived.foo" }
             func bar() -> String { return "Derived.bar" }
             class override var metatable: Metatable<Base> {
-                return Metatable<Derived>(fields: [
+                return Base.metatable.subclass(type: Self.self, fields: [
                     "foo": .memberfn { $0.foo() },
                     "bar": .memberfn { $0.bar() }
-                ]).downcast()
+                ])
             }
         }
 
         let derived = L.ref(any: Derived())
         XCTAssertEqual(try derived.pcall(member: "foo").tostring(), "Derived.foo")
         XCTAssertEqual(try derived.pcall(member: "bar").tostring(), "Derived.bar")
+    }
+
+    func test_PushableWithMetatable_derivedCustomMt2() throws {
+        class Base: PushableWithMetatable {
+            // Not overridden, should still appear in derived metatable
+            func baseOnly() -> String { return "baseOnly" }
+
+            func foo() -> String { return "Base.foo" }
+
+            class var metatable: Metatable<Base> {
+                return Metatable(fields: [
+                    "baseOnly": .memberfn { $0.baseOnly() },
+                    "foo": .memberfn { $0.foo() }
+                ])
+            }
+        }
+        class Derived: Base {
+            override func foo() -> String { return "Derived.foo" }
+            func bar() -> String { return "Derived.bar" }
+            class override var metatable : Metatable<Base> {
+                return Base.metatable.subclass(type: Derived.self, fields: [
+                    "bar": .memberfn { $0.bar() }
+                ])
+            }
+        }
+
+        let derived = L.ref(any: Derived())
+        XCTAssertEqual(try derived.pcall(member: "baseOnly").tostring(), "baseOnly")
+        XCTAssertEqual(try derived.pcall(member: "foo").tostring(), "Derived.foo")
+        XCTAssertEqual(try derived.pcall(member: "bar").tostring(), "Derived.bar")
+
+        class DerivedWithProps: Derived {
+            var prop: String = "DerivedProp"
+
+            class override var metatable : Metatable<Base> {
+                return Derived.metatable.subclass(type: DerivedWithProps.self, fields: [
+                    "prop": .property(\.prop)
+                ])
+            }
+        }
+
+        // Now test a base class with no properties (but fns) and a derived class that adds properties. Also checks
+        // multilevel inheritence.
+        print("Now for the hard one")
+        let derivedWithProps = L.ref(any: DerivedWithProps())
+        XCTAssertEqual(try derivedWithProps.pcall(member: "baseOnly").tostring(), "baseOnly")
+        XCTAssertEqual(try derivedWithProps.pcall(member: "foo").tostring(), "Derived.foo")
+        XCTAssertEqual(try derivedWithProps.pcall(member: "bar").tostring(), "Derived.bar")
+        XCTAssertEqual(try derivedWithProps.get("prop").tostring(), "DerivedProp")
     }
 
     func test_PushableWithMetatable_protocol() throws {
@@ -1412,6 +1461,41 @@ final class LuaTests: XCTestCase {
 
         let derived = L.ref(any: Derived())
         XCTAssertEqual(try derived.pcall(member: "foo").tostring(), "Derived.foo")
+    }
+
+    func test_PushableWithMetatable_derivedProperties() throws {
+        class Base: PushableWithMetatable {
+            var base = "baseval"
+
+            class var metatable: Metatable<Base> {
+                return Metatable(fields: [
+                    "base": .property(\.base)
+                ])
+            }
+        }
+        class Derived: Base {
+            var derived = "derivedval"
+            class override var metatable : Metatable<Base> {
+                return Base.metatable.subclass(type: Derived.self, fields: [
+                    "derived": .property(\.derived)
+                ])
+            }
+        }
+
+        let derived = Derived()
+        L.setglobal(name: "val", value: derived)
+
+        let val = L.globals["val"]
+        XCTAssertEqual(val["base"].tostring(), "baseval")
+
+        try L.dostring("val.base = 'newbase'")
+        XCTAssertEqual(derived.base, "newbase")
+        XCTAssertEqual(val["base"].tostring(), "newbase")
+
+        XCTAssertEqual(val["derived"].tostring(), "derivedval")
+        try L.dostring("val.derived = 'newderived'")
+        XCTAssertEqual(derived.derived, "newderived")
+        XCTAssertEqual(val["derived"].tostring(), "newderived")
     }
 
     func test_PushableWithMetatable_autoRegister() throws {

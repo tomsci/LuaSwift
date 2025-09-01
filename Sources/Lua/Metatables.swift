@@ -40,7 +40,7 @@ internal enum InternalMetafieldValue {
     case function(lua_CFunction)
     case closure(LuaClosure)
     case memberClosure(LuaMemberClosure)
-    case none
+    case novalue
     case string(String) // Only for __name
 }
 
@@ -183,7 +183,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static var none: Self { return Self(value: .none) }
+        public static var none: Self { return Self(value: .novalue) }
     }
 
     /// Represents all the ways to implement a `eq` metamethod.
@@ -191,7 +191,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static var none: Self { return Self(value: .none) }
+        public static var none: Self { return Self(value: .novalue) }
     }
 
     /// Represents all the ways to implement a `lt` metamethod.
@@ -199,7 +199,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static var none: Self { return Self(value: .none) }
+        public static var none: Self { return Self(value: .novalue) }
     }
 
     /// Represents all the ways to implement a `le` metamethod.
@@ -207,7 +207,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static var none: Self { return Self(value: .none) }
+        public static var none: Self { return Self(value: .novalue) }
     }
 
     /// Represents all the ways to implement a `index` metamethod.
@@ -227,12 +227,12 @@ public struct Metatable<T> {
             }
         }
         // Not specifiable directly - used by impl of fields
-        internal static func synthesize(fields: [String: FieldType]) -> InternalMetafieldValue {
-            return .memberClosure { L, mtPtr in
+        internal static func synthesize(fields: [String: InternalUserdataField]) -> LuaMemberClosure {
+            return { L, mtPtr in
                 guard let memberName = L.tostringUtf8(2) else {
                     throw L.argumentError(2, "expected UTF-8 string member name")
                 }
-                switch fields[memberName]?.value {
+                switch fields[memberName] {
                 case .property(let getter):
                     return try getter(L, mtPtr)
                 case .rwproperty(let getter, _):
@@ -299,7 +299,7 @@ public struct Metatable<T> {
         internal let value: InternalMetafieldValue
         public static func function(_ f: lua_CFunction) -> Self { return Self(value: .function(f)) }
         public static func closure(_ c: @escaping LuaClosure) -> Self { return Self(value: .closure(c)) }
-        public static var none: Self { return Self(value: .none) }
+        public static var none: Self { return Self(value: .novalue) }
 
         public static func memberfn(_ accessor: @escaping (inout T) throws -> Void) -> Self {
             return .init(value: .memberClosure(LuaState.makeMemberClosure(accessor)))
@@ -385,6 +385,35 @@ public struct Metatable<T> {
     {
         var mt: [MetafieldName: InternalMetafieldValue] = [:]
 
+        mt[.add] = add?.value
+        mt[.sub] = sub?.value
+        mt[.mul] = mul?.value
+        mt[.div] = div?.value
+        mt[.mod] = mod?.value
+        mt[.pow] = pow?.value
+        mt[.unm] = unm?.value
+        mt[.idiv] = idiv?.value
+        mt[.band] = band?.value
+        mt[.bor] = bor?.value
+        mt[.bxor] = bxor?.value
+        mt[.bnot] = bnot?.value
+        mt[.shl] = shl?.value
+        mt[.shr] = shr?.value
+        mt[.concat] = concat?.value
+        mt[.len] = len?.value
+        mt[.eq] = eq?.value
+        mt[.lt] = lt?.value
+        mt[.le] = le?.value
+        mt[.index] = index?.value // might be overridden below
+        mt[.newindex] = newindex?.value // ditto
+        mt[.call] = call?.value
+        mt[.close] = close?.value
+        mt[.tostring] = tostring?.value
+        mt[.pairs] = pairs?.value
+        if let name {
+            mt[.name] = .string(name)
+        }
+
         // fields
         var anyProperties = false
         var anyRwProperties = false
@@ -401,8 +430,9 @@ public struct Metatable<T> {
                 }
             }
 
+            // Having properties means we have to synthesize an __index metamethod
             if anyProperties {
-                mt[.index] = IndexType.synthesize(fields: fields)
+                mt[.index] = .memberClosure(IndexType.synthesize(fields: fields.mapValues { $0.value }))
                 if anyRwProperties {
                     precondition(newindex == nil,
                         "If any read-write properties are specified, newindex must be nil")
@@ -424,39 +454,6 @@ public struct Metatable<T> {
             }
         } else {
             unsynthesizedFields = nil
-        }
-
-        mt[.add] = add?.value
-        mt[.sub] = sub?.value
-        mt[.mul] = mul?.value
-        mt[.div] = div?.value
-        mt[.mod] = mod?.value
-        mt[.pow] = pow?.value
-        mt[.unm] = unm?.value
-        mt[.idiv] = idiv?.value
-        mt[.band] = band?.value
-        mt[.bor] = bor?.value
-        mt[.bxor] = bxor?.value
-        mt[.bnot] = bnot?.value
-        mt[.shl] = shl?.value
-        mt[.shr] = shr?.value
-        mt[.concat] = concat?.value
-        mt[.len] = len?.value
-        mt[.eq] = eq?.value
-        mt[.lt] = lt?.value
-        mt[.le] = le?.value
-        if let index {
-            mt[.index] = index.value
-        }
-        if let newindex {
-            mt[.newindex] = newindex.value
-        }
-        mt[.call] = call?.value
-        mt[.close] = close?.value
-        mt[.tostring] = tostring?.value
-        mt[.pairs] = pairs?.value
-        if let name {
-            mt[.name] = .string(name)
         }
 
         self.mt = mt
@@ -490,6 +487,212 @@ public struct Metatable<T> {
         typedPtr.deinitialize(count: 1)
     }
 
+    /// Defines a metatable suitable for use in a derived class whose parent conforms to `PushableWithMetatable`.
+    ///
+    /// When defining a `metatable` on a derived class, when the parent already conforms to `PushableWithMetatable`,
+    /// calling this function on the parent's metatable creates a metatable for the derived class that calls into the
+    /// parent where appropriate. Usage:
+    /// 
+    /// ```swift
+    /// class Base: PushableWithMetatable {
+    ///     // ...
+    ///     class var metatable: Metatable<Base> { return Metatable(/* ... */) }
+    /// }
+    ///
+    /// class Derived: Base {
+    ///     // ...
+    ///     class override var metatable: Metatable<Base> {
+    ///         return Base.metatable.subclass(type: Derived.self, /* ... */)
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// See ``PushableWithMetatable`` for more information.
+    public func subclass<D>(
+        type: D.Type,
+        fields: [String: Metatable<D>.FieldType]? = nil,
+        add: Metatable<D>.FunctionType? = nil,
+        sub: Metatable<D>.FunctionType? = nil,
+        mul: Metatable<D>.FunctionType? = nil,
+        div: Metatable<D>.FunctionType? = nil,
+        mod: Metatable<D>.FunctionType? = nil,
+        pow: Metatable<D>.FunctionType? = nil,
+        unm: Metatable<D>.FunctionType? = nil,
+        idiv: Metatable<D>.FunctionType? = nil,
+        band: Metatable<D>.FunctionType? = nil,
+        bor: Metatable<D>.FunctionType? = nil,
+        bxor: Metatable<D>.FunctionType? = nil,
+        bnot: Metatable<D>.FunctionType? = nil,
+        shl: Metatable<D>.FunctionType? = nil,
+        shr: Metatable<D>.FunctionType? = nil,
+        concat: Metatable<D>.FunctionType? = nil,
+        len: Metatable<D>.FunctionType? = nil,
+        eq: Metatable<D>.EqType? = nil,
+        lt: Metatable<D>.LtType? = nil,
+        le: Metatable<D>.LeType? = nil,
+        index: Metatable<D>.IndexType? = nil,
+        newindex: Metatable<D>.NewIndexType? = nil,
+        call: Metatable<D>.CallType? = nil,
+        close: Metatable<D>.CloseType? = nil,
+        tostring: Metatable<D>.TostringType? = nil,
+        pairs: Metatable<D>.PairsType? = nil,
+        name: String? = nil) -> Metatable<T>
+    {
+        var mt: [MetafieldName: InternalMetafieldValue] = [:]
+        var unsynthesizedFields: [String: InternalUserdataField]? = nil
+        let parent = self
+
+        mt[.add] = add?.value ?? parent.mt[.add]
+        mt[.sub] = sub?.value ?? parent.mt[.sub]
+        mt[.mul] = mul?.value ?? parent.mt[.mul]
+        mt[.div] = div?.value ?? parent.mt[.div]
+        mt[.mod] = mod?.value ?? parent.mt[.mod]
+        mt[.pow] = pow?.value ?? parent.mt[.pow]
+        mt[.unm] = unm?.value ?? parent.mt[.unm]
+        mt[.idiv] = idiv?.value ?? parent.mt[.idiv]
+        mt[.band] = band?.value ?? parent.mt[.band]
+        mt[.bor] = bor?.value ?? parent.mt[.bor]
+        mt[.bxor] = bxor?.value ?? parent.mt[.bxor]
+        mt[.bnot] = bnot?.value ?? parent.mt[.bnot]
+        mt[.shl] = shl?.value ?? parent.mt[.shl]
+        mt[.shr] = shr?.value ?? parent.mt[.shr]
+        mt[.concat] = concat?.value ?? parent.mt[.concat]
+        mt[.len] = len?.value ?? parent.mt[.len]
+        mt[.eq] = eq?.value ?? parent.mt[.eq]
+        mt[.lt] = lt?.value ?? parent.mt[.lt]
+        mt[.le] = le?.value ?? parent.mt[.le]
+        mt[.index] = index?.value ?? parent.mt[.index]
+        mt[.newindex] = newindex?.value ?? parent.mt[.newindex]
+        mt[.call] = call?.value ?? parent.mt[.call]
+        mt[.close] = close?.value ?? parent.mt[.close]
+        mt[.tostring] = tostring?.value ?? parent.mt[.tostring]
+        mt[.pairs] = pairs?.value ?? parent.mt[.pairs]
+        if let name {
+            mt[.name] = .string(name)
+        } else {
+            mt[.name] = parent.mt[.name]
+        }
+
+        var anyProperties = false
+        var anyRwProperties = false
+        if let fields {
+            precondition(index == nil,
+                "If any fields are specified, index must be nil")
+
+            for (_, v) in fields {
+                if case .property = v.value {
+                    anyProperties = true
+                } else if case .rwproperty = v.value {
+                    anyProperties = true
+                    anyRwProperties = true
+                }
+            }
+
+            var allDerivedFields = fields.mapValues { $0.value }
+            if let parentUnsythesizedFields = parent.unsynthesizedFields {
+                for (name, field) in parentUnsythesizedFields {
+                    if allDerivedFields[name] == nil {
+                        allDerivedFields[name] = field
+                    }
+                }
+            }
+
+            if anyProperties {
+                // We have to synthesize an index, including either parent's unsynthesizedFields (if it has any) or
+                // caling into its index
+                let indexFn = Metatable<D>.IndexType.synthesize(fields: allDerivedFields)
+
+                // We unwind T's __index metafield to get at the underlying LuaClosure/LuaMemberClosures to avoid
+                // unnecessary extra pcalls (in the most likely case).
+                let parentIndexFn: LuaMemberClosure
+                switch parent.mt[.index] {
+                case .function(let cfunction):
+                    // We have to push and pcall this, because we cannot risk the possibility that the caller used a
+                    // real C function that could call lua_error
+                    parentIndexFn = { L, mtPtr in
+                        L.push(function: cfunction)
+                        L.push(index: 1)
+                        L.push(index: 2)
+                        try L.pcall(nargs: 2, nret: 1)
+                        return 1
+                    }
+                case .closure(let closure):
+                    parentIndexFn = { L, mt in
+                        return try closure(L)
+                    }
+                case .memberClosure(let closure):
+                    parentIndexFn = closure
+                default:
+                    parentIndexFn = { L, mt in
+                        L.pushnil()
+                        return 1
+                    }
+                }
+
+                mt[.index] = .memberClosure { L, mtPtr in
+                    // Cross fingers that indexFn doesn't mess with the stack (it shouldn't, but...)
+                    var nret = try indexFn(L, mtPtr)
+                    if L.isnil(-1) {
+                        L.pop()
+                        nret = try parentIndexFn(L, mtPtr)
+                    }
+                    return nret
+                }
+
+                if anyRwProperties {
+                    precondition(newindex == nil,
+                        "If any read-write properties are specified, newindex must be nil")
+                    let parentNewIndexFn: LuaMemberClosure
+                    switch parent.mt[.newindex] {
+                    case .function(let cfunction):
+                        // We have to push and pcall this, because we cannot risk the possibility that the caller used a
+                        // real C function that could call lua_error
+                        parentNewIndexFn = { L, mtPtr in
+                            L.push(function: cfunction)
+                            L.push(index: 1)
+                            L.push(index: 2)
+                            L.push(index: 3)
+                            try L.pcall(nargs: 3, nret: 0)
+                            return 0
+                        }
+                    case .closure(let closure):
+                        parentNewIndexFn = { L, mt in
+                            return try closure(L)
+                        }
+                    case .memberClosure(let closure):
+                        parentNewIndexFn = closure
+                    default:
+                        parentNewIndexFn = { L, mt in
+                            let memberName: String = try L.checkArgument(2)
+                            throw L.argumentError(2, "no set function defined for property \(memberName)")
+                        }
+                    }
+                    mt[.newindex] = .memberClosure { L, mtPtr in
+                        guard let memberName = L.tostringUtf8(2) else {
+                            throw L.argumentError(2, "expected UTF-8 string member name")
+                        }
+                        print("newindex \(memberName)")
+                        switch fields[memberName]?.value {
+                        case .rwproperty(_, let setter):
+                            return try setter(L, mtPtr)
+                        default:
+                            return try parentNewIndexFn(L, mtPtr)
+                        }
+                    }
+                }
+            } else {
+                // We can only use unsynthesizedFields if neither us nor parent has a .index
+                if let parentIndexFn = parent.mt[.index] {
+                    // We haven't declared any additional properties, so we can call straight into the parent
+                    mt[.index] = parentIndexFn
+                } else {
+                    unsynthesizedFields = allDerivedFields
+                }
+            }
+        }
+
+        return Metatable<T>(mt: mt, unsynthesizedFields: unsynthesizedFields)
+    }
 }
 
 extension Metatable { // Swift doesn't yet support `where Base: AnyObject, T: Base`
@@ -500,7 +703,14 @@ extension Metatable { // Swift doesn't yet support `where Base: AnyObject, T: Ba
     /// do anything useful.
     ///
     /// As such, `T` should derive from `Base` (and `Base` must be a class type). The Swift compiler does not yet
-    /// enforce this however. This constraint may be added in a future `LuaSwift` release.
+    /// enforce this however.
+    ///
+    /// > Warning: The use of derived classes with PushableWithMetatable no longer requires this API; therefore it has
+    ///   been deprecated and will be removed in a future release. See the documentation for ``PushableWithMetatable``
+    ///   for how to use
+    ///   [`subclass()`](doc:subclass(type:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:name:))
+    ///   instead.
+    @available(*, deprecated, message: "Will be removed in v2.0.0. Use subclass(...) instead.")
     public func downcast<Base>() -> Metatable<Base> {
         return Metatable<Base>(mt: self.mt, unsynthesizedFields: self.unsynthesizedFields)
     }
@@ -942,8 +1152,10 @@ extension Metatable.FieldType {
 /// explicitly registered prior to when the first instance of the derived type is pushed).
 ///
 /// It is possible to override a metatable in a derived class, providing the base class metatable was declared as a
-/// `class var`. The derived metatable must still use the base class type however, casting if necessary. The
-/// ``Metatable/downcast()`` API can be used to facilitate this. For example:
+/// `class var` and is declared directly in the class -- not, for example, within `extension Xyz :
+/// PushableWithMetatable { ... }`. The use of the
+/// [`subclass()`](doc:Metatable/subclass(type:fields:add:sub:mul:div:mod:pow:unm:idiv:band:bor:bxor:bnot:shl:shr:concat:len:eq:lt:le:index:newindex:call:close:tostring:pairs:name:))
+/// API facilitates inheriting one metatable from another. For example:
 ///
 /// ```swift
 /// class Base: PushableWithMetatable {
@@ -954,17 +1166,21 @@ extension Metatable.FieldType {
 ///         ])
 ///     }
 /// }
+///
 /// class Derived: Base {
 ///     override func foo() -> String { return "Derived.foo" }
 ///     func bar() -> String { return "Derived.bar" }
 ///     class override var metatable: Metatable<Base> {
-///         return Metatable<Derived>(fields: [
-///             "foo": .memberfn { $0.foo() },
+///         return Base.metatable.subclass(type: Derived.self, fields: [
 ///             "bar": .memberfn { $0.bar() }
-///         ]).downcast()
+///         ])
 ///     }
 /// }
 /// ```
+///
+/// Note that `Derived.metatable` does not need to explicitly reference `foo` -- it will be included due to it being
+/// present in `Base.metatable`. Note also that the derived metatable still has to have type `Metatable<Base>` -- the
+/// `subclass()` API takes care of correcting the types.
 ///
 /// It is also possible to declare a metatable for protocols, by declaring the protocol conforms to
 /// `PushableWithMetatable` and then extending it with a metatable. This should only be done when there's no possible

@@ -671,7 +671,6 @@ public struct Metatable<T> {
                         guard let memberName = L.tostringUtf8(2) else {
                             throw L.argumentError(2, "expected UTF-8 string member name")
                         }
-                        print("newindex \(memberName)")
                         switch fields[memberName]?.value {
                         case .rwproperty(_, let setter):
                             return try setter(L, mtPtr)

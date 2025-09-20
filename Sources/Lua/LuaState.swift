@@ -2598,6 +2598,18 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         pushmetatable(name: tname)
     }
 
+    /// Push the metatable for type `T` on to the stack.
+    ///
+    /// This overload will automatically be used if `T` conforms to `PushableWithMetatable`. The type's metatable
+    /// will be registered if it is not already. Otherwise, behaves identically to ``pushMetatable(for:)-11j66``.
+    public func pushMetatable<T>(for type: T.Type) where T: PushableWithMetatable {
+        if !isMetatableRegistered(for: type) {
+            register(type: type, usingMetatable: T.metatable)
+        }
+        let tname = makeMetatableName(for: type)
+        pushmetatable(name: tname)
+    }
+
     private func pushmetatable(name: String) {
         if luaL_getmetatable(self, name) == LUA_TNIL {
             pop()

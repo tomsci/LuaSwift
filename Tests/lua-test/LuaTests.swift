@@ -1439,7 +1439,6 @@ final class LuaTests: XCTestCase {
 
         // Now test a base class with no properties (but fns) and a derived class that adds properties. Also checks
         // multilevel inheritence.
-        print("Now for the hard one")
         let derivedWithProps = L.ref(any: DerivedWithProps())
         XCTAssertEqual(try derivedWithProps.pcall(member: "baseOnly").tostring(), "baseOnly")
         XCTAssertEqual(try derivedWithProps.pcall(member: "foo").tostring(), "Derived.foo")
@@ -1513,10 +1512,26 @@ final class LuaTests: XCTestCase {
             ])}
         }
 
+        XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
         L.push(userdata: Foo())
+        XCTAssertTrue(L.isMetatableRegistered(for: Foo.self))
         let val = L.popref()
         let result = try val.pcall(member: "foo")
         XCTAssertEqual(result.tostring(), "Foo.foo")
+    }
+
+    func test_PushableWithMetatable_autoRegister_pushMetatableFor() throws {
+        // Tests that pushMetatable(for:) will autoregister a PushableWithMetatable type
+        struct Foo: PushableWithMetatable {
+            func foo() -> String { return "Foo.foo" }
+            static var metatable: Metatable<Foo> { return Metatable<Foo>(fields: [
+                "foo": .memberfn { $0.foo() }
+            ])}
+        }
+        L.register(DefaultMetatable()) // Make sure pushMetatable doesn't create a metatable for it
+        XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
+        L.pushMetatable(for: Foo.self)
+        XCTAssertTrue(L.isMetatableRegistered(for: Foo.self)) // Won't return true if the default ended up being used
     }
 
     func test_registerDefaultMetatable() throws {

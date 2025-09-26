@@ -288,6 +288,7 @@ Some Lua C APIs do not make sense to be called from Swift; usually this is becau
 - ``Lua/Swift/UnsafeMutablePointer/push(tuple:)``
 - ``Lua/Swift/UnsafeMutablePointer/pushthread()``
 - ``Lua/Swift/UnsafeMutablePointer/pushglobals(toindex:)-3ot28``
+- ``Lua/Swift/UnsafeMutablePointer/push(enum:toindex:)``
 
 ### Iterators
 

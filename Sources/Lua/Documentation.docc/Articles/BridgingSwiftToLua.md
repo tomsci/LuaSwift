@@ -10,7 +10,7 @@ Basic Swift types are pushed by value -- that is to say they are copied and conv
 
 Bridged values on the other hand are represented in Lua using the `userdata` Lua type, which from the Swift side behave as if there was an assignment like `var userdataVar: T? = myval` (where `T` is the type used in the `Metatable`, described below). So for classes, the `userdata` holds an additional reference to the object, and for structs the `userdata` holds a value copy of it. A `__gc` metamethod is automatically generated, which means that when the `userdata` is garbage collected by Lua, the equivalent of `userdataVar = nil` is performed.
 
-> Note: While defining metatables for `struct` types is supported, all userdata in Lua are copy-by-reference, so the object will behave more like a class from the Lua side. Overall, `class` types can be a better fit for how the bridging logic behaves.
+> Note: While defining metatables for `struct` (and `enum`) types is supported, all userdata in Lua are copy-by-reference, so the object will behave more like a class from the Lua side. Overall, `class` types can be a better fit for how the bridging logic behaves.
 
 As described so far, the `userdata` plays nicely with Lua and Swift object lifetimes and memory management, but does not allow you to do anything useful with it from Lua other than controlling when it goes out of scope. This is where defining a metatable comes in.
 
@@ -73,9 +73,11 @@ L.register(Metatable<Foo>(fields: [
 
 Any arguments to the closure are type-checked using using `L.checkArgument<ArgumentType>()`. Anything which exceeds the type inference abilities of `memberfn` can always be written explicitly using `closure`. The full list of helpers that can be used to define fields is defined in ``Metatable/FieldType``. Note there are multiple overloads of `memberfn` to accommodate different numbers of arguments.
 
+> Note: The above description skipped some of the nuances that, for example, avoid copying the value when using `.closure` with a struct type, which would entail using `checkUserdata(1)` rather than `checkArgument(1)`. Use `.memberfn` where possible which hides that complexity.
+
 ## Pushing values into Lua
 
-Having defined a metatable for our type, we can use [`push(userdata:)`](doc:Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)) or [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)) to push instances of it on to the Lua stack, at which point we can assign it to a variable just like any other Lua value. Using the example `Foo` class described above, and assuming our Lua code expects a single global value called `foo` to be defined, we could use ``Lua/Swift/UnsafeMutablePointer/setglobal(name:)``:
+Having defined a metatable for our type by calling `register()`, we can use [`push(userdata:)`](doc:Lua/Swift/UnsafeMutablePointer/push(userdata:toindex:)) or [`push(any:)`](doc:Lua/Swift/UnsafeMutablePointer/push(any:toindex:)) to push instances of it on to the Lua stack, at which point we can assign it to a variable just like any other Lua value. Using the example `Foo` class described above, and assuming our Lua code expects a single global value called `foo` to be defined, we could use ``Lua/Swift/UnsafeMutablePointer/setglobal(name:)``:
 
 ```swift
 let foo = Foo()
@@ -155,7 +157,7 @@ To customize the bridging above and beyond adding fields to the userdata, we can
 ```swift
 L.register(Metatable<Foo>(
     call: .memberfn { obj in
-        print("I have no idea what this should do")
+        print("object was called")
     },
     close: .memberfn { obj in
         // Do whatever is appropriate to obj here,

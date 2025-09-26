@@ -2855,6 +2855,43 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
+    /// Pushes a table of all the cases of an enum on to the stack.
+    ///
+    /// Push all the cases of an enum on to the stack, as a table mapping case names to values. This is useful to make
+    /// an enum available for use by Lua code. The enum must be `CaseIterable` and ``Pushable`` -- this is most easily
+    /// done by also inheriting ``RawPushable``.
+    ///
+    /// For example:
+    /// ```swift
+    /// enum MyEnum: Int, CaseIterable, RawPushable {
+    ///     case foo = 1
+    ///     case bar = 2
+    /// }
+    ///
+    /// L.push(enum: MyEnum.self)
+    /// L.setglobal(name: "MyEnum")
+    /// try L.dostring("print(MyEnum.bar)") // prints "2"
+    /// ```
+    ///
+    /// The above `push` and `setglobal` calls could also be combined by using the [`.enum`](doc:Pushable/enum(_:))
+    /// `Pushable` helper.
+    ///
+    /// > Note: This function is for exposing the entire declaration of an enum to Lua. To push a particular enum value,
+    ///   treat it like any other pushable value and call [`push(value)`](doc:push(_:toindex:)-59fx9).
+    ///
+    /// - Parameter enumType: The enum to push on to the Lua stack, which must inherit `CaseIterable` and `Pushable`.
+    /// - Parameter toindex: See <doc:LuaState#Push-functions-toindex-parameter>.
+    public func push<T>(enum enumType: T.Type, toindex: CInt = -1) where T: CaseIterable & Pushable {
+        let cases = enumType.allCases
+        newtable(nrec: CInt(exactly: cases.count) ?? 0)
+        for c in cases {
+            rawset(-1, utf8Key: "\(c)", value: c)
+        }
+        if toindex != -1 {
+            insert(toindex)
+        }
+    }
+
     // MARK: - Calling into Lua
 
     /// Make a protected call to a Lua function, optionally including a stack trace in any errors.

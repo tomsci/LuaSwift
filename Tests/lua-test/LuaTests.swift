@@ -1528,7 +1528,7 @@ final class LuaTests: XCTestCase {
                 "foo": .memberfn { $0.foo() }
             ])}
         }
-        L.register(DefaultMetatable()) // Make sure pushMetatable doesn't create a metatable for it
+        L.register(DefaultMetatable()) // This would prevent pushMetatable from creating an empty metatable for it
         XCTAssertFalse(L.isMetatableRegistered(for: Foo.self))
         L.pushMetatable(for: Foo.self)
         XCTAssertTrue(L.isMetatableRegistered(for: Foo.self)) // Won't return true if the default ended up being used
@@ -4251,6 +4251,122 @@ final class LuaTests: XCTestCase {
         XCTAssertTrue(name.hasPrefix("ItsFoo: "), "Wrong name \(name)")
     }
 
+    func test_push_enum() throws {
+        enum EStr: String, CaseIterable, RawPushable {
+            case one
+            case two
+            case three
+        }
+        L.push(enum: EStr.self)
+        L.setglobal(name: "EStr")
+        let estrdict: [String: String]? = L.globals["EStr"].tovalue()
+        XCTAssertEqual(estrdict, ["one": "one", "two": "two", "three": "three"])
 
+        enum EInt: Int, CaseIterable, RawPushable {
+            case one = 1
+            case two = 22
+            case three = 333
+        }
+        L.setglobal(name: "EInt", value: .enum(EInt.self))
+        let eintdict: [String: Int]? = L.globals["EInt"].tovalue()
+        XCTAssertEqual(eintdict, ["one": 1, "two": 22, "three": 333])
+
+
+        enum ERawPushable: String, CaseIterable, Pushable {
+            case one
+            case two
+            case three
+
+            func push(onto state: LuaState) {
+                state.push(userdata: self)
+            }
+        }
+
+        L.push(enum: ERawPushable.self)
+        L.setglobal(name: "ERawPushable")
+        // We're only checking the above compiles, so no need to do anything with it.
+    }
+
+    func test_RawPushable_enum() throws {
+        enum E: String, RawPushable {
+            case one
+            case two
+        }
+
+        L.push(E.one)
+        XCTAssertEqual(L.tovalue(1), "one")
+    }
+
+    func test_associated_value_enum() throws {
+        enum PushableEnum: Equatable, PushableWithMetatable {
+            case foo
+            case bar(Int)
+            case baz(Int, String)
+
+            static var metatable: Metatable<PushableEnum> {
+                return Metatable<PushableEnum>(fields: [
+                    "type": .property {
+                        switch $0 {
+                        case .foo: return "foo"
+                        case .bar(_): return "bar"
+                        case .baz(_, _): return "baz"
+                        }
+                    },
+                    "barval": .property(get: { val -> Int? in
+                        if case .bar(let barval) = val {
+                            return barval
+                        } else {
+                            return nil
+                        }
+                    }),
+                    "bazint": .property {
+                        let ret: Int?
+                        if case .baz(let bazint, _) = $0 {
+                            ret = bazint
+                        } else {
+                            ret = nil
+                        }
+                        return ret
+                    },
+                    "bazstr": .property {
+                        let ret: String?
+                        if case .baz(_, let bazstr) = $0 {
+                            ret = bazstr
+                        } else {
+                            ret = nil
+                        }
+                        return ret
+                    }
+                ],
+                eq: .synthesize)
+            }
+        }
+
+        L.push(PushableEnum.foo)
+        L.push(PushableEnum.bar(42))
+        L.push(PushableEnum.baz(43, "hello"))
+        L.push(PushableEnum.baz(43, "hello"))
+        L.push(PushableEnum.baz(43, "nope"))
+        XCTAssertTrue(try L.equal(1, 1)) // Will be true regardless of eq because they are the same object
+        XCTAssertFalse(try L.equal(1, 2))
+        XCTAssertTrue(try L.equal(3, 4)) // Requires the eq metamethod
+        XCTAssertFalse(try L.equal(3, 5))
+
+        XCTAssertEqual(L.tovalue(1), PushableEnum.foo)
+        XCTAssertEqual(L.tovalue(2), PushableEnum.bar(42))
+        XCTAssertEqual(L.tovalue(3), PushableEnum.baz(43, "hello"))
+
+        L.pop(2) // baz2 and baz3
+        L.setglobal(name: "baz")
+        L.setglobal(name: "bar")
+        L.setglobal(name: "foo")
+
+        try L.dostring("assert(foo.type == 'foo')")
+        try L.dostring("assert(bar.type == 'bar')")
+        try L.dostring("assert(baz.type == 'baz')")
+
+        XCTAssertNil(L.globals["foo"]["barval"].toint())
+        XCTAssertEqual(L.globals["bar"]["barval"].toint(), 42)
+    }
 }
 

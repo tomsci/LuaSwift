@@ -148,6 +148,15 @@ public struct LuaUserdataWrapper: Pushable {
     }
 }
 
+/// A `Pushable` wrapper that pushes an enum.
+///
+/// See ``Pushable/enum(_:)``.
+public struct LuaEnumWrapper<T>: Pushable where T: CaseIterable & Pushable {
+    public func push(onto L: LuaState) {
+        L.push(enum: T.self)
+    }
+}
+
 public struct _NonPushableTypesHelper: Pushable {
     private init() {}
     public func push(onto L: LuaState) {
@@ -226,5 +235,46 @@ extension Pushable where Self == _NonPushableTypesHelper {
     /// ```
     public static func userdata(_ val: Any) -> LuaUserdataWrapper {
         return LuaUserdataWrapper(value: val)
+    }
+
+    /// Returns a Pushable which pushes its value using `push(enum:)`.
+    ///
+    /// This permits the use of `.enum(enumType)` anywhere a Pushable can be specified. For example to define a global
+    /// value that exposes all the values of an enum `Foo`:
+    ///
+    /// ```swift
+    /// enum Foo: String, CaseIterable {
+    ///     case someThing
+    ///     case otherThing
+    /// }
+    ///
+    /// L.setglobal(name: "Foo", value: .enum(Foo.self))
+    /// // You can now do `Foo.someThing` etc from Lua.
+    /// ```
+    public static func `enum`<T>(_ e: T.Type) -> LuaEnumWrapper<T> where T: CaseIterable & Pushable {
+        return LuaEnumWrapper<T>()
+    }
+}
+
+/// Protocol for making a `RawRepresentable` type be `Pushable` using its `rawValue`.
+///
+/// By declaring that a type conforms to this protocol, the type becomes `Pushable` using its `rawValue`. For example,
+/// you can use this to make an enum `Pushable`:
+///
+/// ```swift
+/// enum E: String, RawPushable {
+///     case one
+///     case two
+/// }
+///
+/// L.push(E.one) // pushes the string "one" onto the stack
+/// ```
+///
+/// You do not need to supply an implementation of `Pushable.push(onto:)` -- one is created automatically.
+public protocol RawPushable: Pushable, RawRepresentable {}
+
+public extension RawPushable {
+    func push(onto state: LuaState) {
+        state.push(any: self.rawValue)
     }
 }

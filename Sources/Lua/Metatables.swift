@@ -169,6 +169,7 @@ public struct DefaultMetatable {
 public struct Metatable<T> {
     internal let mt: [MetafieldName: InternalMetafieldValue]
     internal let unsynthesizedFields: [String: InternalUserdataField]?
+    internal let statics: [String: InternalUserdataField] // Includes both needing-to-be-synthesized staticvars, and unsythnesized staticfns
 
     // Sooo much boilerplate so the caller doesn't have it.
 
@@ -241,8 +242,12 @@ public struct Metatable<T> {
                     L.push(function: fn)
                 case .closure(let closure):
                     L.push(closure)
-                case .constant(let closure):
-                    return try closure(L)
+                case .constant(let getter):
+                    getter(L)
+                case .staticvar(let getter):
+                    getter(L)
+                case .staticfn(let closure):
+                    L.push(closure)
                 case .memberClosure(let closure):
                     L.push({ L in
                         try closure(L, mtPtr)
@@ -415,6 +420,7 @@ public struct Metatable<T> {
         }
 
         // fields
+        let statics: [String: InternalUserdataField]
         var anyProperties = false
         var anyRwProperties = false
         if let fields {
@@ -422,13 +428,24 @@ public struct Metatable<T> {
                 "If any fields are specified, index must be nil")
 
             for (_, v) in fields {
-                if case .property = v.value {
+                switch v.value {
+                case .property, .staticvar:
                     anyProperties = true
-                } else if case .rwproperty = v.value {
+                case .rwproperty:
                     anyProperties = true
                     anyRwProperties = true
+                default:
+                    break
                 }
             }
+
+            statics = fields.compactMapValues({ value in
+                if value.value.isStatic {
+                    return value.value
+                } else {
+                    return nil
+                }
+            })
 
             // Having properties means we have to synthesize an __index metamethod
             if anyProperties {
@@ -454,14 +471,17 @@ public struct Metatable<T> {
             }
         } else {
             unsynthesizedFields = nil
+            statics = [:]
         }
 
         self.mt = mt
+        self.statics = statics
     }
 
-    internal init(mt: [MetafieldName: InternalMetafieldValue], unsynthesizedFields: [String: InternalUserdataField]?) {
+    internal init(mt: [MetafieldName: InternalMetafieldValue], unsynthesizedFields: [String: InternalUserdataField]?, statics: [String: InternalUserdataField]) {
         self.mt = mt
         self.unsynthesizedFields = unsynthesizedFields
+        self.statics = statics
     }
 
     /// Returns the type object for this metatable, ie `T.self`.
@@ -580,20 +600,29 @@ public struct Metatable<T> {
                 "If any fields are specified, index must be nil")
 
             for (_, v) in fields {
-                if case .property = v.value {
+                switch v.value {
+                case .property, .staticvar:
                     anyProperties = true
-                } else if case .rwproperty = v.value {
+                case .rwproperty:
                     anyProperties = true
                     anyRwProperties = true
+                default:
+                    break
                 }
             }
 
             var allDerivedFields = fields.mapValues { $0.value }
+            var statics = allDerivedFields.filter { $0.value.isStatic }
             if let parentUnsythesizedFields = parent.unsynthesizedFields {
                 for (name, field) in parentUnsythesizedFields {
                     if allDerivedFields[name] == nil {
                         allDerivedFields[name] = field
                     }
+                }
+            }
+            for (name, field) in parent.statics {
+                if statics[name] == nil {
+                    statics[name] = field
                 }
             }
 
@@ -690,7 +719,7 @@ public struct Metatable<T> {
             }
         }
 
-        return Metatable<T>(mt: mt, unsynthesizedFields: unsynthesizedFields)
+        return Metatable<T>(mt: mt, unsynthesizedFields: unsynthesizedFields, statics: statics)
     }
 }
 
@@ -711,7 +740,7 @@ extension Metatable { // Swift doesn't yet support `where Base: AnyObject, T: Ba
     ///   instead.
     @available(*, deprecated, message: "Will be removed in v2.0.0. Use subclass(...) instead.")
     public func downcast<Base>() -> Metatable<Base> {
-        return Metatable<Base>(mt: self.mt, unsynthesizedFields: self.unsynthesizedFields)
+        return Metatable<Base>(mt: self.mt, unsynthesizedFields: self.unsynthesizedFields, statics: self.statics)
     }
 }
 
@@ -802,9 +831,20 @@ internal enum InternalUserdataField {
     case closure(LuaClosure)
     case property(LuaMemberClosure)
     case rwproperty(LuaMemberClosure, LuaMemberClosure)
-    case constant(LuaClosure)
+    case constant(PusherFn)
+    case staticvar(PusherFn)
+    case staticfn(LuaClosure)
     case memberClosure(LuaMemberClosure)
     case novalue
+
+    var isStatic: Bool {
+        switch self {
+        case .staticvar, .staticfn, .constant:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 /// Helper struct used in the registration of metatables.
@@ -883,12 +923,11 @@ extension Metatable.FieldType {
     /// ]))
     /// ```
     public static func staticvar<ValType>(_ get: @escaping () -> ValType) -> Metatable.FieldType {
-        let getter: LuaMemberClosure = { L, _ in
+        let getter: PusherFn = { L in
             let result = get()
             L.push(any: result)
-            return 1
         }
-        return Metatable.FieldType(value: .property(getter))
+        return Metatable.FieldType(value: .staticvar(getter))
     }
 
     /// Defines a read-only property field in a metatable.
@@ -997,10 +1036,8 @@ extension Metatable.FieldType {
     /// will never change over the lifetime of the `LuaState`. For anything more dynamic, use
     /// [`.staticvar`](doc:staticvar(_:)) or [`.property`](doc:property(get:set:)) as appropriate.
     public static func constant<ValType>(_ value: ValType) -> Metatable.FieldType {
-        // This closure only exists to type-erase value
-        let getter: LuaClosure = { L in
+        let getter: PusherFn = { L in
             L.push(any: value)
-            return 1
         }
         return Metatable.FieldType(value: .constant(getter))
     }
@@ -1093,19 +1130,23 @@ extension Metatable.FieldType {
     }
 
     public static func staticfn<Ret>(_ accessor: @escaping () throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+        return Self(value: .staticfn(LuaState.makeClosure(accessor)))
     }
 
     public static func staticfn<Arg1, Ret>(_ accessor: @escaping (Arg1) throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+        return Self(value: .staticfn(LuaState.makeClosure(accessor)))
     }
 
     public static func staticfn<Arg1, Arg2, Ret>(_ accessor: @escaping (Arg1, Arg2) throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+        return Self(value: .staticfn(LuaState.makeClosure(accessor)))
     }
 
     public static func staticfn<Arg1, Arg2, Arg3, Ret>(_ accessor: @escaping (Arg1, Arg2, Arg3) throws -> Ret) -> Metatable.FieldType {
-        return .closure(LuaState.makeClosure(accessor))
+        return Self(value: .staticfn(LuaState.makeClosure(accessor)))
+    }
+
+    public static func staticfn<Arg1, Arg2, Arg3, Arg4, Ret>(_ accessor: @escaping (Arg1, Arg2, Arg3, Arg4) throws -> Ret) -> Metatable.FieldType {
+        return Self(value: .staticfn(LuaState.makeClosure(accessor)))
     }
 }
 

@@ -4368,5 +4368,77 @@ final class LuaTests: XCTestCase {
         XCTAssertNil(L.globals["foo"]["barval"].toint())
         XCTAssertEqual(L.globals["bar"]["barval"].toint(), 42)
     }
-}
 
+    func test_metaobject() throws {
+        class Foo {
+            var val: String
+
+            init(val: String) {
+                self.val = val
+            }
+
+            static let staticstr = "hello"
+            static var staticvar: Int { 123 }
+            static func hello() -> String { return "world!" }
+        }
+        L.register(Metatable<Foo>(fields: [
+            "val": .property(\.val),
+            "staticstr": .constant(Foo.staticstr),
+            "staticvar": .staticvar { Foo.staticvar },
+            "hello": .staticfn { Foo.hello() }
+        ], tostring: .synthesize, name: "Foo"))
+        
+        L.setglobal(name: "Foo", value: Metaobject<Foo>(constructor: { Foo(val: $0) }))
+
+        // Test the constructor works
+        try L.dostring("return Foo('woop').val")
+        XCTAssertEqual(L.tostring(-1), "woop")
+        L.pop()
+
+        // Test that static stuff from the metatable works
+        try L.dostring("return Foo.staticstr")
+        XCTAssertEqual(L.tostring(-1), "hello")
+        L.pop()
+
+        try L.dostring("return Foo.staticvar")
+        XCTAssertEqual(L.toint(-1), 123)
+        L.pop()
+
+        // Check non-statics from the metatable haven't (somehow) snuck in.
+        try L.dostring("return Foo.var")
+        XCTAssertTrue(L.isnil(-1))
+        L.pop()
+    }
+
+    func test_metaobject_pushablewithmetatable() throws {
+        struct Foo: PushableWithMetatable {
+            static let hello = "world"
+            static var metatable: Metatable<Foo> { Metatable(fields: ["hello": .staticvar { Foo.hello }]) }
+        }
+        // Test that we don't have to explicitly register or supply a metatable, when the type is a PushableWithMetatable
+        L.setglobal(name: "Foo", value: Metaobject<Foo>())
+        try L.dostring("return Foo.hello")
+        XCTAssertEqual(L.tostring(-1), "world")
+        L.pop()
+    }
+
+    func test_metaobject_removestatics() throws {
+        // Test that you can prevent statics from the metatable being exposed in the metaobject
+        struct Foo: PushableWithMetatable {
+            static func hello() -> String { return "world" }
+            static var metatable: Metatable<Foo> { Metatable(fields: ["hello": .staticfn { Foo.hello() }]) }
+        }
+        let metaobject = Metaobject(fields: [
+            "hello": .none
+        ], constructor: { Foo() })
+
+        L.setglobal(name: "Foo", value: metaobject)
+        try L.dostring("return Foo.hello")
+        XCTAssertEqual(L.type(-1), .nil)
+        L.pop()
+
+        try L.dostring("return Foo().hello")
+        XCTAssertEqual(L.type(-1), .function)
+        L.pop()
+    }
+}

@@ -14,6 +14,11 @@ public typealias LuaClosure = (LuaState) throws -> CInt
 // for type T so functions in the Metatable can efficiently typecheck their userdatas.
 internal typealias LuaMemberClosure = (LuaState, UnsafeRawPointer) throws -> CInt
 
+// This is for closures that exist specifically to push a single value onto the stack by (usually) capturing
+// a value. Unlike LuaClosure, they cannot throw and do not return anything, because they are assumed to always push
+// exactly one element.
+internal typealias PusherFn = (LuaState) -> Void
+
 /// The integer number type used by Lua. By default, this is configured to be `Int64`.
 public typealias lua_Integer = CLua.lua_Integer
 
@@ -206,12 +211,14 @@ internal struct UntypedMetatable {
         toany = metatable.toany
         pushval = metatable.pushval
         gc = metatable.gc
+        statics = metatable.statics
     }
 
     let name: String
     let toany: UserdataToAnyFn
     let pushval: PushValFn
     let gc: GcFn
+    let statics: [String: InternalUserdataField]
 }
 
 extension LuaType {
@@ -2373,36 +2380,36 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    internal static func makeClosure<Arg1, Ret>(_ closure: @escaping (Arg1) throws -> Ret) -> LuaClosure {
+    internal static func makeClosure<Arg1, Ret>(startingIndex: CInt = 1, _ closure: @escaping (Arg1) throws -> Ret) -> LuaClosure {
         return { L in
-            let arg1: Arg1 = try L.checkArgument(1)
+            let arg1: Arg1 = try L.checkArgument(startingIndex)
             return L.push(tuple: try closure(arg1))
         }
     }
 
-    internal static func makeClosure<Arg1, Arg2, Ret>(_ closure: @escaping (Arg1, Arg2) throws -> Ret) -> LuaClosure {
+    internal static func makeClosure<Arg1, Arg2, Ret>(startingIndex: CInt = 1, _ closure: @escaping (Arg1, Arg2) throws -> Ret) -> LuaClosure {
         return { L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let arg2: Arg2 = try L.checkArgument(2)
+            let arg1: Arg1 = try L.checkArgument(startingIndex)
+            let arg2: Arg2 = try L.checkArgument(startingIndex + 1)
             return L.push(tuple: try closure(arg1, arg2))
         }
     }
 
-    internal static func makeClosure<Arg1, Arg2, Arg3, Ret>(_ closure: @escaping (Arg1, Arg2, Arg3) throws -> Ret) -> LuaClosure {
+    internal static func makeClosure<Arg1, Arg2, Arg3, Ret>(startingIndex: CInt = 1, _ closure: @escaping (Arg1, Arg2, Arg3) throws -> Ret) -> LuaClosure {
         return { L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let arg2: Arg2 = try L.checkArgument(2)
-            let arg3: Arg3 = try L.checkArgument(3)
+            let arg1: Arg1 = try L.checkArgument(startingIndex)
+            let arg2: Arg2 = try L.checkArgument(startingIndex + 1)
+            let arg3: Arg3 = try L.checkArgument(startingIndex + 2)
             return L.push(tuple: try closure(arg1, arg2, arg3))
         }
     }
 
-    internal static func makeClosure<Arg1, Arg2, Arg3, Arg4, Ret>(_ closure: @escaping (Arg1, Arg2, Arg3, Arg4) throws -> Ret) -> LuaClosure {
+    internal static func makeClosure<Arg1, Arg2, Arg3, Arg4, Ret>(startingIndex: CInt = 1, _ closure: @escaping (Arg1, Arg2, Arg3, Arg4) throws -> Ret) -> LuaClosure {
         return { L in
-            let arg1: Arg1 = try L.checkArgument(1)
-            let arg2: Arg2 = try L.checkArgument(2)
-            let arg3: Arg3 = try L.checkArgument(3)
-            let arg4: Arg4 = try L.checkArgument(4)
+            let arg1: Arg1 = try L.checkArgument(startingIndex)
+            let arg2: Arg2 = try L.checkArgument(startingIndex + 1)
+            let arg3: Arg3 = try L.checkArgument(startingIndex + 2)
+            let arg4: Arg4 = try L.checkArgument(startingIndex + 3)
             return L.push(tuple: try closure(arg1, arg2, arg3, arg4))
         }
     }
@@ -3502,16 +3509,15 @@ extension UnsafeMutablePointer where Pointee == lua_State {
                 push(function: function)
             case .closure(let closure):
                 push(closure)
+            case .staticfn(let closure):
+                push(closure)
             case .memberClosure(let closure):
                 push({ L in
                     try closure(L, mtPtr)
                 })
-            case .constant(let closure):
-                // Guaranteed not to throw, because closure will always be the one defined by
-                // Metatable.FieldType.constant() which does not throw and is only a LuaClosure so it can capture the
-                // value and type-erase it.
-                let _ = try! closure(self)
-            case .property(_), .rwproperty(_, _):
+            case .constant(let getter):
+                getter(self)
+            case .property(_), .rwproperty(_, _), .staticvar(_):
                 fatalError() // By definition cannot hit this
             case .novalue:
                 pushnil()

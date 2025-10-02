@@ -12,15 +12,17 @@ on:
 jobs:
   build:
 
-    runs-on: macos-13
+    # See https://github.com/actions/runner-images/blob/main/README.md#available-images
+    runs-on: macos-14
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
         submodules: recursive
+    # Oldest available Xcode is 15.0.1: https://github.com/actions/runner-images/blob/main/images/macos/macos-14-arm64-Readme.md#xcode
     - name: Switch Xcode
-      run: sudo xcode-select -s /Applications/Xcode_14.3.1.app
+      run: sudo xcode-select -s /Applications/Xcode_15.0.1.app
     - name: Build
       run: swift build -v
     - name: Run tests

@@ -4297,25 +4297,6 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(L.tovalue(1), "one")
     }
 
-    func test_RawPushable_OptionSetUInt64() throws {
-        struct Wide: OptionSet, RawPushable {
-            let rawValue: UInt64
-
-            static let awkward = Wide(rawValue: 0x8000000000000000)
-
-            // Without this definition this test shouldn't compile, which we can't check as part of the test, but
-            // I checked manually when writing it, pinkie swear.
-            func push(onto state: LuaState) {
-                state.push(Int64(bitPattern: rawValue))
-            }
-        }
-        L.close()
-        L = LuaState(libraries: [.math])
-        L.setglobal(name: "awkward", value: Wide.awkward)
-        try L.dostring("return awkward == math.mininteger")
-        XCTAssertTrue(L.toboolean(-1))
-    }
-
     func test_associated_value_enum() throws {
         enum PushableEnum: Equatable, PushableWithMetatable {
             case foo

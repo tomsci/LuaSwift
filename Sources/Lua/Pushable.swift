@@ -270,16 +270,11 @@ extension Pushable where Self == _NonPushableTypesHelper {
 /// L.push(E.one) // pushes the string "one" onto the stack
 /// ```
 ///
-/// In almost all cases you do not need to supply an implementation of `Pushable.push(onto:)` -- one is created
-/// automatically providing the `rawValue` type is itself `Pushable`.
-public protocol RawPushable<RawPushableType>: Pushable, RawRepresentable where RawPushableType == RawValue {
+/// You do not need to supply an implementation of `Pushable.push(onto:)` -- one is created automatically.
+public protocol RawPushable: Pushable, RawRepresentable {}
 
-    associatedtype RawPushableType
-
-}
-
-public extension RawPushable where RawPushableType: Pushable {
+public extension RawPushable {
     func push(onto state: LuaState) {
-        state.push(self.rawValue)
+        state.push(any: self.rawValue)
     }
 }

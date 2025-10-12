@@ -3,6 +3,10 @@
 
 import CLua
 
+#if !LUASWIFT_NO_FOUNDATION
+import Foundation
+#endif
+
 /// Contains debug information about a function or stack frame.
 ///
 /// Which members will be non-nil is dependent on what ``WhatInfo`` fields were requested in the call to
@@ -629,6 +633,235 @@ public enum LuaHookEvent: CInt {
 /// ```
 public typealias LuaHook = (LuaState, LuaHookEvent, LuaHookContext) throws -> Void
 
+/// A class which provides thread-safe hooking functions.
+public class LuaHooksState {
+    private var mainThread: LuaState
+    // Note, the LuaState pointers in hooks and untrackedHookedStates are not owned and cannot be assumed to be valid.
+    private var hooks = Dictionary<LuaState, LuaHook>()
+    private var untrackedHookedStates = Set<LuaState>()
+    private var trackedStatesRef = LUA_NOREF
+#if !LUASWIFT_NO_FOUNDATION
+    private let lock = NSLock()
+#endif
+
+    internal init(mainThread: LuaState) {
+        self.mainThread = mainThread
+    }
+
+    /// Sets the debugging hook function for the given state.
+    ///
+    /// While this is a wrapper around [`lua_sethook`](https://www.lua.org/manual/5.4/manual.html#lua_sethook), it
+    /// varies in several significant ways. Firstly, the function is of type ``LuaHook`` which can error and capture
+    /// values, unlike `lua_Hook` -- this is similar to how ``LuaClosure`` behaves compared to `lua_CFunction`.
+    /// Secondly, hook functions set by `setHook()` are not inherited by threads (coroutines) created from that state,
+    /// unlike when using `lua_sethook` directly -- this restriction is due to the lifetime issues surrounding the
+    /// `LuaHook` being able to capture values. The way hook functions are copied into newly created threads does not
+    /// allow them to be easily shared in Swift. If a thread is created by a state that has a LuaSwift hook function
+    /// set, a warning will be printed the first time it is triggered in the new thread and the hook will be cleared.
+    /// To have hooks run in multiple threads, call `setHook` on each thread separately.
+    ///
+    /// Replaces any previous hook configured by `setHook()` or by calling `lua_sethook()` directly.
+    ///
+    /// To disable hooking on a `LuaState`, pass `.none` as the mask argument or a `nil` function (or both).
+    ///
+    /// For example (using the [`LuaState.setHook()`](doc:Lua/Swift/UnsafeMutablePointer/setHook(mask:count:function:))
+    /// convenience function):
+    ///
+    /// ```swift
+    /// let hook: LuaHook = { L, event, context in
+    ///     if event == .call {
+    ///         let d = context.getInfo([.name])
+    ///         if d.name == "foo" {
+    ///             print("foo() called!")
+    ///         }
+    ///     }
+    /// }
+    /// L.setHook(mask: [.call, .ret], function: hook)
+    ///
+    /// // Could equally be written:
+    ///
+    /// L.setHook(mask: .call) { L, event, context in
+    ///     let d = context.getInfo([.name])
+    ///     if d.name == "foo" {
+    ///         print("foo() called!")
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// This function is thread-safe (to the extent that `lua_sethook()` is), and can be called even when the `state` is
+    /// executing on another thread, providing there is no possibility that the state might be garbage collected before
+    /// the call completes. That being said, `LuaState.setHook()` should be used in preference when possible, to avoid
+    /// the following scenario:
+    ///
+    /// * If a hook is set on a non-main-thread state using `LuaHooksState.setHook()`,
+    /// * and the hook is never triggered before the state is garbage collected,
+    /// * nor is the hook cleared with `LuaState.setHook()` before that point...
+    ///
+    /// ...then a small amount of memory will be leaked until the state is closed entirely with `LuaState.close()`. This
+    /// leak can be avoided by ensuring any one of the three conditions above are mitigated: for example, by using
+    /// `LuaState.setHook()` instead of `LuaHooksState.setHook()`, or by clearing the hook before the state is collected
+    /// by calling `state.setHook(mask: .none, function: nil)`.
+    ///
+    /// - Parameter state: What state to apply the hook to. Must be related to (or the same as) the state on which
+    ///   `getHooks()` was called to retrieve this `LuaHooksState` instance.
+    /// - Parameter mask: What to hook. Specify `.none` to disable hooking.
+    /// - Parameter count: How frequently to call the `count` hook, in interpreter instructions. Ignored unless `mask`
+    ///   contains `.count`.
+    /// - Parameter function: The hook function to set, or `nil` to disable hooking.
+    public func setHook(forState state: LuaState, mask: LuaState.HookMask, count: CInt = 0, function: LuaHook?) {
+        precondition(state.getMainThread() == mainThread,
+            "Cannot set a hook on a state unrelated to the one this LuaHooksState belongs to")
+
+        if let function, mask.rawValue != 0 {
+            locked {
+                hooks[state] = function
+                untrackedHookedStates.insert(state)
+            }
+            lua_sethook(state, luaswift_hookfn, mask.rawValue, count)
+        } else {
+            lua_sethook(state, nil, 0, 0)
+            locked {
+                hooks[state] = nil
+                untrackedHookedStates.remove(state)
+            }
+        }
+    }
+
+    private func locked<Ret>(_ closure: () -> Ret) -> Ret {
+#if LUASWIFT_NO_FOUNDATION
+        return closure()
+#else
+        return lock.withLock {
+            return closure()
+        }
+#endif
+    }
+
+    /// Gets the debugging hook function for the given state, if one has been set.
+    ///
+    /// If a debugging hook has been set on this state using ``setHook(forState:mask:count:function:)``, returns that
+    /// hook, and `nil` otherwise. This function can be called from any thread.
+    public func getHook(forState state: LuaState) -> LuaHook? {
+        if !luaswift_hooksequal(lua_gethook(state), luaswift_hookfn) {
+            // If this doesn't match then something else must have called lua_sethook() so we should return nil, as
+            // whatever we may think is set can't actually be in effect.
+            return nil
+        }
+        return locked {
+            return hooks[state]
+        }
+    }
+
+    internal static let callHook: luaswift_Hook = { (L: LuaState!, ar: UnsafeMutablePointer<lua_Debug>!) in
+        guard let hook = L.getHook() else {
+            print("Hook called from untracked thread - unregistering hook")
+            lua_sethook(L, nil, 0, 0)
+            return 0
+        }
+
+        guard let context = LuaHookContext(L: L, ar: ar) else {
+            print("Unknown hook event \(ar.pointee.event), ignoring!")
+            return 0
+        }
+
+        do {
+            try hook(L, context.event, context)
+            if context.yielded {
+                return LUASWIFT_CALLCLOSURE_YIELD
+            } else {
+                return 0
+            }
+        } catch {
+            L.push(error: error)
+            return LUASWIFT_CALLCLOSURE_ERROR
+        }
+    }
+
+    internal func updateStateTracking(_ L: LuaState) {
+        var hookSet: Bool! = nil
+        var shouldAddToTracker: Bool! = nil
+        locked {
+            hookSet = hooks[L] != nil
+            shouldAddToTracker = untrackedHookedStates.remove(L) != nil && hookSet
+        }
+        if shouldAddToTracker {
+            if trackedStatesRef == LUA_NOREF {
+                L.newtable(weakKeys: true) // map of states to StateTrackers, which are GC'd when the state is.
+                trackedStatesRef = luaL_ref(L, LUA_REGISTRYINDEX)
+            }
+            L.rawget(LUA_REGISTRYINDEX, key: trackedStatesRef) // pushes table
+            L.rawset(-1, key: L, value: StateTracker(L))
+            L.pop() // table
+        } else if !hookSet && trackedStatesRef != LUA_NOREF {
+            // Remove it from trackedStatesRef, if necessary
+            L.rawget(LUA_REGISTRYINDEX, key: trackedStatesRef) // pushes table
+            L.rawget(-1, key: L)
+            let tracker: StateTracker? = L.touserdata(-1)
+            if let tracker {
+
+                L.pop() // tracker
+            L.rawset(-1, key: L, value: .nilValue)
+            L.pop() // table
+        }
+    }
+
+    internal func stateWasCollected(runningState: LuaState, collectedState: LuaState) {
+        locked {
+            hooks[collectedState] = nil
+            untrackedHookedStates.remove(collectedState)
+        }
+    }
+
+    internal class StateTracker: Pushable {
+        internal init(_ L: LuaState) {
+            trackedState = L
+        }
+        private var trackedState: LuaState?
+
+        static let gc: lua_CFunction = { (L: LuaState!) in
+            guard let ptr: UnsafeMutablePointer<StateTracker> = L.unchecked_touserdata(1) else {
+                assertionFailure("Failed to decode StateTracker in gc!")
+                return 0
+            }
+            if let trackedState = ptr.pointee.trackedState {
+                L.getState().hooks!.stateWasCollected(runningState: L, collectedState: trackedState)
+            }
+            ptr.deinitialize(count: 1)
+            return 0
+        }
+
+        func close() {
+            trackedState = nil
+        }
+
+        func push(onto L: LuaState) {
+            if !L.isMetatableRegistered(for: StateTracker.self) {
+                L.register(Metatable<StateTracker>())
+                L.pushMetatable(for: StateTracker.self)
+                L.push(function: StateTracker.gc)
+                L.rawset(-2, utf8Key: "__gc")
+                L.pop()
+            }
+            L.push(userdata: self)
+        }
+    }
+
+    // Following are for test code only (via Internals.swift)
+
+    internal var _hooks: Dictionary<LuaState, LuaHook> {
+        return hooks
+    }
+
+    internal var _untrackedHookedStates: Set<LuaState> {
+        return untrackedHookedStates
+    }
+
+    internal var _trackedStatesRef: CInt {
+        return trackedStatesRef
+    }
+
+}
+
 extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Invokes the given closure with a ``LuaStackFrame`` referring to the given stack level.
@@ -768,127 +1001,65 @@ extension UnsafeMutablePointer where Pointee == lua_State {
 
     /// Sets the debugging hook function for this state.
     ///
-    /// While this is a wrapper around [`lua_sethook`](https://www.lua.org/manual/5.4/manual.html#lua_sethook), it
-    /// varies in several significant ways. Firstly, the function is of type ``LuaHook`` which can error and capture
-    /// values, unlike `lua_Hook` -- this is similar to how ``LuaClosure`` behaves compared to `lua_CFunction`.
-    /// Secondly, hook functions set by `setHook()` are not inherited by threads (coroutines) created from that state,
-    /// unlike when using `lua_sethook` directly -- this restriction is due to the lifetime issues surrounding the
-    /// `LuaHook` being able to capture values. The way hook functions are copied into newly created threads does not
-    /// allow them to be easily shared in Swift. If a thread is created by a state that has a LuaSwift hook function
-    /// set, a warning will be printed the first time it is triggered in the new thread and the hook will be cleared.
-    /// To have hooks run in multiple threads, call `setHook` on each thread separately.
-    ///
-    /// Replaces any previous hook configured by `setHook()` or by calling `lua_sethook()` directly.
-    ///
-    /// To disable hooking on a `LuaState`, pass `.none` as the mask argument or a `nil` function (or both).
-    ///
-    /// Example:
-    /// ```swift
-    /// let hook: LuaHook = { L, event, context in
-    ///     if event == .call {
-    ///         let d = context.getInfo([.name])
-    ///         if d.name == "foo" {
-    ///             print("foo() called!")
-    ///         }
-    ///     }
-    /// }
-    /// L.setHook(mask: [.call, .ret], function: hook)
-    ///
-    /// // Could equally be written:
-    ///
-    /// L.setHook(mask: .call) { L, event, context in
-    ///     let d = context.getInfo([.name])
-    ///     if d.name == "foo" {
-    ///         print("foo() called!")
-    ///     }
-    /// }
-    /// ```
+    /// This function is equivalent to calling `L.getHooks().setHook(forState: L, ...)`. See
+    /// [`LuaHooksState.setHook()`](doc:LuaHooksState/setHook(forState:mask:count:function:)) for more information.
     ///
     /// - Parameter mask: What to hook. Specify `.none` to disable hooking.
     /// - Parameter count: How frequently to call the `count` hook, in interpreter instructions. Ignored unless `mask`
     ///   contains `.count`.
     /// - Parameter function: The hook function to set, or `nil` to disable hooking.
+    ///
+    /// > Important: Unlike `LuaHooksState.setHook()`, this function is not thread-safe and must not be called from a
+    ///   thread other than the one where the LuaState is running. See ``getHooks()`` for a (more) thread-safe
+    ///   alternative. 
     public func setHook(mask: HookMask, count: CInt = 0, function: LuaHook?) {
         if let function, mask.rawValue != 0 {
-            let state = getState()
-            if state.hookFnsRef == LUA_NOREF {
-                newtable(weakKeys: true) // map of thread to hook fn. hooks are cleared when †hread is gc'd.
-                state.hookFnsRef = luaL_ref(self, LUA_REGISTRYINDEX) // pops map
-            }
-            let wrapper = LuaHookWrapper(function)
-
-            rawget(LUA_REGISTRYINDEX, key: state.hookFnsRef) // pushes hookFns table
-            push(self)
-            push(userdata: wrapper)
-            rawset(-3)
-            pop() // hookFns
-
-            lua_sethook(self, luaswift_hookfn, mask.rawValue, count)
+            let hooks = getHooks()
+            hooks.setHook(forState: self, mask: mask, count: count, function: function)
+            hooks.updateStateTracking(self)
         } else {
-            lua_sethook(self, nil, 0, 0)
-            if let state = maybeGetState(), state.hookFnsRef != LUA_NOREF {
-                rawget(LUA_REGISTRYINDEX, key: state.hookFnsRef)
-                push(self)
-                pushnil()
-                rawset(-3)
-                pop() // hookFns
+            if let hooks = maybeGetState()?.hooks {
+                hooks.setHook(forState: self, mask: .none, function: nil)
+                hooks.updateStateTracking(self)
+            } else {
+                // We need to call lua_sethook ourselves since the docs say we replace _any_ previous hook.
+                lua_sethook(self, nil, 0, 0)
             }
         }
     }
 
     /// Gets the debugging hook function for this state, if one has been set.
     ///
+    /// This function is functionally equivalent to calling `L.getHooks().getHook(forState: L)`.
     /// If a debugging hook has been set on this state using ``setHook(mask:count:function:)``, returns that hook, and
     /// `nil` otherwise.
+    ///
+    /// > Important: Unlike `lua_gethook`, this function is not thread-safe and must not be called from a thread other
+    ///   than the one where the LuaState is running. See ``getHooks()`` for a (more) thread-safe alternative. 
     public func getHook() -> LuaHook? {
-        guard let state = maybeGetState(), state.hookFnsRef != LUA_NOREF else {
+        guard let hooks = maybeGetState()?.hooks else {
             // Can't be a hook set
             return nil
         }
-        rawget(LUA_REGISTRYINDEX, key: state.hookFnsRef)
-        push(self)
-        rawget(-2)
-        let wrapper: LuaHookWrapper? = touserdata(-1)
-        pop(2) // wrapper, hookFns
+        let result = hooks.getHook(forState: self)
+        hooks.updateStateTracking(self)
+        return result
+    }
 
-        if !luaswift_hooksequal(lua_gethook(self), luaswift_hookfn) {
-            // Even if wrapper is non-nil, if this doesn't match then something else must have called lua_sethook()
-            // so we should return nil, as wrapper isn't actually in effect
-            return nil
+    /// Returns an object which supports thread-safe hook functions.
+    ///
+    /// The `LuaState` ``getHook()`` and ``setHook(mask:count:function:)`` functions are not thread-safe. This function
+    /// returns an object which does have thread-safe `getHook()` and `setHook()` functions.
+    ///
+    /// Note, the `getHooks()` function _itself_ is not thread-safe, and must be called from the thread where the
+    /// `LuaState` is running (or be called while the `LuaState` is not executing anything). Only the functions defined
+    /// by the `LuaHooksState` class are thread-safe. Therefore to safely use `LuaHooksState.setHook()`, call
+    /// `getHooks()` from a safe context and store the resulting `LuaHooksState` for later use from an unsafe context.
+    public func getHooks() -> LuaHooksState {
+        let state = getState()
+        if state.hooks == nil {
+            state.hooks = LuaHooksState(mainThread: self.getMainThread())
         }
-        return wrapper?.hook
+        return state.hooks!
     }
 }
-
-internal class LuaHookWrapper {
-    let hook: LuaHook
-    init(_ hook: @escaping LuaHook) {
-        self.hook = hook
-    }
-
-    static let callHook: luaswift_Hook = { (L: LuaState!, ar: UnsafeMutablePointer<lua_Debug>!) in
-        guard let hook = L.getHook() else {
-            print("Hook called from untracked thread - unregistering hook")
-            lua_sethook(L, nil, 0, 0)
-            return 0
-        }
-
-        guard let context = LuaHookContext(L: L, ar: ar) else {
-            print("Unknown hook event \(ar.pointee.event), ignoring!")
-            return 0
-        }
-
-        do {
-            try hook(L, context.event, context)
-            if context.yielded {
-                return LUASWIFT_CALLCLOSURE_YIELD
-            } else {
-                return 0
-            }
-        } catch {
-            L.push(error: error)
-            return LUASWIFT_CALLCLOSURE_ERROR
-        }
-    }
-}
-

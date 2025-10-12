@@ -658,7 +658,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
     }
 
-    class _State {
+    internal class _State {
 #if !LUASWIFT_NO_FOUNDATION
         var defaultStringEncoding: LuaStringEncoding = .stringEncoding(.utf8)
 #endif
@@ -666,7 +666,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         var userdataMetatables = Dictionary<UnsafeRawPointer, UntypedMetatable>() // map of Lua metatable lua_topointers
         var luaValues = Dictionary<CInt, UnownedLuaValue>()
         var errorConverter: LuaErrorConverter? = nil
-        var hookFnsRef: CInt = LUA_NOREF
+        var hooks: LuaHooksState? = nil
 
         deinit {
             for (_, val) in luaValues {
@@ -701,8 +701,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         // Are we doing too much non-deferred initialization in getState() now?
         register(Metatable<LuaClosureWrapper>())
         register(Metatable<LuaContinuationWrapper>())
-        register(Metatable<LuaHookWrapper>())
-        luaswift_set_functions(LuaClosureWrapper.callClosure, LuaClosureWrapper.callContinuation, LuaHookWrapper.callHook);
+        luaswift_set_functions(LuaClosureWrapper.callClosure, LuaClosureWrapper.callContinuation, LuaHooksState.callHook)
 
         return state
     }
@@ -715,7 +714,7 @@ extension UnsafeMutablePointer where Pointee == lua_State {
         }
         // We must call the unchecked version to avoid recursive loops as touserdata calls maybeGetState(). This is
         // safe because we know the value of stateLookupKey does not need checking.
-        return unchecked_touserdata(-1)
+        return unchecked_touserdata(-1)?.pointee
     }
 
     // MARK: - Basic stack stuff
@@ -1377,12 +1376,11 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     }
 
     // Should only be used when the userdata storage type is definitely T. Doesn't check the userdata's metatable at all.
-    internal func unchecked_touserdata<T>(_ index: CInt) -> T? {
+    internal func unchecked_touserdata<T>(_ index: CInt) -> UnsafeMutablePointer<T>? {
         guard let rawPtr: UnsafeMutableRawPointer = lua_touserdata(self, index) else {
             return nil
         }
-        let typedPtr = rawPtr.assumingMemoryBound(to: T.self)
-        return typedPtr.pointee
+        return rawPtr.assumingMemoryBound(to: T.self)
     }
 
     /// Convert a value on the stack to the specified `Decodable` type.

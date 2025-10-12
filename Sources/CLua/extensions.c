@@ -10,12 +10,12 @@
 
 static lua_CFunction LuaClosureWrapper_callClosure = NULL;
 static lua_CFunction LuaClosureWrapper_callContinuation = NULL;
-static luaswift_Hook LuaHookWrapper_callHook = NULL;
+static luaswift_Hook LuaStateHooks_callHook = NULL;
 
 void luaswift_set_functions(lua_CFunction callClosure, lua_CFunction callContinuation, luaswift_Hook callHook) { 
     LuaClosureWrapper_callClosure = callClosure;
     LuaClosureWrapper_callContinuation = callContinuation;
-    LuaHookWrapper_callHook = callHook;
+    LuaStateHooks_callHook = callHook;
 }
 
 int luaswift_searcher_preload(lua_State *L) {
@@ -327,7 +327,7 @@ int luaswift_concat(lua_State *L) {
 }
 
 void luaswift_hookfn(lua_State *L, lua_Debug *ar) {
-    int ret = LuaHookWrapper_callHook(L, ar);
+    int ret = LuaStateHooks_callHook(L, ar);
     if (ret == LUASWIFT_CALLCLOSURE_ERROR) {
         lua_error(L);
     } else if (ret == LUASWIFT_CALLCLOSURE_YIELD) {

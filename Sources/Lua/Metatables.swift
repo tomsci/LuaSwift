@@ -491,8 +491,8 @@ public struct Metatable<T> {
 
     internal let toany: UserdataToAnyFn = { L, index in
         // Note, we're not checking the type here, that's the caller's responsibility to do in advance.
-        let typedPtr: T = L.unchecked_touserdata(index)!
-        return typedPtr as Any
+        let typedPtr: UnsafeMutablePointer<T> = L.unchecked_touserdata(index)!
+        return typedPtr.pointee as Any
     }
 
     internal let pushval: PushValFn = { L, untypedVal in

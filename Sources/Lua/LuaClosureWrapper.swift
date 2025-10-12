@@ -77,10 +77,10 @@ public final class LuaClosureWrapper: Pushable {
     }
 
     internal static let callClosure: lua_CFunction = { (L: LuaState!) -> CInt in
-        let wrapper: LuaClosureWrapper = L.unchecked_touserdata(lua_upvalueindex(1))!
+        let wrapper: UnsafeMutablePointer<LuaClosureWrapper> = L.unchecked_touserdata(lua_upvalueindex(1))!
 
         do {
-            return try wrapper.closure(L)
+            return try wrapper.pointee.closure(L)
         } catch {
             L.push(error: error)
             return LUASWIFT_CALLCLOSURE_ERROR

@@ -10,6 +10,20 @@ extension LuaValue {
     }
 }
 
+extension LuaHooksState {
+    internal var internal_hooks: Dictionary<LuaState, LuaHook> {
+        return _hooks
+    }
+
+    internal var internal_untrackedHookedStates: Set<LuaState> {
+        return _untrackedHookedStates
+    }
+
+    internal var internal_trackedStatesRef: CInt {
+        return _trackedStatesRef
+    }
+}
+
 // These are to avoid deprecation warnings in the test code but still be able to test the deprecated fns
 // extension LuaState {
 // }

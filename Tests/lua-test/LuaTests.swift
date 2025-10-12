@@ -4121,6 +4121,55 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(seenRets, [4])
     }
 
+    func test_hookstate_sethook() throws {
+        let co = L.newthread()
+        let hooks = co.getHooks()
+        var called = false
+        hooks.setHook(forState: co, mask: .line) { L, event, ctx in
+            called = true
+        }
+
+        XCTAssertNotNil(hooks.internal_hooks[co])
+        // co should be in untrackedHookedStates at this point
+        XCTAssertTrue(hooks.internal_untrackedHookedStates.contains(co))
+
+        try co.dostring("while false do print('Nope') end")
+        XCTAssertTrue(called)
+        XCTAssertFalse(hooks.internal_untrackedHookedStates.contains(co))
+        let ref = hooks.internal_trackedStatesRef
+        XCTAssertNotEqual(ref, LUA_NOREF)
+        XCTAssertEqual(L.rawget(LUA_REGISTRYINDEX, key: ref), .table)
+        // The trackedStates table should still have co in it
+        XCTAssertEqual(L.rawget(-1, key: co), .userdata)
+        L.settop(0)
+        L.collectgarbage()
+        // co getting collected should've cleared it from the hook table
+        XCTAssertNil(hooks.internal_hooks[co])
+    }
+
+    // Test that calling L.setHook(nil) clears state from both hooks and both of untrackedStateHooks and
+    // trackedStatesRef, as necessary
+    func test_hook_nil() {
+        let hooks = L.getHooks()
+        let hook: LuaHook = { L, event, ctx in
+            // noop
+        }
+        hooks.setHook(forState: L, mask: .line, function: hook)
+        L.setHook(mask: .none, function: nil)
+        XCTAssertNil(hooks.internal_hooks[L])
+        XCTAssertFalse(hooks.internal_untrackedHookedStates.contains(L))
+
+        L.setHook(mask: .line, function: hook)
+        let ref = hooks.internal_trackedStatesRef
+        XCTAssertNotEqual(ref, LUA_NOREF)
+        XCTAssertEqual(L.rawget(LUA_REGISTRYINDEX, key: ref), .table)
+        XCTAssertEqual(L.rawget(-1, key: L), .userdata)
+        L.pop()
+        L.setHook(mask: .none, function: nil)
+        XCTAssertEqual(L.rawget(-1, key: L), .nil)
+        L.pop()
+    }
+
     func test_newtable_weak() throws {
         L.newtable(weakKeys: true) // 1 = weaktbl
         XCTAssertEqual(L.gettop(), 1)

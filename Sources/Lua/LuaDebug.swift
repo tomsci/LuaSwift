@@ -798,8 +798,10 @@ public class LuaHooksState {
             L.rawget(-1, key: L)
             let tracker: StateTracker? = L.touserdata(-1)
             if let tracker {
-
-                L.pop() // tracker
+                // Prevent it erroneously calling stateWasCollected when it is GC'd
+                tracker.close()
+            }
+            L.pop() // tracker
             L.rawset(-1, key: L, value: .nilValue)
             L.pop() // table
         }

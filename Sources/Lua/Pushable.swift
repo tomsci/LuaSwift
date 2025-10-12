@@ -3,6 +3,7 @@
 
 import CLua
 
+// Documented in Pushable.md
 public protocol Pushable {
     /// Push this Swift value on to the stack, as a Lua type.
     func push(onto state: LuaState)

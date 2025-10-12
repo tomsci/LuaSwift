@@ -21,7 +21,7 @@ L.push(["abc", "def"])
 L.setglobal(name: "foo", value: "bar")
 ```
 
-Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`. Similarly `UInt64` is also not `Pushable`, because it can represent numbers larger than the Lua integral number type and thus there is ambiguity - should it wrap, assert, promote to float, etc. Perhaps surprisingly, `LuaState` is itself `Pushable`: this is because `LuaState` is also used to represent Lua threads (coroutines).
+Note that `[UInt8]` does not conform to `Pushable` because there is ambiguity as to whether that should be represented as an array of integers or as a string of bytes, and because of that `UInt8` cannot conform either. Types should only conform to `Pushable` if there is a clear and _unambiguous_ representation in Lua -- if a type needs to be represented in different ways depending on circumstances (and not simply based on its type or value), then it should not conform to `Pushable`. Similarly `UInt64` is also not `Pushable`, because it can represent numbers larger than the Lua integral number type and thus there is ambiguity - should it wrap, assert, promote to float, etc. The "unambiguous" requirement is not enforced by the compiler; it is the programmer's responsibility to provide declarations that are internally consistent. Perhaps surprisingly, `LuaState` is itself `Pushable`: this is because `LuaState` is also used to represent Lua threads (coroutines).
 
 For types like `LuaClosure` and `lua_CFunction` which conceptually should be pushable but the Swift type system does not permit to conform to `Pushable`, the helper functions ``function(_:)`` and ``closure(_:)`` can be used anywhere a `Pushable` is expected, allowing code like:
 
@@ -52,3 +52,5 @@ L.push(function: { L in
 // taking a Pushable argument.
 L.setglobal(name: "hellofn")
 ```
+
+> Note: While `Pushable` requires that the type have an unambiguous representation in Lua in order to conform, it makes no requirement the other way -- which is to say, there may or may not be a way to map a Lua value back to a particular instance of the `Pushable` type, and `Pushable` imposes no requirements either way. It is up to the programmer to decide what is appropriate for any given type.

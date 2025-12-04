@@ -3288,6 +3288,12 @@ final class LuaTests: XCTestCase {
         XCTAssertEqual(info.nups, 1)
         XCTAssertEqual(info.nparams, 3)
         XCTAssertEqual(info.isvararg, false)
+        XCTAssertEqual(info.istailcall, false)
+        if LUA_VERSION >= LuaVer(major: 5, minor: 5, release: 0) {
+            XCTAssertEqual(info.extraargs, 0)
+        } else {
+            XCTAssertNil(info.extraargs)
+        }
         XCTAssertEqual(info.function?.type, .function)
         XCTAssertEqual(info.validlines, [3, 4])
         XCTAssertEqual(info.short_src, "test")

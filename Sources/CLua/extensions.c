@@ -167,6 +167,14 @@ void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransf
 #endif
 }
 
+int luaswift_lua_Debug_extraargs(const lua_Debug* d) {
+#if LUA_VERSION_NUM >= 505
+    return d->extraargs;
+#else
+    return -1;
+#endif
+}
+
 int luaswift_setgen(lua_State* L, int minormul, int majormul, int minorMajorMul, int majorMinorMul) {
 #if LUA_VERSION_NUM > 504
     if (majormul) {

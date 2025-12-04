@@ -153,6 +153,14 @@ public struct LuaDebug {
     /// A function stripped of debugging information currently always results in an empty array.
     public let validlines: [CInt]?
 
+    /// The number of extra arguments added by the call.
+    ///
+    /// The number of extra arguments added by the call to functions called through `__call` metamethods.
+    /// Each `__call` metavalue adds a single extra argument, the object being called, but there may be a chain
+    /// of `__call` metavalues. Will be `nil` if the Lua version is earlier than 5.5, or if `.istailcall` was not
+    /// specified in the `what` parameter.
+    public let extraargs: Int?
+
     public init(from ar: lua_Debug, fields: Set<WhatInfo>, state: LuaState) {
         if fields.contains(.name) {
             name = ar.name != nil ? String(cString: ar.name) : nil
@@ -207,8 +215,13 @@ public struct LuaDebug {
 
         if fields.contains(.istailcall) {
             istailcall = ar.istailcall != 0
+            extraargs = withUnsafePointer(to: ar) { ptr in
+                let x = luaswift_lua_Debug_extraargs(ptr)
+                return x >= 0 ? Int(x) : nil
+            } 
         } else {
             istailcall = nil
+            extraargs = nil
         }
 
         if fields.contains(.transfers) && LUA_VERSION.is54orLater() {

@@ -279,6 +279,7 @@ int luaswift_closethread(lua_State *L, lua_State* from);
 
 size_t luaswift_lua_Debug_srclen(const lua_Debug* d);
 void luaswift_lua_Debug_gettransfers(const lua_Debug* d, unsigned short *ftransfer, unsigned short *ntransfer);
+int luaswift_lua_Debug_extraargs(const lua_Debug* d);
 void luaswift_hookfn(lua_State *L, lua_Debug *ar);
 
 #if LUA_VERSION_NUM < 504

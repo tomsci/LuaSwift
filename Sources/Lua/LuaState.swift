@@ -2916,7 +2916,13 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
     @inlinable
     public func pcall(nargs: CInt, nret: CInt, traceback: Bool = true) throws {
-        try pcall(nargs: nargs, nret: nret, msgh: traceback ? defaultTracebackFn : nil)
+        // Swift 6.4 only forms a C function pointer directly from a function reference, not
+        // through a ternary, so branch instead of `traceback ? defaultTracebackFn : nil`.
+        if traceback {
+            try pcall(nargs: nargs, nret: nret, msgh: defaultTracebackFn)
+        } else {
+            try pcall(nargs: nargs, nret: nret, msgh: nil)
+        }
     }
 
     /// Make a protected call to a Lua function, optionally specifying a custom message handler.
@@ -3148,7 +3154,12 @@ extension UnsafeMutablePointer where Pointee == lua_State {
     /// - Precondition: The top of the stack must contain a function/callable and `nargs` arguments.
     @inlinable
     public func pcallk(nargs: CInt, nret: CInt, traceback: Bool = true, continuation: @escaping LuaPcallContinuation) -> CInt {
-        return pcallk(nargs: nargs, nret: nret, msgh: traceback ? defaultTracebackFn : nil, continuation: continuation)
+        // See pcall(nargs:nret:traceback:) for why this is not a ternary.
+        if traceback {
+            return pcallk(nargs: nargs, nret: nret, msgh: defaultTracebackFn, continuation: continuation)
+        } else {
+            return pcallk(nargs: nargs, nret: nret, msgh: nil, continuation: continuation)
+        }
     }
 
     /// Call a Lua function which is allowed to yield.
